@@ -32,7 +32,7 @@ Settled: containers (package › file › type › function › block) and contr
 ## Q-05: Trigger kinds and how each maps to entry points
 Possible triggers are a UI element (JSX `onClick` → handler), a CLI command (argument parser → subcommand fn), a function picked in code, or a prompt (the LLM maps natural language to one or more entry points). How does a user point at a UI element: by clicking it in the running app, or by picking it from source? Status: open.
 
-## Q-06: LLM provider access and auth
+## Q-06: LLM provider access and auth — **Closed by ADR-0025** (no in-app model; the user's terminal agent runs on its own subscription)
 Options include bring-your-own API key, Anthropic and OpenAI account sign-in for third-party software (the user reports both recently opened something like this, but it hasn't been researched or verified yet), and local models. Status: research pending (user: "we'll do more research about this later").
 
 ## Q-07: Privacy, security, and code leaving the machine
@@ -53,7 +53,7 @@ The code changes after the graph is built. How do we re-trace incrementally, kee
 "This is the new IDE" and "you would be able to add more to it." Does Insight edit code (for example, "add a branch here" → an AI writes it), annotate the graph, or both? Does it replace the editor or sit next to it? Leaning (ADR-0012): "debugging and IDE for AI-first written code". It's where you direct and verify agents at the system level, beside or above a text editor rather than replacing line editing. Status: open, leaning IDE.
 
 ## Q-11: Who is it for?
-Partly answered by ADR-0012: learners (~60%) and developers supervising AI-written code (~40%). Still open: which learner and which developer first (a solo vibe coder, a team onboarding, a reviewer of agent PRs), and how defaults differ between the two modes. Status: partially resolved.
+**Resolved by ADR-0012 + ADR-0025:** one person, the author, learning (~60%) and overseeing AI-written code (~40%) on their own codebases. Teams and onboarding are out of scope.
 
 ## Q-12: LLM cost and latency
 Labeling every edge and bubble in a large codebase is expensive. Options: lazy labeling (only what's on screen), caching by content hash, cheap models for labels and strong models for chat. **Latency:** the user wants highlights to be "instant". Deterministic answers (graph, queries, assurance inventory) can be; LLM prose streams after. Set a budget per answer type. Status: open.
@@ -61,8 +61,7 @@ Labeling every edge and bubble in a large codebase is expensive. Options: lazy l
 ## Q-13: What "learn iteratively" means as a UX
 Options: chat grounded on the selection, guided walkthroughs of a flow, quizzes and "predict what happens", remembering what the user already understands, progressive disclosure. **Evidence:** `docs/research/2026-10-learning-session-patterns.md`, from a real multi-day learning log. It identifies 16 question shapes and 10 teaching moves that worked. The strongest finding: "follow one action in small steps, and the AI supplies the next question" beat subsystem overviews, for a user who said "I don't even know what questions to ask." Status: open, now evidence-backed. See also Q-22 and Q-23.
 
-## Q-14: Distribution and business model
-License settled: Apache-2.0 (ADR-0020). Still open: any hosted or paid layer, and pricing when users bring their own LLM account. Status: partially resolved.
+## Q-14: Distribution and business model — **Closed by ADR-0025** (a personal tool, Apache-2.0 per ADR-0020, no business model)
 
 ## Q-15: A defined annotation format, plus a "compiler" that removes hallucinations
 User idea: a clearly defined documentation style that is generated automatically ("like doxygen but way better"), then run through a compiler that removes hallucinations. The proposed shape (not ruled) splits every annotation into two parts:

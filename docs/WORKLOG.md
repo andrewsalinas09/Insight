@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8e: personal tool, terminal-driven
+**Done:** ADR-0025. You ask in Claude Code or Codex in the terminal; the agent answers in text and drives the Insight desktop window through local MCP tools. There's no in-app chat or model calls in the MVP. Built for one person on one machine (open source, not a product for others). Closed Q-06 (no API integration; the agent uses its own subscription, and the user noted API credit allowances aren't much for Opus-class use, which is their statement, unverified) and Q-14 (no business model). Q-11 resolved (the author is the user). The ADR-0021 question box is the terminal.
+**Learned:** Each scope cut removes a pile of work: accounts, sharing, an in-app model, provider auth. What remains is sharply defined: the solver, the window, and the tool API.
+**Next:** Define the MVP tool set the agent calls; then the solver SCHEMA.
+
 ## 2026-10-09 (cont.) — Discovery 8d: Insight is the instrument, not a second brain
 **Done:** ADR-0024. The model already understands (it wrote the code; the learning log shows it explains well in text). Insight's job is the graph, the UI, and the tools the model uses to highlight, focus, and step, so the human can see, trace, and follow. Annotation is the model's call. Re-prioritized ADR-0013: receipts stay so highlights land on real code, and the compiler mechanism is optional. The ROADMAP's Phase 1 leads with a UI + tool API spike. Q-20: state is connected at field/path level, with alias following.
 **Learned:** The design had been drifting toward verifying the model. The user's point is that the gap is *visual*, not epistemic: you can't hold a system in your head from text alone. Make the instrument excellent; the model is the expert.
