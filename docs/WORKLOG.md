@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Clickable mockup; Fletcher's Console as the visual language
+**Done:** The user didn't understand the four views from their text descriptions, so I built a clickable mockup of the history-tree answer (private artifact: https://claude.ai/artifact/XgSXHu6urDiPDzwafaMtRr; 11 steps, real Fletcher code excerpts, example data labeled). v1 was a generic split terminal/window. The user: "the UI should be very very different… similar design language as Fletcher." ADR-0027: adopt Fletcher's Console. v2 is the Insight window full-frame: header (INSIGHT · GRAPH/SEQUENCE/JOURNAL tabs · repo chip · "claude · terminal" chip), a code graph strip (functions → state they write → what reacts), an example-instance strip (Map table + tree, the model's drawing), a labeled-cell inspector with real code, and a docked bottom bar carrying Claude's narration and step transport.
+**Learned:** Describing a visual tool in prose fails. Mock it in the real visual language from the start. The bottom-bar slot from Fletcher's A/B bar is a natural home for the agent's voice.
+**Next:** User reaction to v2: which steps clicked, and what's noise.
+
 ## 2026-10-09 (cont.) — Dogfood: Claude answers as the model
 **Done:** The user asked Claude to *be* the model: "How does the history tree get held in memory, how do you modify it, how would you show me?" Traced Fletcher's `hist` ref, `HistNode`, `rail`, `histVersion`, and all eight mutators (`commitGesture`, `graftNode`, `moveTo`/`undo`/`redo`/`jumpTo`, `deleteNode`, `editNode`, `initHistory`/`installHistory`). Answered in text and designed four views. Recorded in `docs/examples/fletcher-history-tree-model-answer.md`; TB-106 added.
 **Learned:** The views the model actually wanted weren't code graphs: (1) an *example instance* diagram of runtime data (a Map that is really a tree), (2) a functions × fields-written mutation matrix (pure solver facts), (3) before/after state frames, (4) invariants as "all writers of X also write Y". So the tool API needs instance diagrams and before/after frames, and the solver's write connections are the backbone.
