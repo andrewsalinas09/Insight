@@ -1,6 +1,6 @@
 # ADR-0013: Code is truth; taking away is free but visible; adding needs a receipt
 
-- **Status:** Accepted
+- **Status:** Accepted; re-prioritized by ADR-0024 (receipts remain so every highlight lands on real code; the detailed compiler mechanism is optional, built only if real use shows it's needed)
 - **Date:** 2026-10-09
 - **Source:** user, discovery sessions 3–6 (Q-21). It was restated by Claude, validated against `docs/examples/save-note-worked-example.md`, refined three times by the user, and accepted with the caveat "a lot of this is hand-wavy for now"
 - **Supersedes:** ADR-0006

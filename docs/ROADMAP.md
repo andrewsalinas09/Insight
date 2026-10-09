@@ -10,7 +10,8 @@ This file always states the **current focus**. Update it when the focus changes.
 - Exit when Q-04, Q-05, Q-11, Q-15, and Q-18 are resolved. (Q-01 and Q-02 are already resolved.)
 
 ## Phase 1: Research spikes
-- **Compiler spike (ADR-0013 is a rule set, not yet a mechanism).** On a small real codebase: quote-receipt matching, 3–5 claim kinds with deterministic checks, a chain receipt, a broken-receipt → re-anchor cycle, and redundant-claim linting. Rules that can't be built as stated get superseded.
+- **UI + tool API spike (ADR-0024: this is the product).** The model calls tools that highlight, focus, and step on a real graph while it explains.
+- *(Deprioritized by ADR-0024: build only if real use demands it)* **Compiler spike (ADR-0013 is a rule set, not yet a mechanism).** On a small real codebase: quote-receipt matching, 3–5 claim kinds with deterministic checks, a chain receipt, a broken-receipt → re-anchor cycle, and redundant-claim linting. Rules that can't be built as stated get superseded.
 - LLM provider access and auth options (Q-06).
 - Analysis tooling: tree-sitter vs. LSP / rust-analyzer vs. SCIP, and runtime instrumentation (Q-02, Q-03).
 - Graph rendering and layout at scale (Q-08).

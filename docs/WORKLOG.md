@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8d: Insight is the instrument, not a second brain
+**Done:** ADR-0024. The model already understands (it wrote the code; the learning log shows it explains well in text). Insight's job is the graph, the UI, and the tools the model uses to highlight, focus, and step, so the human can see, trace, and follow. Annotation is the model's call. Re-prioritized ADR-0013: receipts stay so highlights land on real code, and the compiler mechanism is optional. The ROADMAP's Phase 1 leads with a UI + tool API spike. Q-20: state is connected at field/path level, with alias following.
+**Learned:** The design had been drifting toward verifying the model. The user's point is that the gap is *visual*, not epistemic: you can't hold a system in your head from text alone. Make the instrument excellent; the model is the expert.
+**Next:** Specific question on who drives the MVP UI (an external agent via MCP vs. Insight's own question box); then the solver SCHEMA draft.
+
 ## 2026-10-09 (cont.) — Discovery 8c: the solver connects, the model understands
 **Done:** ADR-0023, the user's sharpest ruling yet: "Anything that requires understanding the code is the model's job… The solver's job is to simply connect everything together." The solver records every function, call, and read/write of every state ("if something can change something, it should be connected"), plus same-source bindings and exact-match links, all with receipts. Timing meaning, effects, validation/fallback, and labels are the model's job. Amended ADR-0018 (the model assigns timing kinds), Q-20 (no effect catalogue; the "persisted/crosses-boundary" facts become model understanding), Q-31 (the solver returns everything connected; the model sorts it), and narrowed the ADR-0013 compiler to structural checks. TB-099 updated; TB-102 (state change → useEffect → debounce) solved by plain write→read connection.
 **Learned:** I kept sliding semantics into the backend (timing catalogues, effect lists, React rules) because that felt "safer". The user's line is better. Deterministic *connection* is complete and exact, while deterministic *interpretation* is an endless edge-case list. Never-wrong holds because the solver never interprets and the model always cites.
