@@ -224,7 +224,7 @@ Metrics: correct receipts, no rejected claims shown, coverage of the key's point
 ## Q-34: The graph query language
 The hidden backbone: lenses, sibling comparison, "every error path that skips X", the system diff, expectations, and the assurance trace are all graph queries the LLM translates into and the engine runs deterministically. It needs reachability, effects, timing kinds (ADR-0018), and data lineage. Candidates to study: Datalog, CodeQL's QL, Cypher. Status: open, core technical bet.
 
-## Q-35: Node identity across versions
+## Q-35: Node identity across versions — **Resolved → ADR-0028** (identity = location, rebuilt every build; the solver emits a structural diff; the model reconciles renames and moves. Only matters once things are saved; not MVP)
 The system diff, receipts, annotations, and journal entries need "the same function after a rename or move". Candidates: content plus structural fingerprints; the receipt quote itself; git rename detection. Status: open, foundational for SCHEMA.
 
 ## Q-36: Editor sync

@@ -17,6 +17,7 @@ Template:
 **Learned:** Describing a visual tool in prose fails. Mock it in the real visual language from the start. The bottom-bar slot from Fletcher's A/B bar is a natural home for the agent's voice.
 **Outcome:** The user: "Honestly this isn't even close to what I want, but UI doesn't really matter right now." ADR-0027 narrowed to palette + type; the anatomy is marked unvalidated. UI is deferred. Don't iterate mockups until the user brings UI back up.
 **Next:** Back to the solver: node identity (Q-35), then the SCHEMA draft.
+**Then:** ADR-0028. Identity is the location, recomputed each build; the solver emits a structural diff (git as input); the model reconciles renames and moves. The user asked "why does this even matter?" Honest answer: only for saved references and a readable system diff, neither of which is in the MVP. So keep it trivial.
 
 ## 2026-10-09 (cont.) — Dogfood: Claude answers as the model
 **Done:** The user asked Claude to *be* the model: "How does the history tree get held in memory, how do you modify it, how would you show me?" Traced Fletcher's `hist` ref, `HistNode`, `rail`, `histVersion`, and all eight mutators (`commitGesture`, `graftNode`, `moveTo`/`undo`/`redo`/`jumpTo`, `deleteNode`, `editNode`, `initHistory`/`installHistory`). Answered in text and designed four views. Recorded in `docs/examples/fletcher-history-tree-model-answer.md`; TB-106 added.
