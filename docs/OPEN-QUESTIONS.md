@@ -87,7 +87,7 @@ ADR-0003 needs a way to record a run and to define "this point". ADR-0011 adds a
 ## Q-18: Live mode (while developing) vs. after-the-fact mode
 User: "a faster way to view code while developing, not just after the fact, but we want to support both if possible." Live mode means the graph updates as code changes, which needs incremental analysis and cheap re-verification. Q-09 becomes a core requirement rather than a nice-to-have. Status: open (both are wanted; the question is what v1 does first). User leaning (session 2): "where I'm developing, instantly see code structure", so live mode next to the editor. Also see Q-10.
 
-## Q-19: AI-composed custom views
+## Q-19: AI-composed custom views — **Largely resolved → ADR-0026** (a custom view is a model-authored teaching view; remaining: storage, Q-37)
 User: "you can ask the AI to show this and it can make a custom view with that hierarchy. It can have code snippets." Example request: "show me how clicking Start reaches the app's core state hierarchy, and how this function gets its members from there." The LLM composes a view using the tools (ADR-0006): it picks the nodes, the hierarchy, and what's collapsed, and embeds code snippets. Open:
 - Are views saved and committed like annotations, or temporary?
 - Do views update when the code changes?
@@ -229,6 +229,15 @@ The system diff, receipts, annotations, and journal entries need "the same funct
 
 ## Q-36: Editor sync
 "Beside the editor" needs two-way sync with RustRover / VS Code: clicking a node opens the code, and the editor cursor highlights the node. Probably small per-editor plugins, or the LSP protocol. Status: open.
+
+## Q-37: Where teaching views live
+ADR-0026 views (groups, abstractions, simplified code, annotations) need a home. Options:
+- ephemeral (gone when the window closes);
+- saved locally per repo, outside the repo (app data);
+- saved in a git-ignored `.insight/` folder inside the repo;
+- committed (like ADR-0005 annotations).
+
+Also: what happens to a saved view when the real code it maps to changes (broken mappings get flagged, like broken receipts). Status: open.
 
 ## Q-20: Data and ownership edges, not just control flow
 The user's example asks how a function *gets its members*, which is a data question: the path from framework-managed state through a lock into a core struct, then a nested model, then a field. A call graph doesn't show that. Candidate second edge family: containment/ownership (struct A owns field B), access paths (`state.core.lock().model.items[id]`), and injection (the framework hands a command its state). Open: is this part of the same graph, or a second view? Which data edges can be proven statically (ADR-0002)? A catalogue of everything code "has" (data, types, concurrency, links, effects, meta), with a proposed v1 cut, is in `docs/research/2026-10-what-code-has.md`. Status: open; the user asked for guidance ("I don't know what I don't know").

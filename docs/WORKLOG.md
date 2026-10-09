@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8f: model-authored teaching views
+**Done:** The user: "annotations is huge… let it change hierarchy / abstraction / grouping / smaller simpler code as needed for demonstration. Use the QA notes." Re-read the learning log for the moves it actually used: role regrouping, data-focused re-hierarchy, pseudocode abstraction, simplified excerpts, `?`→`match` and chain→loop expansions, illustrative tables, interleavings. ADR-0026 creates three layers: the fact layer (never invented), **teaching views** (fully model-authored, visibly marked, every element mapped back to real nodes, one click to the real code), and the UI. Scoped ADR-0013 rule 5 to the fact layer, and expanded the tool list. Q-19 largely resolved; new Q-37 (where views live); TB-050 solved; TB-103–105 added.
+**Learned:** "Never invent" was right for facts and wrong for teaching. Explanation *is* selective invention (merge, rename, rewrite), and it's honest as long as it's labeled and maps back.
+**Next:** User picks the storage for teaching views (Q-37); then the tool API spec and the solver SCHEMA.
+
 ## 2026-10-09 (cont.) — Discovery 8e: personal tool, terminal-driven
 **Done:** ADR-0025. You ask in Claude Code or Codex in the terminal; the agent answers in text and drives the Insight desktop window through local MCP tools. There's no in-app chat or model calls in the MVP. Built for one person on one machine (open source, not a product for others). Closed Q-06 (no API integration; the agent uses its own subscription, and the user noted API credit allowances aren't much for Opus-class use, which is their statement, unverified) and Q-14 (no business model). Q-11 resolved (the author is the user). The ADR-0021 question box is the terminal.
 **Learned:** Each scope cut removes a pile of work: accounts, sharing, an in-app model, provider auth. What remains is sharply defined: the solver, the window, and the tool API.

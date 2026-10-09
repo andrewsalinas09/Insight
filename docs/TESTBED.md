@@ -448,6 +448,20 @@ On Fletcher: **"How does dragging a node onto another node work?"** The answer m
 The user's original assurance question, about a sensor stream across devices (ADR-0014). The answer has to tie together: the configured sample rate (requested), what the device reports back, what the timestamps actually show (measured intervals, gaps, drift), where the host checks any of these, and what nothing checks.
 **Stresses:** assurance trace across firmware + wire + host; lineage (Q-29); observed data via probes (ADR-0015). **Status:** OPEN. Outside the MVP code scope (needs C/C++ and wire links), but it's the motivating question for Q-31.
 
+## T. Teaching views (ADR-0026)
+
+### TB-103: Regroup a container's fields by role
+A state container with ~20 fields. The model presents them as four role groups (core model, feature state, caches, operation gates), none of which exist in the code.
+**Answer:** allowed as authored groups over real field nodes, visibly authored. Each field links to its declaration. **Status:** Solved (design).
+
+### TB-104: Loop shown as pseudocode
+A 60-line worker loop is shown as one authored node with six lines of pseudocode.
+**Answer:** allowed as an authored abstraction, labeled pseudocode, mapped to the real loop's nodes. One click expands to the real code. **Status:** Solved (design).
+
+### TB-105: An authored element with nothing behind it
+The model creates a "retry manager" group, but none of the nodes it maps to involve retries, or it maps to nothing at all.
+**Answer:** an unmapped element is rejected (ADR-0026 invariant). A *mismapped* one is visible, because expanding it shows the real nodes don't match. That's the model being wrong where you can see it, not hidden. **Status:** Partial (mapping check is structural only).
+
 ### TB-050: The LLM wants a node for an inline chunk of logic
 Forty lines of validation inline in a handler. The LLM thinks it's a distinct step.
-**Stresses:** graph shape = code shape. **Status:** Partial: ADR-0013 rule (mechanism unproven): no invented node. It can be a *block* if it's a control block, or the LLM suggests extracting it into a function, which then appears deterministically).
+**Answer (ADR-0026):** in a teaching view it may create an authored "validation" node mapped to those lines. The fact layer is unchanged. **Status:** Solved (design). *Earlier answer, kept for history:* no invented node. It can be a *block* if it's a control block, or the LLM suggests extracting it into a function, which then appears deterministically).

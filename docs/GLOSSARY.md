@@ -33,6 +33,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Symbol origin**: where a name comes from: the project, the standard library, a framework, or a dependency. Deterministic, and shown everywhere (TB-059).
 - **Wire link**: an edge between a send in one codebase and the matching receive in another, over a protocol. It is proven (shared definition), inferred (matched by convention), or observed (captured) (ADR-0014).
 - **Workspace**: the set of codebases loaded together. It can span devices and languages (ADR-0014).
+- **Teaching view**: a model-authored presentation over the fact layer. It can contain annotations, role groups, its own hierarchy, abstractions with pseudocode, simplified or rewritten code, and illustrative tables. Everything authored is visibly marked and maps back to real nodes (ADR-0026).
 - **Timing kind**: an edge's temporal meaning: sync, async/await, spawn, event/callback, periodic/poll, or wire message, plus *unknown*, which is never defaulted to sync (ADR-0018). Assigned by the model with receipts, not by the solver (ADR-0023).
 - **Tool API**: the operations the LLM can perform on the graph (group, collapse, expand, annotate, compose a view). It has no operation for creating structure (ADR-0006).
 - **Language plugin**: maps one language's constructs onto the generic graph. It provides a parser, resolution, claim checks, and optionally a runtime tracer (ADR-0007).
