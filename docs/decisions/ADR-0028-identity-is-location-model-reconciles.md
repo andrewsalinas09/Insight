@@ -1,6 +1,6 @@
 # ADR-0028: Node identity is the location, rebuilt every build; the model reconciles renames and moves
 
-- **Status:** Accepted
+- **Status:** Accepted; refined by ADR-0029 ("previous build" means another commit's snapshot)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 (Q-35: "we can use git. But this feels difficult. I'm guessing it should be a whole new thing and it should be recognized on build, and then a diff is shown for the LLM to reconcile or something. ANY time something is semantic it is the model's job to fix if it needs to. Also why does this even matter?")
 

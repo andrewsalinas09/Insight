@@ -22,6 +22,7 @@ Early design. Settled so far:
 - license: Apache-2.0 (ADR-0020)
 - home screen: the whole system plus a question box (ADR-0021)
 - the fact layer is complete (every function, anonymous ones too); the LLM curates what's shown (ADR-0022)
+- **a graph is an immutable snapshot of one git commit; comparing = two commits; explanations and views are pinned to their commit (ADR-0029). Identity = location; the model reconciles renames (ADR-0028)**
 - **visual language: Fletcher's "Console"** (paper/ink, IBM Plex, hairline strips, labeled inspector cells, docked bottom bar for the agent's narration; ink = real code, orange = model's drawing, blue = changes now) (ADR-0027)
 - **three layers (ADR-0026): fact layer (solver, never invented) → teaching views (model-authored: annotations, groups, hierarchy, abstractions, simplified code; visibly authored, mapped to real nodes) → UI**
 - **how it's used (ADR-0025): you ask in the terminal (Claude Code / Codex); the agent answers in text and calls Insight's local MCP tools; the Insight desktop window shows and reacts. No in-app chat or model calls. One user, one machine.**

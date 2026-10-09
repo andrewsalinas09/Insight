@@ -46,7 +46,7 @@ Status: open.
 ## Q-08: App stack
 Tauri 2 is proposed (Rust core, web UI). Also open: the graph rendering library (React Flow, Cytoscape, ELK for layout, Sigma/WebGL for scale, a custom renderer), and the analysis engine (tree-sitter, rust-analyzer, TS compiler API). Status: proposed, not ruled.
 
-## Q-09: Freshness and incremental updates
+## Q-09: Freshness and incremental updates — **Closed by ADR-0029** (a graph is an immutable snapshot of one commit; nothing is kept in sync)
 The code changes after the graph is built. How do we re-trace incrementally, keep labels from going stale, and keep the user's notes and annotations attached to code that moved? Status: open.
 
 ## Q-10: Read-only explorer, or a real IDE?
@@ -85,6 +85,8 @@ Reading (a): a free-form knowledge profile the LLM interprets. Reading (b), abst
 ADR-0003 needs a way to record a run and to define "this point". ADR-0011 adds an AI-driven route: the AI generates the run with chosen inputs (Q-24), with no manual clicking needed. ADR-0015 makes **LLM-placed log probes** the default capture mechanism on every platform, microcontrollers included. Options include: record from app launch until the user clicks Stop; a breakpoint-like marker ("trace from here"); attaching to a running process; or recording a test case. Per-language mechanisms include a debugger/DAP, instrumentation via compile-time injection, tracing spans, and the JS runtime's own hooks. Status: open.
 
 ## Q-18: Live mode (while developing) vs. after-the-fact mode
+*Reframed by ADR-0029:* "live" now just means building a snapshot of the working tree (`commit + dirty`) so you can ask before committing. Open: whether that's automatic on file save or on request.
+
 User: "a faster way to view code while developing, not just after the fact, but we want to support both if possible." Live mode means the graph updates as code changes, which needs incremental analysis and cheap re-verification. Q-09 becomes a core requirement rather than a nice-to-have. Status: open (both are wanted; the question is what v1 does first). User leaning (session 2): "where I'm developing, instantly see code structure", so live mode next to the editor. Also see Q-10.
 
 ## Q-19: AI-composed custom views — **Largely resolved → ADR-0026** (a custom view is a model-authored teaching view; remaining: storage, Q-37)
