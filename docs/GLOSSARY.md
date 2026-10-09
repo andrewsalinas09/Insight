@@ -1,0 +1,52 @@
+# Glossary
+
+Domain terms used across docs, code, and conversations. Keep alphabetical. Terms are provisional until the graph model is frozen.
+
+- **Anchor (receipt)**: (proposed, Q-21) the file + span an LLM or human addition points at as proof. The compiler re-checks it against the current code.
+- **Annotation**: LLM-generated (or human-written) documentation attached to a bubble or edge, in a defined format with two parts: checkable *claims* and *prose* (Q-15).
+- **Branch edge**: an edge out of a decision point (`if`, `match`, `?`, `try/catch`, early return). Each outcome is its own edge, so `valid` and `!valid` are two edges.
+- **Bubble**: a node in the execution graph, usually a function, drawn with its inputs and outputs. It can be opened to show the nested structure inside. Bubbles nest hierarchically.
+- **Claim**: a structured, machine-checkable statement in an annotation (`calls: X`, `returns Err when: !valid`). It's shown only if the compiler verifies it.
+- **Compiler (annotation compiler)**: the verifier that checks annotation claims against the static graph and removes hallucinations before display (Q-15, ADR-0002).
+- **Container**: a bubble that is one of the code's own constructs: package, file, type, function, or block (ADR-0008).
+- **Control edge**: call, branch, return, or throw (ADR-0008).
+- **Custom view**: an LLM-composed presentation of part of the graph (chosen nodes, hierarchy, collapse state, code snippets), built through tools in answer to a request (Q-19).
+- **Data lineage**: the path of a *value* (a reading, a field) through transformations, within codebases and across wire links (Q-29).
+- **Data edge**: (proposed) an ownership, containment, access-path, or injection edge showing where a value comes from, as opposed to a call edge (Q-20).
+- **Expectation**: a plain-language statement of required system behavior, translated into a deterministic graph query, confirmed by the user, and re-checked on every change (Q-26).
+- **Explanation**: an on-demand, per-user answer to "what does this do / why", anchored to code with receipts. Abundant and not committed. Distinct from an annotation (Q-22).
+- **Explanation ladder**: the set of alternative angles Insight tries when an explanation doesn't land (Q-23).
+- **Execution graph**: the graph of everything a trigger can reach: bubbles, call edges, and branch edges. It is not the same as a call graph, which ignores branches, or a list of paths, which grows exponentially (TB-018).
+- **Expansion**: following execution past the project scope into dependencies or the standard library, on request.
+- **Fact layer / organization layer**: the deterministic graph that the LLM can't change, and the groupings, annotations, and views that the LLM and humans build on top of it (ADR-0006).
+- **Effect**: (proposed, Q-20) a boundary to the outside world, such as filesystem, network, DB, UI, or process.
+- **Guided walkthrough**: following one concrete action through the code in small steps, with Insight supplying the next question (Q-13).
+- **Inferred edge**: (proposed, Q-21) an LLM addition whose anchor the compiler can verify only partly (site and target exist, connection unproven). Shown distinctly.
+- **Knowledge profile**: free-form notes on what the user already knows, which the LLM interprets to adapt explanations. Personal, not committed (ADR-0004).
+- **Scenario overlay**: a hypothetical sequence drawn over real nodes to explain a "what if". Always labeled hypothetical (ADR-0010).
+- **Show, then tell**: every answer is a view state (focus, highlights, step-through) plus prose whose sentences link to graph elements (ADR-0010).
+- **Step-through**: a debugger-like sequence of steps (location + values + prose) that the AI sets up and verifies by running or evaluating before handing it over (ADR-0011).
+- **Stub (assumed value)**: a stand-in for a boundary (network, hardware, time) during a step-through. Its values are shown as *assumed* (ADR-0011).
+- **System diff**: the behavioral difference between two versions of the fact graph (paths, effects, error reachability, shared state). Pure refactors collapse to "no behavioral change" (Q-25).
+- **Symbol origin**: where a name comes from: the project, the standard library, a framework, or a dependency. Deterministic, and shown everywhere (TB-059).
+- **Wire link**: an edge between a send in one codebase and the matching receive in another, over a protocol. It is proven (shared definition), inferred (matched by convention), or observed (captured) (ADR-0014).
+- **Workspace**: the set of codebases loaded together. It can span devices and languages (ADR-0014).
+- **Tool API**: the operations the LLM can perform on the graph (group, collapse, expand, annotate, compose a view). It has no operation for creating structure (ADR-0006).
+- **Language plugin**: maps one language's constructs onto the generic graph. It provides a parser, resolution, claim checks, and optionally a runtime tracer (ADR-0007).
+- **Link**: (proposed, Q-20) a boundary edge between two pieces of code we both have, such as IPC, HTTP, or events.
+- **Lens**: a focus rule applied to a view ("focus on the algorithms that process X") that emphasizes some nodes and collapses the rest to "+N hidden" (Q-19).
+- **Learning journal**: the personal record of questions (in the user's words), answers, corrections, receipts, and open items (Q-22).
+- **Label**: a short annotation, such as an edge name ("error handling"). Labels are never a source of structure (ADR-0002).
+- **Observed edge**: an edge seen happening in a recorded run (ADR-0003). It is true by construction.
+- **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level instead of line by line (ADR-0012).
+- **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent with graph context → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
+- **Overlay**: a dynamic run drawn on top of the static graph (ADR-0003).
+- **Sibling comparison**: a deterministic check of whether comparable paths do the same thing ("4/5 errors reach the logger"). It surfaces absences without guessing (Q-25).
+- **Possible edge**: one of several candidate edges that static analysis can't narrow down. Drawn as possible, never collapsed to a guess (ADR-0002).
+- **Prime directive**: the graph may be incomplete, but never wrong (ADR-0002).
+- **Probe**: a tagged log statement the LLM inserts (in a scratch copy) to observe a run. Output is parsed deterministically onto the graph as *observed*. The universal runtime tracer (ADR-0015).
+- **Prose**: the free-text part of an annotation, shown as interpretation and linked to its claims and source.
+- **Project scope**: the code the user added. Tracing stops at its boundary by default, and calls outside it are drawn as leaves.
+- **Trace**: the process of finding everything reachable from a trigger. It can be static, dynamic, or hybrid (Q-02).
+- **Trigger**: the starting point of a trace: a UI element, a CLI command, a function, or a natural-language prompt.
+- **Vibe-coded software**: software produced largely by AI with little line-by-line human reading. This is the primary target (Q-11).
