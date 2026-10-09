@@ -434,7 +434,11 @@ In Fletcher, a filter with no frequency becomes 1 kHz without complaint: `fc_hz.
 
 ### TB-099: Async drawn as sync
 A `.then()` continuation, a `tokio::spawn`, and a direct call are drawn as the same arrow, and the learner assumes the caller waits for the result.
-**Answer:** ADR-0018: every edge carries a timing kind, drawn distinctly; unknown timing is marked, never defaulted to sync. **Status:** Partial (per-plugin classification).
+**Answer:** ADR-0018 + ADR-0023: time is always explicit on screen. The solver supplies the connection and the quoted code (`.then(`, `tokio::spawn`, the direct call); the model names the timing kind with that receipt. Unknown timing is shown as unknown, never defaulted to sync. **Status:** Partial (model labeling mechanism).
+
+### TB-102: A state change triggers work nobody calls
+`setHistVersion((v) => v + 1)` in `graftNode` → the autosave `useEffect(…, [histVersion, …])` → `setTimeout(…, 400)` → `invoke("history_save")`. No call edge links them.
+**Answer:** ADR-0023: the setter and `histVersion` come from the same `useState`, and the dependency array reads `histVersion`, so the solver connects write → read with no React-specific rule. That "it's a 400 ms debounce that restarts on each change" is the model's understanding, citing `}, 400);` and `clearTimeout(t)`. **Status:** Solved (design).
 
 ### TB-100: The MVP acceptance question
 On Fletcher: **"How does dragging a node onto another node work?"** The answer must match the hand-traced key (`docs/examples/fletcher-history-graft-worked-example.md`): the pointer flow, the two wirings (main and pop-out), `graftNode`, the system-wide audio effect, the data structures by layer and where each lives, timing kinds (ADR-0018), and what assures it (validation, fallbacks, tests, and the gaps, e.g. whether any test reaches `graftNode` at all).

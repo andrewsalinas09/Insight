@@ -22,6 +22,7 @@ Early design. Settled so far:
 - license: Apache-2.0 (ADR-0020)
 - home screen: the whole system plus a question box (ADR-0021)
 - the fact layer is complete (every function, anonymous ones too); the LLM curates what's shown (ADR-0022)
+- **division of labor: the solver connects everything (calls, every read/write of every state, same-source bindings, exact-match links); anything requiring understanding (timing meaning, effects, validation vs. fallback, labels) is the model's job (ADR-0023)**
 
 ## Workspaces across devices (ADR-0014)
 

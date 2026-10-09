@@ -33,7 +33,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Symbol origin**: where a name comes from: the project, the standard library, a framework, or a dependency. Deterministic, and shown everywhere (TB-059).
 - **Wire link**: an edge between a send in one codebase and the matching receive in another, over a protocol. It is proven (shared definition), inferred (matched by convention), or observed (captured) (ADR-0014).
 - **Workspace**: the set of codebases loaded together. It can span devices and languages (ADR-0014).
-- **Timing kind**: an edge's temporal meaning: sync, async/await, spawn, event/callback, periodic/poll, or wire message, plus *unknown*, which is never defaulted to sync (ADR-0018).
+- **Timing kind**: an edge's temporal meaning: sync, async/await, spawn, event/callback, periodic/poll, or wire message, plus *unknown*, which is never defaulted to sync (ADR-0018). Assigned by the model with receipts, not by the solver (ADR-0023).
 - **Tool API**: the operations the LLM can perform on the graph (group, collapse, expand, annotate, compose a view). It has no operation for creating structure (ADR-0006).
 - **Language plugin**: maps one language's constructs onto the generic graph. It provides a parser, resolution, claim checks, and optionally a runtime tracer (ADR-0007).
 - **Link**: (proposed, Q-20) a boundary edge between two pieces of code we both have, such as IPC, HTTP, or events.
@@ -44,6 +44,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level instead of line by line (ADR-0012).
 - **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent with graph context → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
 - **Overlay**: a dynamic run drawn on top of the static graph (ADR-0003).
+- **Solver**: the deterministic backend. It only *connects*: every function, call, state read/write, same-source binding, and exact-match link, each with a receipt. It never interprets (ADR-0023).
 - **Sibling comparison**: a deterministic check of whether comparable paths do the same thing ("4/5 errors reach the logger"). It surfaces absences without guessing (Q-25).
 - **Possible edge**: one of several candidate edges that static analysis can't narrow down. Drawn as possible, never collapsed to a guess (ADR-0002).
 - **Prime directive**: the graph may be incomplete, but never wrong (ADR-0002).

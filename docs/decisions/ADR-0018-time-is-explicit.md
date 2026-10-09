@@ -1,6 +1,6 @@
 # ADR-0018: Time is explicit, never implied by edges
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0023 (timing kinds are assigned by the model with receipts, not classified by plugins; the solver only supplies connections)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("Time needs to be very clear, I thought it would be clear with the edges but maybe it's not. That needs to be very explicit")
 

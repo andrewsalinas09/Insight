@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8c: the solver connects, the model understands
+**Done:** ADR-0023, the user's sharpest ruling yet: "Anything that requires understanding the code is the model's job… The solver's job is to simply connect everything together." The solver records every function, call, and read/write of every state ("if something can change something, it should be connected"), plus same-source bindings and exact-match links, all with receipts. Timing meaning, effects, validation/fallback, and labels are the model's job. Amended ADR-0018 (the model assigns timing kinds), Q-20 (no effect catalogue; the "persisted/crosses-boundary" facts become model understanding), Q-31 (the solver returns everything connected; the model sorts it), and narrowed the ADR-0013 compiler to structural checks. TB-099 updated; TB-102 (state change → useEffect → debounce) solved by plain write→read connection.
+**Learned:** I kept sliding semantics into the backend (timing catalogues, effect lists, React rules) because that felt "safer". The user's line is better. Deterministic *connection* is complete and exact, while deterministic *interpretation* is an endless edge-case list. Never-wrong holds because the solver never interprets and the model always cites.
+**Next:** SCHEMA draft for the solver (node and edge kinds are now small: containers, functions, state, call, read, write, bind, link); node identity (Q-35).
+
 ## 2026-10-09 (cont.) — Discovery 8b: every function is a bubble; MVP acceptance test corrected
 **Done:** ADR-0022: the fact layer is complete (every function, anonymous included, with deterministic names), and the LLM curates what's shown ("LLM first, really solid back end"). Fallbacks in the assurance trace are a neutral row (TB-098). **Corrected ADR-0019:** I had made "how do we know the frequency is correct?" Fletcher's acceptance test, but the user meant *sensor data*. The Fletcher acceptance test is now the drag-and-drop question (TB-100, whose key mostly exists already). The sensor question became TB-101, the post-MVP cross-device target and the motivation for Q-31. The correction is visible in ADR-0019, not silently rewritten.
 **Learned:** Don't bind the user's examples to whichever codebase is open. They have several projects in mind at once.

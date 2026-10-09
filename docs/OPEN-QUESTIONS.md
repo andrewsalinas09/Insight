@@ -202,7 +202,7 @@ Part of the MVP (ADR-0019). For a value or algorithm, collect deterministically:
 - tests that reach it, and what they assert;
 - what is *not* covered.
 
-The LLM explains; the inventory is fact. Ruled (session 8): fallbacks are a neutral row, never labeled a bug (TB-098). The motivating case is sensor data, "how do we know the frequency is correct?" (TB-101). Open: how "a test exercises this value" is established (static reachability from test functions vs. coverage from a probed run, ADR-0015); how to present gaps without implying bugs. It's the read-only ancestor of expectations (Q-26). Status: open, MVP-critical.
+~~The LLM explains; the inventory is fact.~~ Under ADR-0023, the solver returns everything connected to the value, and the model sorts it into validation / fallbacks / tests / gaps, citing each connection. Ruled (session 8): fallbacks are a neutral row, never labeled a bug (TB-098). The motivating case is sensor data, "how do we know the frequency is correct?" (TB-101). Open: how "a test exercises this value" is established (static reachability from test functions vs. coverage from a probed run, ADR-0015); how to present gaps without implying bugs. It's the read-only ancestor of expectations (Q-26). Status: open, MVP-critical.
 
 ## Q-32: What worked in similar tools (narrow prior-art pass)
 The user is confident Insight can be much better and isn't interested in competitive analysis. Scope this only to *techniques that worked*:
@@ -236,7 +236,9 @@ The user's example asks how a function *gets its members*, which is a data quest
 
 Evidence from real code (Fletcher worked example, session 7): "separate the data structures for UI and what not" needs two data facts beyond the catalogue: **crosses-boundary** (a value is emitted, invoked, or serialized) and **persisted** (it reaches disk). With *lives-in* (which container owns the state), these classify state as domain / transport / UI-only deterministically.
 
-**Ruled (session 8):** *persisted* is **one fact with its location**: "saved elsewhere on disk at X". There's no fact-level split between the app's own storage and another program's config. Whether a write is "Fletcher's own history file" or "Equalizer APO's config that changes system audio" is for the model to explain from the location (user: "it's up to the model to explain this"). The same principle applies throughout: facts stay minimal and precise, and interpretation is the LLM's job (ADR-0022). For example, "no tests reach `graftNode`" is a plain fact row, and whether to suggest writing one is the model's call.
+**Superseding ruling (ADR-0023):** the solver only *connects*: every call and every read/write of every piece of state, plus same-source bindings and exact-match links. "Effect", "persisted", "crosses boundary", "UI-only", timing meaning, and the effect catalogue are all **model understanding** over those connections, not solver facts. The catalogue in `docs/research/2026-10-what-code-has.md` is now a list of things the *model* should recognize, not things the backend must classify.
+
+**Earlier ruling (session 8), consistent with the above:** *persisted* is **one fact with its location**: "saved elsewhere on disk at X". There's no fact-level split between the app's own storage and another program's config. Whether a write is "Fletcher's own history file" or "Equalizer APO's config that changes system audio" is for the model to explain from the location (user: "it's up to the model to explain this"). The same principle applies throughout: facts stay minimal and precise, and interpretation is the LLM's job (ADR-0022). For example, "no tests reach `graftNode`" is a plain fact row, and whether to suggest writing one is the model's call.
 
 ## Q-21: How much power the LLM has — **Resolved → ADR-0013** (rules accepted; mechanisms unproven, Phase 1 spike)
 *The discussion history below is kept for context. ADR-0013 is the normative version.*
