@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Dogfood: Claude answers as the model
+**Done:** The user asked Claude to *be* the model: "How does the history tree get held in memory, how do you modify it, how would you show me?" Traced Fletcher's `hist` ref, `HistNode`, `rail`, `histVersion`, and all eight mutators (`commitGesture`, `graftNode`, `moveTo`/`undo`/`redo`/`jumpTo`, `deleteNode`, `editNode`, `initHistory`/`installHistory`). Answered in text and designed four views. Recorded in `docs/examples/fletcher-history-tree-model-answer.md`; TB-106 added.
+**Learned:** The views the model actually wanted weren't code graphs: (1) an *example instance* diagram of runtime data (a Map that is really a tree), (2) a functions × fields-written mutation matrix (pure solver facts), (3) before/after state frames, (4) invariants as "all writers of X also write Y". So the tool API needs instance diagrams and before/after frames, and the solver's write connections are the backbone.
+**Next:** User reaction to the four views; Q-37 (where views live); tool API spec.
+
 ## 2026-10-09 (cont.) — Discovery 8f: model-authored teaching views
 **Done:** The user: "annotations is huge… let it change hierarchy / abstraction / grouping / smaller simpler code as needed for demonstration. Use the QA notes." Re-read the learning log for the moves it actually used: role regrouping, data-focused re-hierarchy, pseudocode abstraction, simplified excerpts, `?`→`match` and chain→loop expansions, illustrative tables, interleavings. ADR-0026 creates three layers: the fact layer (never invented), **teaching views** (fully model-authored, visibly marked, every element mapped back to real nodes, one click to the real code), and the UI. Scoped ADR-0013 rule 5 to the fact layer, and expanded the tool list. Q-19 largely resolved; new Q-37 (where views live); TB-050 solved; TB-103–105 added.
 **Learned:** "Never invent" was right for facts and wrong for teaching. Explanation *is* selective invention (merge, rename, rewrite), and it's honest as long as it's labeled and maps back.

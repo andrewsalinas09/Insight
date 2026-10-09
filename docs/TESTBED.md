@@ -462,6 +462,10 @@ A 60-line worker loop is shown as one authored node with six lines of pseudocode
 The model creates a "retry manager" group, but none of the nodes it maps to involve retries, or it maps to nothing at all.
 **Answer:** an unmapped element is rejected (ADR-0026 invariant). A *mismapped* one is visible, because expanding it shows the real nodes don't match. That's the model being wrong where you can see it, not hidden. **Status:** Partial (mapping check is structural only).
 
+### TB-106: "How is the tree held in memory?"
+Fletcher's undo tree is a flat `Map<number, HistNode>` whose tree shape exists only in `parent` / `children` fields. The code graph shows a Map; the answer needs a *tree*.
+**Answer (proposed):** an authored **example instance diagram** (ids, links, values, labeled *example*), mapped to `HistNode` and the functions that build it (ADR-0026). Plus the solver's mutation matrix (functions × fields written). See `docs/examples/fletcher-history-tree-model-answer.md`. **Status:** OPEN (tool API needs an instance-diagram element and a before/after frame).
+
 ### TB-050: The LLM wants a node for an inline chunk of logic
 Forty lines of validation inline in a handler. The LLM thinks it's a distinct step.
 **Answer (ADR-0026):** in a teaching view it may create an authored "validation" node mapped to those lines. The fact layer is unchanged. **Status:** Solved (design). *Earlier answer, kept for history:* no invented node. It can be a *block* if it's a control block, or the LLM suggests extracting it into a function, which then appears deterministically).
