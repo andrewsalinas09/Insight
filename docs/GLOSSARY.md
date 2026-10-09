@@ -5,6 +5,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Anchor (receipt)**: (proposed, Q-21) the file + span an LLM or human addition points at as proof. The compiler re-checks it against the current code.
 - **Annotation**: LLM-generated (or human-written) documentation attached to a bubble or edge, in a defined format with two parts: checkable *claims* and *prose* (Q-15).
 - **Branch edge**: an edge out of a decision point (`if`, `match`, `?`, `try/catch`, early return). Each outcome is its own edge, so `valid` and `!valid` are two edges.
+- **Assurance trace**: the answer to "how do we know X is correct?": validation points, silent fallbacks, tests that reach it, and what's unchecked. The inventory is deterministic; the explanation is LLM prose (ADR-0019, Q-31).
 - **Bubble**: a node in the execution graph, usually a function, drawn with its inputs and outputs. It can be opened to show the nested structure inside. Bubbles nest hierarchically.
 - **Claim**: a structured, machine-checkable statement in an annotation (`calls: X`, `returns Err when: !valid`). It's shown only if the compiler verifies it.
 - **Compiler (annotation compiler)**: the verifier that checks annotation claims against the static graph and removes hallucinations before display (Q-15, ADR-0002).
@@ -24,6 +25,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Inferred edge**: (proposed, Q-21) an LLM addition whose anchor the compiler can verify only partly (site and target exist, connection unproven). Shown distinctly.
 - **Knowledge profile**: free-form notes on what the user already knows, which the LLM interprets to adapt explanations. Personal, not committed (ADR-0004).
 - **Scenario overlay**: a hypothetical sequence drawn over real nodes to explain a "what if". Always labeled hypothetical (ADR-0010).
+- **Sequence (swimlane) view**: a first-class view where lanes are execution contexts (threads, tasks, windows, processes, devices) and time flows down (ADR-0018).
 - **Show, then tell**: every answer is a view state (focus, highlights, step-through) plus prose whose sentences link to graph elements (ADR-0010).
 - **Step-through**: a debugger-like sequence of steps (location + values + prose) that the AI sets up and verifies by running or evaluating before handing it over (ADR-0011).
 - **Stub (assumed value)**: a stand-in for a boundary (network, hardware, time) during a step-through. Its values are shown as *assumed* (ADR-0011).
@@ -31,6 +33,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. Terms
 - **Symbol origin**: where a name comes from: the project, the standard library, a framework, or a dependency. Deterministic, and shown everywhere (TB-059).
 - **Wire link**: an edge between a send in one codebase and the matching receive in another, over a protocol. It is proven (shared definition), inferred (matched by convention), or observed (captured) (ADR-0014).
 - **Workspace**: the set of codebases loaded together. It can span devices and languages (ADR-0014).
+- **Timing kind**: an edge's temporal meaning: sync, async/await, spawn, event/callback, periodic/poll, or wire message, plus *unknown*, which is never defaulted to sync (ADR-0018).
 - **Tool API**: the operations the LLM can perform on the graph (group, collapse, expand, annotate, compose a view). It has no operation for creating structure (ADR-0006).
 - **Language plugin**: maps one language's constructs onto the generic graph. It provides a parser, resolution, claim checks, and optionally a runtime tracer (ADR-0007).
 - **Link**: (proposed, Q-20) a boundary edge between two pieces of code we both have, such as IPC, HTTP, or events.

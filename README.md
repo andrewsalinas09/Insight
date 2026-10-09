@@ -31,3 +31,7 @@ Start with **[CLAUDE.md](CLAUDE.md)**, which has the map and working rules. It's
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | Domain vocabulary |
 | [docs/WORKLOG.md](docs/WORKLOG.md) | Session journal |
 | [docs/archive/](docs/archive/) | Original pitch, verbatim |
+
+## License
+
+[Apache 2.0](LICENSE)

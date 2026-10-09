@@ -35,8 +35,13 @@ Possible triggers are a UI element (JSX `onClick` → handler), a CLI command (a
 ## Q-06: LLM provider access and auth
 Options include bring-your-own API key, Anthropic and OpenAI account sign-in for third-party software (the user reports both recently opened something like this, but it hasn't been researched or verified yet), and local models. Status: research pending (user: "we'll do more research about this later").
 
-## Q-07: Privacy and code leaving the machine
-The user's code goes to a cloud LLM. Do we offer local-only mode, redaction, or per-project consent? Status: open.
+## Q-07: Privacy, security, and code leaving the machine
+The user's code goes to a cloud LLM. Do we offer local-only mode, redaction, or per-project consent? Also covered here:
+- secrets in repos reaching prompts;
+- step-throughs and probes *running* user code (TB-072);
+- the MCP surface letting agents drive Insight (ADR-0017).
+
+Status: open.
 
 ## Q-08: App stack
 Tauri 2 is proposed (Rust core, web UI). Also open: the graph rendering library (React Flow, Cytoscape, ELK for layout, Sigma/WebGL for scale, a custom renderer), and the analysis engine (tree-sitter, rust-analyzer, TS compiler API). Status: proposed, not ruled.
@@ -50,14 +55,14 @@ The code changes after the graph is built. How do we re-trace incrementally, kee
 ## Q-11: Who is it for?
 Partly answered by ADR-0012: learners (~60%) and developers supervising AI-written code (~40%). Still open: which learner and which developer first (a solo vibe coder, a team onboarding, a reviewer of agent PRs), and how defaults differ between the two modes. Status: partially resolved.
 
-## Q-12: LLM cost at scale
-Labeling every edge and bubble in a large codebase is expensive. Options: lazy labeling (only what's on screen), caching by content hash, cheap models for labels and strong models for chat. Status: open.
+## Q-12: LLM cost and latency
+Labeling every edge and bubble in a large codebase is expensive. Options: lazy labeling (only what's on screen), caching by content hash, cheap models for labels and strong models for chat. **Latency:** the user wants highlights to be "instant". Deterministic answers (graph, queries, assurance inventory) can be; LLM prose streams after. Set a budget per answer type. Status: open.
 
 ## Q-13: What "learn iteratively" means as a UX
 Options: chat grounded on the selection, guided walkthroughs of a flow, quizzes and "predict what happens", remembering what the user already understands, progressive disclosure. **Evidence:** `docs/research/2026-10-learning-session-patterns.md`, from a real multi-day learning log. It identifies 16 question shapes and 10 teaching moves that worked. The strongest finding: "follow one action in small steps, and the AI supplies the next question" beat subsystem overviews, for a user who said "I don't even know what questions to ask." Status: open, now evidence-backed. See also Q-22 and Q-23.
 
 ## Q-14: Distribution and business model
-Open source vs. commercial, and how it's priced if users bring their own LLM account. Status: open.
+License settled: Apache-2.0 (ADR-0020). Still open: any hosted or paid layer, and pricing when users bring their own LLM account. Status: partially resolved.
 
 ## Q-15: A defined annotation format, plus a "compiler" that removes hallucinations
 User idea: a clearly defined documentation style that is generated automatically ("like doxygen but way better"), then run through a compiler that removes hallucinations. The proposed shape (not ruled) splits every annotation into two parts:
@@ -162,7 +167,7 @@ Session 6: **ad hoc queries graduate into expectations**. "Show me every error p
 
 Status: open, core to the oversight purpose.
 
-## Q-27: Directing the agent from the graph
+## Q-27: Directing the agent from the graph — **Resolved → ADR-0017** (agents live outside; Insight is their MCP tool and the human's window; embedded agent optional later)
 In the oversight loop, the user spots a problem on the graph and tells the coding agent to fix it "by design". Insight should hand the agent the selection (nodes, paths, query results, violated expectations) as context, ideally over MCP (ADR-0006), so the instruction is grounded in the graph instead of retyped. Open:
 - Does Insight host the agent conversation, or hand off to an external agent (Claude Code, Codex, …)?
 - How is the agent's result linked back to the prompt for the next system diff?
@@ -186,6 +191,45 @@ Status: open.
 - How lineage interacts with the step-through (real values at each hop, ADR-0011).
 
 Status: open. It extends Q-20's "value flow" row from "partly" to "required".
+
+## Q-30: The first five minutes (home screen and cold start) — **Resolved → ADR-0021** (the whole system plus a question box)
+What you see after loading a repo, before asking anything. User: "yeah, there needs to be things." Candidate: a **table of contents of triggers** (every UI element with a handler, CLI command, route, `main`, scheduled job), plus the container map with sizes (ADR-0008 clarification), plus "suggested first questions". Also open: indexing time on large repos and what's shown while it runs. Status: open.
+
+## Q-31: The assurance trace ("how do we know X is correct?")
+Part of the MVP (ADR-0019). For a value or algorithm, collect deterministically:
+- validation points (clamps, asserts, type constraints);
+- **silent fallbacks** (defaults, `unwrap_or`, `?? 0`, swallowed errors);
+- tests that reach it, and what they assert;
+- what is *not* covered.
+
+The LLM explains; the inventory is fact. Open: how "a test exercises this value" is established (static reachability from test functions vs. coverage from a probed run, ADR-0015); how to present gaps without implying bugs. It's the read-only ancestor of expectations (Q-26). Status: open, MVP-critical.
+
+## Q-32: What worked in similar tools (narrow prior-art pass)
+The user is confident Insight can be much better and isn't interested in competitive analysis. Scope this only to *techniques that worked*:
+- Sourcetrail's navigation UX;
+- CodeSee's review maps;
+- Swimm's code-coupled docs and drift detection (closest to receipts);
+- CodeQL/Joern/Glean/Kythe query and index designs;
+- LLM repo-wiki generators.
+
+Status: open, low priority. Do it when designing the matching feature.
+
+## Q-33: Evaluation harness
+How we know Insight's answers are right and getting better. Gold set:
+- the Fletcher keys (drag-graft, ADR-0019's frequency question);
+- the other worked examples;
+- generalized questions from the user's learning log.
+
+Metrics: correct receipts, no rejected claims shown, coverage of the key's points. It plays the same role as HTT's retrieval harness. Status: open.
+
+## Q-34: The graph query language
+The hidden backbone: lenses, sibling comparison, "every error path that skips X", the system diff, expectations, and the assurance trace are all graph queries the LLM translates into and the engine runs deterministically. It needs reachability, effects, timing kinds (ADR-0018), and data lineage. Candidates to study: Datalog, CodeQL's QL, Cypher. Status: open, core technical bet.
+
+## Q-35: Node identity across versions
+The system diff, receipts, annotations, and journal entries need "the same function after a rename or move". Candidates: content plus structural fingerprints; the receipt quote itself; git rename detection. Status: open, foundational for SCHEMA.
+
+## Q-36: Editor sync
+"Beside the editor" needs two-way sync with RustRover / VS Code: clicking a node opens the code, and the editor cursor highlights the node. Probably small per-editor plugins, or the LSP protocol. Status: open.
 
 ## Q-20: Data and ownership edges, not just control flow
 The user's example asks how a function *gets its members*, which is a data question: the path from framework-managed state through a lock into a core struct, then a nested model, then a field. A call graph doesn't show that. Candidate second edge family: containment/ownership (struct A owns field B), access paths (`state.core.lock().model.items[id]`), and injection (the framework hands a command its state). Open: is this part of the same graph, or a second view? Which data edges can be proven statically (ADR-0002)? A catalogue of everything code "has" (data, types, concurrency, links, effects, meta), with a proposed v1 cut, is in `docs/research/2026-10-what-code-has.md`. Status: open; the user asked for guidance ("I don't know what I don't know").

@@ -12,6 +12,18 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8: the MVP, explicit time, agents outside, Apache-2.0
+**Done:** Reviewed "what am I missing" with the user, which produced four ADRs:
+- **ADR-0017:** coding agents (Claude Code, Codex) live outside; Insight is their MCP tool and the human's window. An embedded agent is optional later. Resolves Q-27.
+- **ADR-0018:** time is explicit. Timing kinds on every edge (sync / await / spawn / event / poll / wire, plus *unknown*, never defaulted), visible execution contexts, and a first-class sequence (swimlane) view.
+- **ADR-0019:** the MVP is one question: "load the software, ask about an algorithm: how it works, its data structures and where they're stored, and how we know it's correct". The acceptance test is Fletcher's filter-frequency question (TB-100). Real key excerpts: `clamp(10.0, 24000.0)` in `chain_of`, silent `fc_hz.unwrap_or(1000.0)` defaults (TB-098), and DSP tests in `dsp.rs`.
+- **ADR-0020:** Apache-2.0, with the standard `LICENSE` added (identical to Fletcher's).
+
+Also filed Q-30 (first five minutes), Q-31 (assurance trace), Q-32 (prior art, scoped to "what worked"), Q-33 (eval harness), Q-34 (query language), Q-35 (node identity), Q-36 (editor sync). Q-07 now includes security; Q-12 includes latency. VISION goals 21–23 added; ROADMAP Phase 2 = MVP.
+**Learned:** The user's MVP sentence hides the most valuable feature yet: "how do we know it's correct" is an *assurance trace*. The first real probe found a silent 1 kHz default on exactly the value asked about, the kind of thing a vibe-coded app hides and Insight should surface first.
+**Also:** ADR-0021: the home screen is the whole system (top level, with sizes) plus a question box. The user: "you ask what you want". Resolves Q-30. Working-style note from the user: ask very specific questions, because general ones don't help.
+**Next:** The Q-20 data-edge cut scoped to the MVP; SCHEMA draft with node identity; hand-trace the TB-100 key.
+
 ## 2026-10-09 (cont.) — Discovery 7b: static first, LLM in the loop, log probes; the language set
 **Done:** ADR-0015: tracing is static-first (the user estimates ~99%), with the LLM resolving what static analysis can't (inferred tier). LLM-placed, tagged log probes in a scratch copy are the universal runtime tracer, which works on microcontrollers over serial (resolves most of TB-090). Q-03: committed C/C++, Rust, Python, TS/JS, Go, SQL. Suggested Kotlin/Java, Swift, C#, definition languages (protobuf/OpenAPI/GraphQL/JSON Schema → proven wire links), glue (shell/Docker/CI), UI markup, and embedded flavors, with a proposed order. Q-17/Q-24 now default to probes. TB-094–097 added (leftover probes, SQL in strings, probe-induced heisenbugs, measuring the 99%).
 **Learned:** Log probes turn "a runtime tracer per language per platform" into "the LLM writes print statements". That's cheap and universal, and the parsing stays deterministic through tags. The 99% claim is plausible for direct-call languages but needs measuring on React-style code, so it's recorded as TB-097 rather than assumed.

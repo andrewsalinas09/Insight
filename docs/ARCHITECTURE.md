@@ -16,6 +16,10 @@ Early design. Settled so far:
 - two purposes on one engine: learning ~60%, system-level oversight ~40% (ADR-0012)
 - multi-codebase workspaces joined by wire links (ADR-0014)
 - tracing: static first → LLM in the loop where unsure (inferred) → LLM-placed log probes as the universal runtime tracer (ADR-0015)
+- coding agents live outside; Insight is their MCP tool and the human's window (ADR-0017)
+- time is explicit: timing kinds on every edge, execution contexts, a sequence view (ADR-0018)
+- the MVP is one question: how an algorithm works, its data structures and where they live, and how we know it's correct (ADR-0019)
+- license: Apache-2.0 (ADR-0020)
 
 ## Workspaces across devices (ADR-0014)
 

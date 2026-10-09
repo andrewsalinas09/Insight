@@ -426,6 +426,20 @@ Adding a log line inside a tight loop or an interrupt handler shifts timing, and
 The user's estimate. On Fletcher's `App.tsx`, how many call sites resolve statically? (Props like `onGraft` with two mount sites, `hist-cmd` events, and `useRef` callbacks are the hard cases.)
 **Stresses:** the ADR-0015 premise. **Status:** OPEN (measure in the compiler spike / tracer bullet. Each plugin reports its resolution rate).
 
+## S. The MVP question and time (ADR-0018, ADR-0019)
+
+### TB-098: A silent default on the value being asked about
+In Fletcher, a filter with no frequency becomes 1 kHz without complaint: `fc_hz.unwrap_or(1000.0)` appears at several sites in `app/src-tauri/src/lib.rs`. Asked "how do we know the frequency is correct?", an answer that lists only the clamp and the DSP tests would be incomplete in a misleading way.
+**Stresses:** the assurance trace must surface fallbacks (Q-31). **Status:** OPEN.
+
+### TB-099: Async drawn as sync
+A `.then()` continuation, a `tokio::spawn`, and a direct call are drawn as the same arrow, and the learner assumes the caller waits for the result.
+**Answer:** ADR-0018: every edge carries a timing kind, drawn distinctly; unknown timing is marked, never defaulted to sync. **Status:** Partial (per-plugin classification).
+
+### TB-100: The MVP acceptance question
+On Fletcher: "How does a parametric filter turn into sound, and how do we know its frequency is correct?" The answer must cover the flow (UI → `set_fletcher_chain` → `chain_of` → biquad → `fletcher.txt` → Equalizer APO), the data structures and where each lives, and the assurance trace: the clamp (`clamp(10.0, 24000.0)`), the silent defaults (TB-098), the DSP tests, and the gaps.
+**Stresses:** everything in the ADR-0019 cut. **Status:** OPEN (the hand-traced key is still to be written, Q-33).
+
 ### TB-050: The LLM wants a node for an inline chunk of logic
 Forty lines of validation inline in a handler. The LLM thinks it's a distinct step.
 **Stresses:** graph shape = code shape. **Status:** Partial: ADR-0013 rule (mechanism unproven): no invented node. It can be a *block* if it's a control block, or the LLM suggests extracting it into a function, which then appears deterministically).

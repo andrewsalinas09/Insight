@@ -8,6 +8,8 @@ A new kind of IDE: instead of reading code file by file, you see the **execution
 
 The prime directive (ADR-0002): **the graph may be incomplete, but never wrong.**
 
+**The first thing it must do well (ADR-0019):** load the software, ask about an algorithm, and get back how it works, the data structures it uses and where they live, and *how we know it's correct*.
+
 ## North-star goals
 
 1. **Start from what you can see.** Clicking a UI element, running a CLI command, picking a function, or typing a prompt ("what happens when I hit Save?") is a starting point. Insight works out which code that trigger reaches.
@@ -30,6 +32,9 @@ The prime directive (ADR-0002): **the graph may be incomplete, but never wrong.*
 18. **Say what you want; Insight keeps checking it.** "Saving never touches the network." "Every error reaches the UI." Plain-language expectations are compiled into deterministic checks on the graph and re-run on every change (Q-26).
 19. **The oversight loop.** Prompt the agent, then see what it did: "it goes in here, comes out here, the error bubbles up to here… wait, it never reaches the logger." Click in and ask "where else could this happen?" Tell the agent to fix it *by design*, with the graph as context. Watch the system diff confirm the fix, and save the question as an expectation so it never comes back (Q-25, Q-26, Q-27; `docs/examples/oversight-loop-worked-example.md`).
 20. **Across the wire, across devices.** Load the firmware, the radio protocol, and the frontend together. Ask "show me the trace that takes the data from the sensor to the microcontroller, over Wi-Fi/BLE, to my frontend's display, and focus on the algorithms that process it." You get one graph across three codebases, following the *value* itself, with plumbing collapsed and every place the data is transformed (or rescaled, or filtered twice) in view (ADR-0014).
+21. **Time you can see.** Waiting, spawning, "later", polling, and crossing a wire each look different, and threads, windows, and devices are lanes in a sequence view. You never have to guess whether something blocks (ADR-0018).
+22. **"How do we know it's right?"** For any value or algorithm: where it's validated, where it silently falls back to a default, which tests check it, and what nothing checks (ADR-0019, Q-31).
+23. **Works with your agent, not instead of it.** Claude Code, Codex, or whatever comes next does the coding. Insight is the tool it calls and the window you watch it through (ADR-0017).
 
 ## Why now
 
