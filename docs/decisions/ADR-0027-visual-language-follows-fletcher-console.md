@@ -21,6 +21,8 @@ Insight speaks the same language, adapted to code:
 ## Why
 It's the user's own approved taste, and it already reads as an instrument rather than a dashboard. Matching Fletcher also makes the dogfood case (Insight explaining Fletcher) look like one family of tools.
 
+> **Update (same day):** the user reviewed a mockup built on this anatomy ("this isn't even close to what I want, but UI doesn't really matter right now"). Only the **palette and type** stand as decided. The anatomy above (header, strips, inspector, docked narration bar, semantic colors) is **unvalidated** and must not be treated as a design. UI work is deferred until the backend and tools exist.
+
 ## Consequences
 - Mockups and the eventual UI start from Fletcher's `App.css` tokens and `design/` artboards.
 - The terminal isn't drawn inside Insight. The agent speaks into the bottom bar, mirroring what it says in the terminal (ADR-0025).
