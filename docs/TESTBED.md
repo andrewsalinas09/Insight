@@ -429,16 +429,20 @@ The user's estimate. On Fletcher's `App.tsx`, how many call sites resolve static
 ## S. The MVP question and time (ADR-0018, ADR-0019)
 
 ### TB-098: A silent default on the value being asked about
-In Fletcher, a filter with no frequency becomes 1 kHz without complaint: `fc_hz.unwrap_or(1000.0)` appears at several sites in `app/src-tauri/src/lib.rs`. Asked "how do we know the frequency is correct?", an answer that lists only the clamp and the DSP tests would be incomplete in a misleading way.
-**Stresses:** the assurance trace must surface fallbacks (Q-31). **Status:** OPEN.
+In Fletcher, a filter with no frequency becomes 1 kHz without complaint: `fc_hz.unwrap_or(1000.0)` appears at several sites in `app/src-tauri/src/lib.rs`. Asked "how do we know a filter's frequency is correct?", an answer that lists only the clamp (`clamp(10.0, 24000.0)` in `chain_of`) and the DSP tests (`dsp.rs`) would be incomplete in a misleading way.
+**Answer (user ruling):** fallbacks appear as a **neutral fact on their own row** ("Silent fallbacks"), next to Validation and Tests, with receipts. They are never labeled a bug. **Status:** Partial (Q-31 mechanism).
 
 ### TB-099: Async drawn as sync
 A `.then()` continuation, a `tokio::spawn`, and a direct call are drawn as the same arrow, and the learner assumes the caller waits for the result.
 **Answer:** ADR-0018: every edge carries a timing kind, drawn distinctly; unknown timing is marked, never defaulted to sync. **Status:** Partial (per-plugin classification).
 
 ### TB-100: The MVP acceptance question
-On Fletcher: "How does a parametric filter turn into sound, and how do we know its frequency is correct?" The answer must cover the flow (UI → `set_fletcher_chain` → `chain_of` → biquad → `fletcher.txt` → Equalizer APO), the data structures and where each lives, and the assurance trace: the clamp (`clamp(10.0, 24000.0)`), the silent defaults (TB-098), the DSP tests, and the gaps.
-**Stresses:** everything in the ADR-0019 cut. **Status:** OPEN (the hand-traced key is still to be written, Q-33).
+On Fletcher: **"How does dragging a node onto another node work?"** The answer must match the hand-traced key (`docs/examples/fletcher-history-graft-worked-example.md`): the pointer flow, the two wirings (main and pop-out), `graftNode`, the system-wide audio effect, the data structures by layer and where each lives, timing kinds (ADR-0018), and what assures it (validation, fallbacks, tests, and the gaps, e.g. whether any test reaches `graftNode` at all).
+**Stresses:** everything in the ADR-0019 cut. **Status:** OPEN (the key exists; its assurance section is still to be traced).
+
+### TB-101: "How do we know the sensor data's frequency is correct?"
+The user's original assurance question, about a sensor stream across devices (ADR-0014). The answer has to tie together: the configured sample rate (requested), what the device reports back, what the timestamps actually show (measured intervals, gaps, drift), where the host checks any of these, and what nothing checks.
+**Stresses:** assurance trace across firmware + wire + host; lineage (Q-29); observed data via probes (ADR-0015). **Status:** OPEN. Outside the MVP code scope (needs C/C++ and wire links), but it's the motivating question for Q-31.
 
 ### TB-050: The LLM wants a node for an inline chunk of logic
 Forty lines of validation inline in a handler. The LLM thinks it's a distinct step.

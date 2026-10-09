@@ -12,6 +12,12 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Discovery 8b: every function is a bubble; MVP acceptance test corrected
+**Done:** ADR-0022: the fact layer is complete (every function, anonymous included, with deterministic names), and the LLM curates what's shown ("LLM first, really solid back end"). Fallbacks in the assurance trace are a neutral row (TB-098). **Corrected ADR-0019:** I had made "how do we know the frequency is correct?" Fletcher's acceptance test, but the user meant *sensor data*. The Fletcher acceptance test is now the drag-and-drop question (TB-100, whose key mostly exists already). The sensor question became TB-101, the post-MVP cross-device target and the motivation for Q-31. The correction is visible in ADR-0019, not silently rewritten.
+**Learned:** Don't bind the user's examples to whichever codebase is open. They have several projects in mind at once.
+**Then:** The user ruled that *persisted* is a single fact with its location ("saved elsewhere on disk"), and the model explains what that location means. I applied the same minimal-facts / model-interprets principle to test reach ("no tests reach X" as a plain row). Recorded in Q-20.
+**Next:** The rest of the Q-20 MVP cut (which effect kinds, how timing kinds are detected in TS/Rust); SCHEMA draft.
+
 ## 2026-10-09 (cont.) — Discovery 8: the MVP, explicit time, agents outside, Apache-2.0
 **Done:** Reviewed "what am I missing" with the user, which produced four ADRs:
 - **ADR-0017:** coding agents (Claude Code, Codex) live outside; Insight is their MCP tool and the human's window. An embedded agent is optional later. Resolves Q-27.

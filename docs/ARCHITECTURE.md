@@ -20,6 +20,8 @@ Early design. Settled so far:
 - time is explicit: timing kinds on every edge, execution contexts, a sequence view (ADR-0018)
 - the MVP is one question: how an algorithm works, its data structures and where they live, and how we know it's correct (ADR-0019)
 - license: Apache-2.0 (ADR-0020)
+- home screen: the whole system plus a question box (ADR-0021)
+- the fact layer is complete (every function, anonymous ones too); the LLM curates what's shown (ADR-0022)
 
 ## Workspaces across devices (ADR-0014)
 
