@@ -6,6 +6,8 @@ Real code references are to Fletcher @ `cd5d6ff`. **Rec** = the drafting agent's
 
 Status key: **OPEN** · **ANSWERED → ADR-XXXX / ruling**
 
+**Round complete (2026-10-09):** every BQ is answered, decided by delegation, or covered by an ADR (ADR-0031…ADR-0040 came out of this round). Next: build M0.
+
 ---
 
 ## Round 1: Shape of the system
@@ -519,7 +521,10 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 7: Testing
 
-### BQ-45: How tests reach Fletcher — OPEN
+### BQ-45: How tests reach real repos — ANSWERED
+**Ruling (user):** Fletcher is just the repo the user chose to test with; Insight is its own thing and must work on any repo, including proprietary ones. So: no submodule and no repo-specific data in Insight's public repo. **CI runs only the generic per-rule fixtures.** Real-repo testing is local: an untracked list of repos plus pinned commits, with optional hand-written expected answers, kept outside the repo (e.g. `%APPDATA%\Insight\testbeds.toml`). Claude runs it from a development session. Expected answers derived from proprietary code never go in the public repo. Fletcher's existing worked examples stay, since Fletcher is open source.
+
+*(Original question:)*
 - Options:
   - (a) A git submodule `testdata/fletcher` pinned to `cd5d6ff`, read via `gix`, plus tiny synthetic fixtures per language rule.
   - (b) Your local clone at a pinned hash (local only).
