@@ -785,7 +785,8 @@ Working copies are analyzed in place, so `source` later reads today's disk, not 
 The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncommitted edits.
 - Rec: build commit export in M0 and run both milestones on `--commit cd5d6ff`, a fixed, immutable target.
 
-### R3-07: One home for settings, in one format — OPEN (vis)
+### R3-07: One home for settings, in one format — ANSWERED
+**Ruling:** all settings live in the project's INSIGHT.md (project folder) as TOML `` `insight `` blocks, with a `[repo."<name>"]` table per repo (`check`, `install`, …). The only Insight file inside a repo is `.insight/tags.toml` (describes code). `.insight/config.toml` is retired.
 `tagging` and `check` are described in `.insight/config.toml` (ADR-0032/0036) *and* in INSIGHT.md blocks (ADR-0044); R2-16 says nothing is written into repos.
 - Rec: all settings live in the project's INSIGHT.md as TOML ```` ```insight ```` blocks, with a `[repo."Fletcher"]` table per repo. In-repo `.insight/` holds only `tags.toml`.
 

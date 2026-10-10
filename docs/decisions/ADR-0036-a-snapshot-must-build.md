@@ -1,6 +1,6 @@
 # ADR-0036: A snapshot needn't be committed, but it must build
 
-- **Status:** Accepted
+- **Status:** Accepted; settings location settled by R3-07 (all settings in the project's INSIGHT.md TOML blocks; `.insight/config.toml` retired; only `.insight/tags.toml` lives in repos)
 - **Date:** 2026-10-09
 - **Source:** user, BQ-23 ("b. though a is simple and tbh I'm almost at 'refuse until you build successfully'. I've never had something not build… with AI, building is not a struggle. So that solves a lot of the other stuff. We don't have to worry about things being wrong or not parsing right. It can not have a commit, but it does have to build. This is also to learn and check it matches spec. If it doesn't build, that's not really what this tool is for")
 - **Amends:** ADR-0029 (snapshots are per commit) and the BQ-06 and BQ-08 rulings
