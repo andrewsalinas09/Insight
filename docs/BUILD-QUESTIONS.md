@@ -31,7 +31,23 @@ Is the backend a headless `insight` program, separate from the window? And how d
   - (d) The backend hosts an HTTP MCP endpoint directly.
 - Rec: (b) now (zero config; snapshots are cached on disk, so a cold start is cheap), moving to (c) if two simultaneous sessions become real. The architecture agent recommended (b); the tool-API agent recommended (c).
 
-### BQ-02: The first runnable milestone — OPEN
+### BQ-02: The first runnable milestone — ANSWERED (ruling)
+**Ruling:** M0 → M1 → M2 → app. The user flagged that `--to-effect write` puts semantics in the solver (ADR-0023), so **M1 uses an explicit target with pure reachability**: `insight path "HistoryTree › nodeUp" --to "fsx::write_atomic"`. It passes when every receipt in steps 1–12 of the drag-graft example is on the printed path. Semantic targets come via tags (BQ-02b).
+
+### BQ-02b: Tags: declared meaning, parsed statically — OPEN
+User: "maybe this is when the doc comes into play… you simply define what you want in the code file itself (and that gets parsed) or a standalone file… It needs to be extendable."
+- Proposal:
+  - A **tag** is any label (`disk-write`, `ui-gesture`, `logger`…) attached to a symbol.
+  - It's declared **inline** (`/// @insight tag: disk-write` directly above a function), or in a committed **sidecar** `.insight/tags.toml` (`[[tag]] name = "disk-write"; match = ["std::fs::write", …]`) for code you can't annotate (std, npm).
+  - The solver parses tags as data, matching by exact symbol path or by the comment directly above.
+  - Queries can filter by tag (`--to-tag disk-write`). Claude writes most tags; you can too.
+  - No code change is needed for new tags, in any language.
+- Open details:
+  - whether `match` allows simple globs (`std::fs::*`);
+  - whether tags can carry values (`tag: logger(level=error)`);
+  - whether Claude may write tags into your source files or only into the sidecar.
+
+*(Original BQ-02 options, kept for history:)*
 What's the first thing that runs, and what's its pass condition?
 - Options:
   - M0: `insight build <fletcher> cd5d6ff` prints stats (files, functions including anonymous ones, edges, time).
