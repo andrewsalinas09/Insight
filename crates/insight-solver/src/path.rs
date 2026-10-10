@@ -201,18 +201,42 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
         Ok(all)
     };
     if f(Follow::Same) && schemas.len() > 1 {
-        for (i, a) in schemas.iter().enumerate() {
-            for (j, b) in schemas.iter().enumerate().skip(i + 1) {
-                let sql = format!(
-                    "WITH pairs AS (SELECT fa.path AS pa, fb.path AS pb FROM {a}.files fa JOIN {b}.files fb ON fa.sha256 = fb.sha256)
-                     SELECT na.nid, nb.nid FROM pairs JOIN {a}.nodes na ON na.file = pairs.pa
-                     JOIN {b}.nodes nb ON nb.file = pairs.pb AND nb.kind = na.kind AND substr(nb.path, length(pairs.pb) + 1) = substr(na.path, length(pairs.pa) + 1)"
-                );
-                let mut stmt = conn.prepare(&sql)?;
-                let rows: Vec<(i64, i64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
-                for (x, y) in rows {
-                    add(gid(i, x), gid(j, y), "same code", -1);
-                    add(gid(j, y), gid(i, x), "same code", -1);
+        // Identical files (by hash), then their nodes by (kind, path inside the file): hash lookups.
+        let files_of = |s: &str| -> Result<HashMap<String, Vec<String>>> {
+            let mut stmt = conn.prepare(&format!("SELECT sha256, path FROM {s}.files"))?;
+            let mut m: HashMap<String, Vec<String>> = HashMap::new();
+            for r in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+                let (sha, p) = r?;
+                m.entry(sha).or_default().push(p);
+            }
+            Ok(m)
+        };
+        let nodes_in = |s: &str, file: &str| -> Result<HashMap<(String, String), i64>> {
+            let mut stmt = conn.prepare(&format!("SELECT nid, kind, path FROM {s}.nodes WHERE file = ?1"))?;
+            let rows = stmt.query_map([file], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
+            let mut m = HashMap::new();
+            for r in rows {
+                let (nid, kind, p) = r?;
+                m.insert((kind, p.get(file.len()..).unwrap_or("").to_string()), nid);
+            }
+            Ok(m)
+        };
+        let all_files: Vec<HashMap<String, Vec<String>>> = schemas.iter().map(|s| files_of(s)).collect::<Result<_>>()?;
+        for i in 0..schemas.len() {
+            for j in i + 1..schemas.len() {
+                for (sha, fa_list) in &all_files[i] {
+                    let Some(fb_list) = all_files[j].get(sha) else { continue };
+                    for fa in fa_list {
+                        let na = nodes_in(&schemas[i], fa)?;
+                        for fb in fb_list {
+                            for (k, y) in nodes_in(&schemas[j], fb)? {
+                                if let Some(x) = na.get(&k) {
+                                    add(gid(i, *x), gid(j, y), "same code", -1);
+                                    add(gid(j, y), gid(i, *x), "same code", -1);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -281,18 +305,28 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
                 }
             }
             // Across repos: a string in one repo equal to a declared name in another.
-            for (i, a) in schemas.iter().enumerate() {
-                for (j, b) in schemas.iter().enumerate().filter(|(j, _)| *j != i) {
-                    let sql = format!(
-                        "SELECT l.nid, d.nid FROM {a}.nodes l JOIN {b}.nodes d ON (d.name = l.name OR d.name LIKE l.name || '#%')
-                         WHERE l.kind = 'literal' AND l.path LIKE 'lit:\"%' AND d.kind = 'container' AND d.subkind IN ('function', 'type', 'module') AND d.anonymous = 0"
-                    );
-                    let mut stmt = conn.prepare(&sql)?;
-                    let rows: Vec<(i64, i64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
-                    for (l, d) in rows {
-                        let lit = canon(gid(i, l));
-                        if count.contains_key(&lit) && allowed(&lit) {
-                            add(lit, gid(j, d), "names", -1);
+            if schemas.len() > 1 {
+                // String literals by value, and declared names (ordinal `#k` stripped), per schema.
+                let mut strings: Vec<HashMap<String, i64>> = Vec::new();
+                let mut decls: Vec<Vec<(String, i64)>> = Vec::new();
+                for (i, s) in schemas.iter().enumerate() {
+                    let mut stmt = conn.prepare(&format!("SELECT nid, name FROM {s}.nodes WHERE kind = 'literal' AND path LIKE 'lit:\"%'"))?;
+                    let rows: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+                    strings.push(rows.into_iter().map(|(n, v)| (v, canon(gid(i, n)))).collect());
+                    let mut stmt = conn.prepare(&format!("SELECT nid, name FROM {s}.nodes WHERE kind = 'container' AND subkind IN ('function', 'type', 'module') AND anonymous = 0"))?;
+                    let rows: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+                    decls.push(rows.into_iter().map(|(n, name)| (name.split('#').next().unwrap_or(&name).to_string(), gid(i, n))).collect());
+                }
+                // Across repos: a string in one repo equal to a declared name in another.
+                for (i, lits) in strings.iter().enumerate() {
+                    for (j, ds) in decls.iter().enumerate().filter(|(j, _)| *j != i) {
+                        let _ = j;
+                        for (name, d) in ds {
+                            if let Some(lit) = lits.get(name) {
+                                if count.contains_key(lit) && allowed(lit) {
+                                    add(*lit, *d, "names", -1);
+                                }
+                            }
                         }
                     }
                 }
