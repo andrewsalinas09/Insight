@@ -38,6 +38,12 @@ Is the backend a headless `insight` program, separate from the window? And how d
 **Ruling:** tags are "the compiler". Claude tags inline by default (`@insight tag: …` above the symbol); the sidecar `.insight/tags.toml` is for dependency symbols, with simple `*` globs; plain names only for now.
 
 ### BQ-02c: Making sure Claude remembers to tag — ANSWERED (a + b + c)
+**Tagging modes (user, follow-up):** tagging is opt-in per repo, not everywhere. A setting in `.insight/config.toml`:
+- `tagging = "always"`: Claude tags as it writes code;
+- `"on-request"`: only when you ask, e.g. `/insight-tag` or "tag this";
+- `"never"`: no inline tags; the sidecar can still be used by hand.
+
+The standing instruction (a) reads this setting, and `tag_coverage` (c) only nags in `always` mode. **Default: `on-request`** (Claude's pick, not yet confirmed).
 **Ruling:** (a) a standing instruction (MCP server instructions plus an `insight init` snippet in CLAUDE.md/AGENTS.md); (b) a `/insight-tag` command that tags the current uncommitted diff; (c) a mechanical `tag_coverage` tool listing untagged candidates for Claude to judge. (d) hooks only if needed. Also clarified: tags are extras. Language semantics live in plugins (ADR-0033).
 
 *(Original BQ-02c text, kept for history:)*
@@ -70,14 +76,28 @@ What's the first thing that runs, and what's its pass condition?
   - M2: M1 as an MCP tool inside Claude Code, text only.
 - Rec: M0 → M1 (pass: every receipt in steps 1–12 of the drag-graft example is on the path) → M2. UI after that.
 
-### BQ-03: Cargo workspace layout — OPEN
+### BQ-03: Cargo workspace layout — DECIDED BY CLAUDE (user delegated: "I don't program in Rust. I want you to follow best practices")
+**Ruling:** one Cargo workspace (`resolver = "3"`, edition 2024, shared `[workspace.dependencies]` and `[workspace.lints]`), with crates under `crates/`:
+- `insight-model`: the standard representation (nodes, edges, receipts, IDs). No I/O.
+- `insight-solver`: the build pipeline plus the `LanguagePlugin` / `LinkPlugin` traits.
+- `insight-lang-ts`, `insight-lang-rust`, `insight-link-tauri`: one crate per plugin, which is the hard boundary of ADR-0033.
+- `insight-engine`: snapshot storage plus queries.
+- `insight-mcp`: the MCP tools and the stdio bridge.
+- `insight-cli`: the `insight` binary.
+
+`insight-contract` (window types) is added when the window work starts. The Tauri app lives in `app/` and is excluded from `default-members`, so `cargo test` never builds the UI. Start with this split rather than one crate, because the plugin boundary is architectural, not a refactor for later.
+
+### BQ-03 (original question)
 - Options:
   - (a) Many crates: `insight-model`, `insight-contract`, `insight-solver`, `insight-lang-ts`, `insight-lang-rust`, `insight-link-tauri`, `insight-engine` (store + query), `insight-mcp`, and the `insight` binary. The window lives in `app/`, outside `default-members`, so backend tests never compile WebView2.
   - (b) Three crates: core / plugins / bin.
   - (c) One crate until it hurts.
 - Rec: (a).
 
-### BQ-04: What a plugin is physically — OPEN
+### BQ-04: What a plugin is physically — DECIDED BY CLAUDE (same delegation as BQ-03)
+**Ruling:** (a) compile-time Rust crates implementing `LanguagePlugin` / `LinkPlugin`, registered in the binary. Revisit only if someone else ever writes plugins. A plugin *may* internally drive an external engine (e.g. the TS checker, BQ-05) without changing this.
+
+### BQ-04 (original question)
 - Options:
   - (a) Compile-time Rust crates implementing a `LanguagePlugin` / `LinkPlugin` trait.
   - (b) WASM loaded at runtime.

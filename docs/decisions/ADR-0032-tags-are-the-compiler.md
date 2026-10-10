@@ -20,4 +20,5 @@ This keeps the solver purely mechanical while letting meaning grow without limit
 ## Consequences
 - This is the concrete form of the "compiler" from Q-15 / ADR-0013: annotations that drive the build. Claim verification stays optional (ADR-0024).
 - **The main risk is Claude forgetting to tag.** Making tagging effortless and reminded is BQ-02c.
+- **Tagging is opt-in per repo** (user): `.insight/config.toml` `tagging = "always" | "on-request" | "never"`, with `on-request` as the default. Claude tags everywhere only if you ask for that.
 - Globs and plain names were Claude's proposed defaults, not explicitly confirmed. The user can override them.
