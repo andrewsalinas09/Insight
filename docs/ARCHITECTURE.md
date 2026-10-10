@@ -1,114 +1,71 @@
 # Architecture (current state)
 
-> **Derived document.** The ADRs and `docs/TESTBED.md` are normative. On any conflict with this summary, they win.
+> **Derived document.** The ADRs, `docs/BUILD-QUESTIONS.md` rulings and `docs/TESTBED.md` are normative. On any conflict with this summary, they win.
 
-Early design. Settled so far:
-- the prime directive (ADR-0002)
-- hybrid tracing (ADR-0003)
-- the free-form knowledge profile (ADR-0004)
-- annotations committed to the repo (ADR-0005)
-- the deterministic graph plus the LLM tool API; code is truth, and additions need receipts (ADR-0013, superseding ADR-0006; rules accepted, mechanisms unproven)
-- language plugins (ADR-0007); the set and build order (ADR-0016)
-- containers and control edges (ADR-0008)
-- annotations inline first, sidecar optional (ADR-0009)
-- show, then tell: answers drive the graph and the prose together (ADR-0010)
-- step-throughs: AI-set-up, verified, debugger-like walkthroughs with real values (ADR-0011)
-- two purposes on one engine: learning ~60%, system-level oversight ~40% (ADR-0012)
-- multi-codebase workspaces joined by wire links (ADR-0014)
-- tracing: static first → LLM in the loop where unsure (inferred) → LLM-placed log probes as the universal runtime tracer (ADR-0015)
-- coding agents live outside; Insight is their MCP tool and the human's window (ADR-0017)
-- time is explicit: timing kinds on every edge, execution contexts, a sequence view (ADR-0018)
-- the MVP is one question: how an algorithm works, its data structures and where they live, and how we know it's correct (ADR-0019)
-- license: Apache-2.0 (ADR-0020)
-- home screen: the whole system plus a question box (ADR-0021)
-- the fact layer is complete (every function, anonymous ones too); the LLM curates what's shown (ADR-0022)
-- **a graph is an immutable snapshot of one git commit; comparing = two commits; explanations and views are pinned to their commit (ADR-0029). Identity = location; the model reconciles renames (ADR-0028)**
-- **visual language: Fletcher's "Console"** (paper/ink, IBM Plex, hairline strips, labeled inspector cells, docked bottom bar for the agent's narration; ink = real code, orange = model's drawing, blue = changes now) (ADR-0027)
-- **three layers (ADR-0026): fact layer (solver, never invented) → teaching views (model-authored: annotations, groups, hierarchy, abstractions, simplified code; visibly authored, mapped to real nodes) → UI**
-- **how it's used (ADR-0025): you ask in the terminal (Claude Code / Codex); the agent answers in text and calls Insight's local MCP tools; the Insight desktop window shows and reacts. No in-app chat or model calls. One user, one machine.**
-- **what we build (ADR-0024): the graph, the UI, and the tools the model drives. Understanding is the model's. Heavy verification machinery is optional, built only if real use demands it**
-- **division of labor: the solver connects everything (calls, every read/write of every state, same-source bindings, exact-match links); anything requiring understanding (timing meaning, effects, validation vs. fallback, labels) is the model's job (ADR-0023)**
+## How it's used (ADR-0025, ADR-0031, ADR-0045)
 
-## Workspaces across devices (ADR-0014)
-
-```
- firmware (C, uC)                    radio / protocol                 frontend (TS)
- read_adc ─► lowpass ─► pack_json ══ send ══(Wi-Fi/BLE: JSON "ax")══ recv ══► parse ─► smooth ─► plot
-                                   wire link: proven (shared schema) / inferred (same keys) / observed (capture)
- lineage of value "ax": counts ─(lowpass)─► counts ─(scale ×0.000061)─► g ─(json)─► g ─(movavg)─► g ─► pixels
-```
-
-Wire links are protocol plugins (ADR-0007). Data lineage (Q-29) follows the value through every hop, and lenses (Q-19) collapse the plumbing.
-
-## Oversight on the same engine (ADR-0012)
-
-```
-fact graph @ before ─┐
-                     ├─► system diff (Q-25): new/removed paths, effects, error reachability, shared state
-fact graph @ after  ─┘                         │
-                                               ▼
-expectations (Q-26) ── deterministic queries ──► pass / violated (offending path highlighted, ADR-0010)
-```
-
-Before and after can be any two versions: a commit, a PR, or an agent session (live mode, Q-18).
-
-## Step-throughs (ADR-0011)
-
-```
-AI sets up scenario ─► run / evaluate deterministically (Q-24) ─► reached the target? ─no─► adjust inputs
-     (inputs, state,         stubs at effects = "assumed"                │yes
-      interleaving)                                                      ▼
-                                                     hand over: steps = location + values + prose
-                                                     user clicks Next/Back; the graph follows (ADR-0010)
-```
-
-Value provenance: **executed**, **evaluated**, or **assumed** (stub). An LLM-predicted value is never displayed as a value.
-
-## Graph model so far (ADR-0008)
-
-- **Containers:** package › file › type › function › block, mapped by each language plugin (ADR-0007). This is the base hierarchy.
-- **Control edges:** call, branch (one per outcome), return, throw.
-- **Data and boundary edges:** being designed (Q-20; catalogue in `docs/research/2026-10-what-code-has.md`).
-
-Everything else is a sketch with open questions attached.
-
-## Two layers (ADR-0006)
-
-| Layer | Built by | Contains | Can the LLM change it? |
-|---|---|---|---|
-| **Fact layer** | deterministic analysis + recorded runs | nodes, call/branch edges, (later) data/ownership edges (Q-20), provenance | **No.** The tool API has no add or remove operations |
-| **Organization layer** | LLM via tools, and humans | hierarchy groupings, collapse/expand state, annotations (claims + prose), custom views (Q-19) | Yes. Claims still pass the compiler |
-
-Annotations live in the repo as committed files, inline or in sidecars (ADR-0005). The knowledge profile lives with the user, not the repo (ADR-0004). It shapes prose and chat only, never claims or structure.
+- **A personal desktop tool.** `insight setup` once per machine registers Insight with your agents and installs the after-build hook. `insight init` once per **project** (a named set of one or more repos).
+- **You ask in the terminal** (Claude Code, Codex). The agent answers in text and calls Insight's MCP tools, and the window follows along as a visual guide (R2-07). Insight calls no model itself.
+- **Two-way parity (R2-09):** anything the agent can do through MCP, you can do in the window directly, and vice versa. The terminal is the default way.
+- **Two binaries, one backend (R2-13):** `insight.exe` (CLI, MCP stdio bridge, headless mode) and `insight-app.exe` (the window), connected over a local named pipe. CLI commands go through the running app when it's open, and otherwise run the same backend against the same cache. The bridge launches the app when needed.
+- **Project data** (`INSIGHT.md`, build settings) lives in `%APPDATA%\Insight\projects\<name>\`. Insight writes nothing into your repos, except the optional tagging line `insight init` adds to CLAUDE.md (R2-16, ADR-0044).
 
 ## The pipeline
 
 ```
-codebase ─► ingest ─► static graph (the map) ─────────────┐
-                           ▲                               ├─► view ─► converse
-                 run ─► dynamic trace (overlay) ───────────┤
-                                                           │
-            LLM ─► annotations ─► compiler (verify) ───────┘
+project (repos) ─► build check (ADR-0036) ─► extractors (ADR-0034, NDJSON) ─► link passes (Tauri BQ-21, same-literal BQ-22)
+                                                                                    │
+                                    snapshot: one read-only SQLite file per repo + a link layer (ADR-0038, BQ-24, R2-30)
+                                                                                    │
+                       agent: sql / path / compare / source ──► show(view) ──► window ──► selection ──► agent
 ```
 
-1. **Ingest.** Add a codebase, then index its functions, calls, and branches. Scope defaults to the project's own code. Live mode needs incremental re-indexing (Q-09, Q-18).
-2. **Static graph: the map (ADR-0003).** Every reachable bubble, call edge, and branch edge from any trigger (Q-05). Edges static analysis can't resolve exactly are drawn as *possible*, never guessed (ADR-0002).
-3. **Dynamic trace: the overlay (ADR-0003).** A recorded run (Q-17) highlights the path actually taken and upgrades *possible* edges to *observed*.
-4. **Annotations and the compiler (Q-15, ADR-0005).** Annotations are committed files, inline or in sidecars, in a defined format: checkable claims plus prose. The LLM writes them through the tool API, and humans can too. The compiler checks every claim against the graph, whoever wrote it, and drops failures. Prose is shown as interpretation, linked to its claims and source spans. Existing annotations are read deterministically, so the LLM doesn't have to re-parse the codebase.
-5. **View.** A zoomable hierarchy of bubbles, plus AI-composed custom views with code snippets (Q-19). It lives next to the editor while you develop (Q-18 leaning).
-6. **Converse: show, then tell (ADR-0010).** Every answer is a view state plus prose. The answer focuses and highlights the graph (and can step through sequences, including labeled *hypothetical* scenarios), and each prose sentence links to the elements it relies on. Grounded on the selection, verified annotations, source, and the user's knowledge profile (ADR-0004). Answers are kept in the learning journal and can be shared (Q-22).
+1. **When snapshots happen.** After the project's own successful build, via an agent-agnostic after-build hook (`insight snapshot --after-build`), plus **Snapshot now** in the menu, plus on demand (R2-10/10b). A snapshot is exactly the code that just built: tracked plus untracked-not-ignored files. If anything changes mid-snapshot, it's discarded (R2-17).
+2. **Build check (ADR-0036).** The project's own check (`cargo check`, `tsc -b --noEmit`, or settings from the project folder) using the toolchain that built the program (R2-15). Insight refuses on a failed check, failed dependencies, or a misbehaving extractor. A language whose toolchain is missing entirely is skipped with a loud notice. Claude announces a fix, then applies it (R2-05).
+3. **Extractors (ADR-0033/0034).** Each language is analyzed by its own native toolchain: the TS compiler API, and rust-analyzer as a separate helper (R2-27). They emit the standard representation as versioned NDJSON (R2-28).
+4. **Snapshot storage.** One read-only SQLite file per codebase, cached in `%LOCALAPPDATA%\Insight\snapshots\`, keyed by content and extractor versions (BQ-24, R2-28), with an LRU cap and an ask-first rule for never-seen dependency sets (BQ-07, R2-19).
+5. **Agent tools (ADR-0039 + amendments).** `status`, `load`/`unload`, `build`, `sql` (read-only, 200-row cap), `path` (algorithmic search that reports cycles and recursion, R2-12), `compare` (exact diff, ADR-0041), `source`, `show`, `selection`, `tag_coverage`. Insight quietly reminds Claude when it references code it hasn't fully read (ADR-0041).
+6. **Views (ADR-0040).** Nine elements: nodes/edges, groups, collapse, highlight/focus, notes, steps, code excerpts, abstraction nodes, example data. The window styles them by kind (real vs. Claude's interpretation). Only elements that stand in for code must resolve to real code (R2-02). Steps are driven by you, or played as a walkthrough (BQ-39).
 
-## Edge provenance
+## Division of labor (ADR-0023, ADR-0033, ADR-0035, ADR-0043)
 
-| Provenance | Meaning | Source |
-|---|---|---|
-| static (proven) | Analysis proves this edge exists in the code | analyzer |
-| static (possible) | One of several edges analysis can't narrow down | analyzer |
-| observed | Seen happening in a recorded run | runtime trace |
-| scenario | A hypothetical sequence over real nodes, used to explain ("what if…") and always labeled | explanation (ADR-0010) |
+| Insight (deterministic) | The model |
+|---|---|
+| Language semantics via each toolchain: types, resolution, mutability, `await`, JSX desugaring | Library and domain meaning: "writes a file", "a 400 ms debounce", "the logger" |
+| Connecting every call and every read/write of every piece of state | Which connections matter; grouping; explaining |
+| Parsing `@insight <keyword>: <value>` (tags first) | Reading free-text comments and docs |
+| Pathfinding, counting, diffing, reference resolution | Choosing the question, judging race candidates, reconciling renames (ADR-0028) |
 
-Labels are never a provenance. They annotate edges but never create them.
+Test: *if a compiler could do it, it's allowed in the tool.*
 
-## Stack (proposed, not decided)
+## Graph model (BQ-09…BQ-22, R2-30)
 
-Tauri 2 desktop app: a Rust core for indexing, tracing, and the compiler, and a web UI for the graph. See Q-08. The LLM tool API is likely exposed as MCP so external agents can drive it too (ADR-0006 consequences).
+- **Nodes:** `container{file|module|type|function|block}` (every function, anonymous ones too, ADR-0022), `state{var|field|element|static|cell}`, `external` (one leaf per referenced dependency symbol, BQ-20), `unresolved`.
+- **Edges:** `contains`, `call`, `read`, `write`, `access` (may write), `binds`, `value-flow`, `implements`, `link`, `exit`.
+- **Resolution:** `exact` / `possible` / `unresolved`, with *observed* added later from runs. There's no model-added "inferred" tier (R2-03).
+- **Branches** are `block` containers carrying their condition text; `return` / `?` / `throw` are `exit` edges (BQ-18).
+- **IDs** are location paths. Any reasonable name form resolves, and ambiguity returns candidates (BQ-10, R2-18).
+- **Receipts:** exact spans within an immutable snapshot (BQ-12, ADR-0029).
+- **Causal order (ADR-0042):** code within a function is ordered by position. `await`, and functions handed to external code, are order breaks (*may interleave*). Race candidates are a SQL query.
+
+## Snapshots and comparison (ADR-0029, ADR-0036, ADR-0028)
+
+A snapshot is a commit or the working copy that just built, possibly spanning several repos of one project. Snapshots are immutable and cached. Comparing means two snapshots attached in SQL (R2-32); the model reconciles renames and moves. Views and explanations are pinned to their snapshot.
+
+## Post-MVP (designed, not built)
+
+- Oversight: system diff (Q-25), expectations as saved SQL (Q-26), the prompt baseline (R2-34).
+- Recorded runs, probes, and verified step-throughs as self-check tools for the model (ADR-0011, ADR-0015, ADR-0037).
+- Multi-repo wire links (ADR-0014, Q-28, R2-38) and firmware builds (R2-37).
+- Learning journal (Q-22).
+
+## Stack (decided)
+
+- Cargo workspace crates (BQ-03).
+- Extractors in each toolchain's language (ADR-0034).
+- SQLite per codebase snapshot (ADR-0038).
+- MCP via the `insight mcp` stdio bridge over a local named pipe (ADR-0031, BQ-42/43, R2-33).
+- Tauri 2 window, with TS types generated by `ts-rs` (BQ-44).
+- Updates follow the user's proven pattern: signed, idle-guarded, atomic local installs (ADR-0046).
+
+**Visual language:** Fletcher's "Console" style (palette, IBM Plex, hairlines, square corners). The layout is unvalidated, and all frontend questions are deferred to their own session (ADR-0027). **Still open:** the rendering and layout library (Q-08).

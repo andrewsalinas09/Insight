@@ -1,6 +1,6 @@
 # ADR-0014: A workspace spans multiple codebases; wire links connect them
 
-- **Status:** Accepted
+- **Status:** Accepted; wire links refined by R2-38 (exact same-literal facts plus model-declared pairs); "inferred" tier retired by R2-03; workspaces are projects (ADR-0045)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 7 ("we can load multiple things in and get communication across a wire too… 'Show me the trace that takes the data from the sensor to the uC to wifi/bluetooth to my front end to display, and focus on the algorithms that do data processing of XYZ'")
 

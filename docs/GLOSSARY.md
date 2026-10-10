@@ -1,57 +1,48 @@
 # Glossary
 
-Domain terms used across docs, code, and conversations. Keep alphabetical. Terms are provisional until the graph model is frozen.
+Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHEMA.md` becomes the authority for graph terms once it exists (M0).
 
-- **Anchor (receipt)**: (proposed, Q-21) the file + span an LLM or human addition points at as proof. The compiler re-checks it against the current code.
-- **Annotation**: LLM-generated (or human-written) documentation attached to a bubble or edge, in a defined format with two parts: checkable *claims* and *prose* (Q-15).
-- **Branch edge**: an edge out of a decision point (`if`, `match`, `?`, `try/catch`, early return). Each outcome is its own edge, so `valid` and `!valid` are two edges.
-- **Assurance trace**: the answer to "how do we know X is correct?": validation points, silent fallbacks, tests that reach it, and what's unchecked. The inventory is deterministic; the explanation is LLM prose (ADR-0019, Q-31).
-- **Bubble**: a node in the execution graph, usually a function, drawn with its inputs and outputs. It can be opened to show the nested structure inside. Bubbles nest hierarchically.
-- **Claim**: a structured, machine-checkable statement in an annotation (`calls: X`, `returns Err when: !valid`). It's shown only if the compiler verifies it.
-- **Compiler (annotation compiler)**: the verifier that checks annotation claims against the static graph and removes hallucinations before display (Q-15, ADR-0002).
-- **Container**: a bubble that is one of the code's own constructs: package, file, type, function, or block (ADR-0008).
-- **Control edge**: call, branch, return, or throw (ADR-0008).
-- **Custom view**: an LLM-composed presentation of part of the graph (chosen nodes, hierarchy, collapse state, code snippets), built through tools in answer to a request (Q-19).
-- **Data lineage**: the path of a *value* (a reading, a field) through transformations, within codebases and across wire links (Q-29).
-- **Data edge**: (proposed) an ownership, containment, access-path, or injection edge showing where a value comes from, as opposed to a call edge (Q-20).
-- **Expectation**: a plain-language statement of required system behavior, translated into a deterministic graph query, confirmed by the user, and re-checked on every change (Q-26).
-- **Explanation**: an on-demand, per-user answer to "what does this do / why", anchored to code with receipts. Abundant and not committed. Distinct from an annotation (Q-22).
-- **Explanation ladder**: the set of alternative angles Insight tries when an explanation doesn't land (Q-23).
-- **Execution graph**: the graph of everything a trigger can reach: bubbles, call edges, and branch edges. It is not the same as a call graph, which ignores branches, or a list of paths, which grows exponentially (TB-018).
-- **Expansion**: following execution past the project scope into dependencies or the standard library, on request.
-- **Fact layer / organization layer**: the deterministic graph that the LLM can't change, and the groupings, annotations, and views that the LLM and humans build on top of it (ADR-0006).
-- **Effect**: (proposed, Q-20) a boundary to the outside world, such as filesystem, network, DB, UI, or process.
-- **Guided walkthrough**: following one concrete action through the code in small steps, with Insight supplying the next question (Q-13).
-- **Inferred edge**: (proposed, Q-21) an LLM addition whose anchor the compiler can verify only partly (site and target exist, connection unproven). Shown distinctly.
-- **Knowledge profile**: free-form notes on what the user already knows, which the LLM interprets to adapt explanations. Personal, not committed (ADR-0004).
-- **Scenario overlay**: a hypothetical sequence drawn over real nodes to explain a "what if". Always labeled hypothetical (ADR-0010).
-- **Sequence (swimlane) view**: a first-class view where lanes are execution contexts (threads, tasks, windows, processes, devices) and time flows down (ADR-0018).
-- **Show, then tell**: every answer is a view state (focus, highlights, step-through) plus prose whose sentences link to graph elements (ADR-0010).
-- **Step-through**: a debugger-like sequence of steps (location + values + prose) that the AI sets up and verifies by running or evaluating before handing it over (ADR-0011).
-- **Stub (assumed value)**: a stand-in for a boundary (network, hardware, time) during a step-through. Its values are shown as *assumed* (ADR-0011).
-- **System diff**: the behavioral difference between two versions of the fact graph (paths, effects, error reachability, shared state). Pure refactors collapse to "no behavioral change" (Q-25).
-- **Symbol origin**: where a name comes from: the project, the standard library, a framework, or a dependency. Deterministic, and shown everywhere (TB-059).
-- **Wire link**: an edge between a send in one codebase and the matching receive in another, over a protocol. It is proven (shared definition), inferred (matched by convention), or observed (captured) (ADR-0014).
-- **Workspace**: the set of codebases loaded together. It can span devices and languages (ADR-0014).
-- **Teaching view**: a model-authored presentation over the fact layer. It can contain annotations, role groups, its own hierarchy, abstractions with pseudocode, simplified or rewritten code, and illustrative tables. Everything authored is visibly marked and maps back to real nodes (ADR-0026).
-- **Timing kind**: an edge's temporal meaning: sync, async/await, spawn, event/callback, periodic/poll, or wire message, plus *unknown*, which is never defaulted to sync (ADR-0018). Assigned by the model with receipts, not by the solver (ADR-0023).
-- **Tool API**: the operations the LLM can perform on the graph (group, collapse, expand, annotate, compose a view). It has no operation for creating structure (ADR-0006).
-- **Language plugin**: maps one language's constructs onto the generic graph. It provides a parser, resolution, claim checks, and optionally a runtime tracer (ADR-0007).
-- **Link**: (proposed, Q-20) a boundary edge between two pieces of code we both have, such as IPC, HTTP, or events.
-- **Lens**: a focus rule applied to a view ("focus on the algorithms that process X") that emphasizes some nodes and collapses the rest to "+N hidden" (Q-19).
-- **Learning journal**: the personal record of questions (in the user's words), answers, corrections, receipts, and open items (Q-22).
-- **Label**: a short annotation, such as an edge name ("error handling"). Labels are never a source of structure (ADR-0002).
-- **Observed edge**: an edge seen happening in a recorded run (ADR-0003). It is true by construction.
-- **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level instead of line by line (ADR-0012).
-- **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent with graph context → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
-- **Overlay**: a dynamic run drawn on top of the static graph (ADR-0003).
-- **Solver**: the deterministic backend. It only *connects*: every function, call, state read/write, same-source binding, and exact-match link, each with a receipt. It never interprets (ADR-0023).
-- **Sibling comparison**: a deterministic check of whether comparable paths do the same thing ("4/5 errors reach the logger"). It surfaces absences without guessing (Q-25).
-- **Possible edge**: one of several candidate edges that static analysis can't narrow down. Drawn as possible, never collapsed to a guess (ADR-0002).
-- **Prime directive**: the graph may be incomplete, but never wrong (ADR-0002).
-- **Probe**: a tagged log statement the LLM inserts (in a scratch copy) to observe a run. Output is parsed deterministically onto the graph as *observed*. The universal runtime tracer (ADR-0015).
-- **Prose**: the free-text part of an annotation, shown as interpretation and linked to its claims and source.
-- **Project scope**: the code the user added. Tracing stops at its boundary by default, and calls outside it are drawn as leaves.
-- **Trace**: the process of finding everything reachable from a trigger. It can be static, dynamic, or hybrid (Q-02).
-- **Trigger**: the starting point of a trace: a UI element, a CLI command, a function, or a natural-language prompt.
-- **Vibe-coded software**: software produced largely by AI with little line-by-line human reading. This is the primary target (Q-11).
+- **Abstraction node**: a view element: one box standing for a set of real nodes, with Claude's pseudocode, expandable to the real nodes (ADR-0040).
+- **Annotation**: an `@insight <keyword>: <value>` doc comment parsed mechanically; `tag` is the first keyword (ADR-0032, ADR-0043). Optional (ADR-0024). Free-text comments aren't annotations; they're code the model reads.
+- **Assurance trace**: the answer to "how do we know X is correct?". The solver returns everything connected to the value; the model sorts it into validation, fallbacks, tests and gaps (ADR-0019, ADR-0023, Q-31).
+- **Block**: a container for one branch arm, loop body, or `try`/`catch`, carrying its condition text (BQ-18).
+- **Bridge (MCP bridge)**: `insight.exe mcp`, the stdio process an agent launches. It forwards calls to the running app over a named pipe and launches the app if needed (ADR-0031, R2-13).
+- **Bubble**: informal name for a container node drawn in the window.
+- **Causal order**: whether one thing definitely happens before another. Ordered within a function by position; broken at `await` and at functions handed to external code (*may interleave*) (ADR-0042).
+- **Cell**: the shared state node for names destructured from one call, e.g. `[histVersion, setHistVersion]` (BQ-17).
+- **Collapse**: a view element: a container folded to "+N hidden", expandable (ADR-0040).
+- **Compiler**: historical term for annotation checking. Now: anything a compiler could do (parsing, keyword grammars, structural checks) is allowed in the tool (ADR-0043). Claim checking itself is deprioritized (ADR-0024).
+- **Container**: a node that is one of the code's own constructs: file, module, type, function, or block (ADR-0008, BQ-09).
+- **Example data**: a view element: a table or small diagram of illustrative values, optionally linked to the fields it illustrates (ADR-0040).
+- **Exit edge**: an early exit (`return`, `?`, `throw`) out of a function or block (BQ-18).
+- **Expectation** *(post-MVP)*: a saved SQL query describing required behavior, re-run on each new snapshot (Q-26).
+- **Explanation**: the agent's answer, usually plain text in the terminal (R2-07), pinned to its snapshot (ADR-0029).
+- **External leaf**: one node per dependency or standard-library symbol the project uses; its internals aren't indexed (BQ-20).
+- **Extractor**: a per-language program built on that language's native toolchain that emits the standard representation as NDJSON (ADR-0033, ADR-0034, R2-28).
+- **INSIGHT.md**: Insight's equivalent of CLAUDE.md. Prose for Claude (knowledge notes, preferences, wishes) plus parsed ```` ```insight ```` settings blocks (ADR-0044).
+- **Intelligence principle**: the tool does what's trivial; the moment there's a question, it's the model's (ADR-0035).
+- **Knowledge profile**: free-form notes on what you already know, kept in `INSIGHT.md` and interpreted by the model (ADR-0004, ADR-0044).
+- **Learning journal** *(post-MVP)*: the personal record of questions and answers, each pinned to its snapshot (Q-22).
+- **Link edge**: a cross-language or same-string connection: the Tauri command link (BQ-21), or a same-literal link via a literal node (BQ-22, R2-30).
+- **Observed edge** *(post-MVP)*: an edge seen happening in a recorded run; a self-check tool for the model (ADR-0003, ADR-0037).
+- **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level (ADR-0012).
+- **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
+- **Path tool**: deterministic pathfinding between nodes. It visits each node once and reports cycles and recursion to the caller (R2-12).
+- **Possible edge**: one of several candidates static analysis can't narrow down, e.g. each value an optional callback prop might hold, plus "absent" (BQ-15).
+- **Prime directive**: Insight's own facts may be incomplete, but never wrong (ADR-0002, scoped by ADR-0041).
+- **Probe** *(post-MVP)*: a tagged log statement the model inserts in a scratch copy to observe a run (ADR-0015).
+- **Project**: Insight's unit: a named set of one or more repos, set up with `insight init` and loaded together (ADR-0045).
+- **Race candidate**: two code regions with unknown relative order that touch the same state, at least one writing. A query; the model judges (ADR-0042).
+- **Read-coverage reminder**: a quiet note to Claude when a view or comparison references code it hasn't fully read (ADR-0041).
+- **Receipt**: the exact location of an edge's evidence: snapshot, file, byte and line range, expression and statement text, and the innermost container (BQ-12, R2-30). Exact within an immutable snapshot (ADR-0029).
+- **Resolution**: how certain an edge is: `exact`, `possible`, or `unresolved` (BQ-09, R2-03).
+- **Snapshot**: an immutable graph of a project at a commit, or at the working copy that just built successfully. It must build (ADR-0029, ADR-0036, R2-17).
+- **Solver**: the deterministic backend. It connects everything using full language semantics from the extractors, and never interprets library or domain meaning (ADR-0023, ADR-0033).
+- **State node**: a variable, field, collection element, static or cell, identified by its declaration symbol (BQ-13).
+- **Step-through**: the Steps view element: an ordered list of view states, driven by Next/Back or played as a walkthrough. Values may be examples (ADR-0040, BQ-39, ADR-0037).
+- **Tag**: a declared label on a symbol (`@insight tag: disk-write`), parsed as data, never inferred. Written inline by default; opt-in per project (ADR-0032).
+- **Teaching view**: a view the model composes from the nine ADR-0040 elements. The window styles each element by kind; only elements that stand in for code must resolve (ADR-0026, R2-02).
+- **Vibe-coded software**: software produced largely by AI with little line-by-line human reading. The primary target.
+- **View element**: one of the nine kinds a view can contain (ADR-0040).
+- **Wire link** *(later)*: a send in one repo matched to a receive in another. Exact same-literal facts plus model-declared pairs that cite them (ADR-0014, R2-38).
+- **Wish rule**: when Claude wishes Insight could do something, it says so and records it in `INSIGHT.md`; you decide (ADR-0039, ADR-0044).

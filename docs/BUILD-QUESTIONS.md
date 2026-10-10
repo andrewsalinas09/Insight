@@ -184,13 +184,13 @@ What's the first thing that runs, and what's its pass condition?
 | 21 | The Tauri link is command level: the `invoke` string = the `#[tauri::command]` fn name, flagged if it's missing from `generate_handler!`. Argument-name mapping (camelCase) is for the model. |
 | 22 | Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* |
 
-### BQ-09: The closed set of node and edge kinds — OPEN
+### BQ-09: The closed set of node and edge kinds — DECIDED BY CLAUDE (Round 3 table)
 - Options:
   - (a) Nodes: `container{file|module|type|function|block}`, `state{var|field|element|static|cell}`, `external`, `unresolved`. Edges: `contains`, `call`, `read`, `write`, `access` (may write), `binds`, `value-flow`, `implements`, `link`, `exit`. Each edge carries {id, kind, from, to, resolution: exact|possible|unresolved, receipt}.
   - (b) An open, plugin-defined vocabulary.
 - Rec: (a), closed, so the query layer stays language-agnostic.
 
-### BQ-10: The node ID grammar, anonymous naming, namespacing, and what the agent may type — OPEN
+### BQ-10: The node ID grammar, anonymous naming, namespacing, and what the agent may type — DECIDED BY CLAUDE (Round 3 table)
 - Case: dozens of `useEffect(() => …)` in `MainApp`; the curried `nodeDown = (id) => (e) => …` (`:737`) whose *inner* arrow is the mounted handler; the field `hist.current.current`.
 - Options:
   - (a) Path with context names and per-name ordinals (`App.tsx › MainApp › useEffect#14`, `HistoryTree › nodeDown › =>`), scoped by `(repo, snapshot)` internally from day one. The agent may pass a unique suffix (`graftNode`), and ambiguity returns an error with candidates.
@@ -199,7 +199,7 @@ What's the first thing that runs, and what's its pass condition?
   - (d) Opaque handles per query.
 - Rec: (a).
 
-### BQ-11: Path and span encoding — OPEN
+### BQ-11: Path and span encoding — DECIDED BY CLAUDE (Round 3 table)
 - Case: `App.tsx` has 486 non-ASCII lines, so UTF-8 bytes, UTF-16 offsets in the webview, and RustRover columns all disagree. Windows paths are case-insensitive; git paths aren't.
 - Options:
   - (a) Repo-relative, forward-slash, case-exact git paths. Spans are UTF-8 byte ranges plus 1-based lines, converted to UTF-16 only at the window boundary.
@@ -207,7 +207,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Absolute Windows paths.
 - Rec: (a).
 
-### BQ-12: What a receipt contains — OPEN
+### BQ-12: What a receipt contains — DECIDED BY CLAUDE (Round 3 table)
 - Case: `id: h.next++,` (`:4958`) is both a read and a write. `invoke("history_save", …).catch(() => {})` (`:5126`) is a call, a read, a link and an anonymous function on one line.
 - Options:
   - (a) {commit, file, byte range, line/col, the minimal expression text}.
@@ -215,7 +215,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (a) plus the enclosing statement and the innermost container ID.
 - Rec: (c). Spans are exact because snapshots are immutable (ADR-0029), so quote-matching is unnecessary.
 
-### BQ-13: State identity and aliasing — OPEN
+### BQ-13: State identity and aliasing — DECIDED BY CLAUDE (Round 3 table)
 - Case: `const h = hist.current; h.current = node.id;` (`:4942/4968`); `h.nodes.get(c)?.parent`; Rust `Arc` clones sharing one `AtomicBool` (`lib.rs:918–922`).
 - Options:
   - (a) Declaration-symbol identity: `h.current` and `hist.current.current` are the same field symbol, collection contents are a pseudo-field `nodes[*]`, and a typed object literal writes every field it sets. Instances of a type merge, marked `possible-instance`.
@@ -223,7 +223,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Full points-to analysis.
 - Rec: (a).
 
-### BQ-14: When a method call counts as a write — OPEN
+### BQ-14: When a method call counts as a write — DECIDED BY CLAUDE (Round 3 table)
 - Case: `onto.children.push(…)` and `h.nodes.set(…)` look like plain calls in TS; Rust `stop.store(true)` mutates through `&self`.
 - Options:
   - (a) Signature-based: Rust `&mut self` or a mutable deref is a write; interior-mutability types and every TS method call on state are recorded as `access` (may write).
@@ -231,7 +231,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Only `call-on-state`, and the model decides.
 - Rec: (a), since (b) is a catalogue (ADR-0023). Revisit if the mutation matrix is too noisy.
 
-### BQ-15: Function values and indirect calls — OPEN
+### BQ-15: Function values and indirect calls — DECIDED BY CLAUDE (Round 3 table)
 - Case: `onGraft?.(id, target)` (`:774`), where `HistoryTree` is mounted three times: `onGraft={graftNode}` (`:8345`), an `emitTo` arrow (`:1405`), and once with none (`:6351`). `busRef.current.cmd(...)` is assigned in two places. Rust `(self.make)(fs)`.
 - Options:
   - (a) No resolution: the call targets the state node, and the model follows its writes.
@@ -239,7 +239,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Full points-to analysis.
 - Rec: (b), keeping the (a) edges as well.
 
-### BQ-16: Callers that aren't our code (React, Tauri, std) and JSX — OPEN
+### BQ-16: Callers that aren't our code (React, Tauri, std) and JSX — DECIDED BY CLAUDE (Round 3 table)
 - Case: `useEffect(() => …)`, `listen("hist-cmd", (e) => …)`, `setTimeout(…, 400)`, `std::thread::spawn(move || …)`, `<HistoryTree onGraft={graftNode}/>`.
 - Options:
   - (a) A `value-flow` edge from the callback into the external leaf only.
@@ -247,7 +247,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (a) for externals, plus JSX as syntax: `<C p={v}/>` is a `render` call to `C` and binds `v` to prop `p`. That's plain desugaring, not a React rule.
 - Rec: (c). Without it there's no component tree and no prop flow.
 
-### BQ-17: Same-source binding, precisely — OPEN
+### BQ-17: Same-source binding, precisely — DECIDED BY CLAUDE (Round 3 table)
 - Case: `const [histVersion, setHistVersion] = useState(0)` (about 120 in `App.tsx`); Rust `let (tx, rx) = mpsc::channel()`.
 - Options:
   - (a) All names destructured from one call share one `cell` node: calling a function sibling is `access`, reading any other sibling is `read`.
@@ -255,7 +255,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Per-hook plugins (rejected by ADR-0023).
 - Rec: (a).
 
-### BQ-18: Branches as block containers — OPEN
+### BQ-18: Branches as block containers — DECIDED BY CLAUDE (Round 3 table)
 - Case: `if (!h || !src || !onto || id === ontoId) return;` (`:4946`); bus arm `else if (p.type === "graft" …) graftNode(…)` (`:5235`); Rust `?`.
 - Options:
   - (a) No blocks.
@@ -263,7 +263,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Statement-level only.
 - Rec: (b), which ADR-0008 already commits to.
 
-### BQ-19: Trait and interface dispatch — OPEN
+### BQ-19: Trait and interface dispatch — DECIDED BY CLAUDE (Round 3 table)
 - Case: `source.fill(&mut fbuf)` with `source: &mut dyn Source` has three impls across two crates (`playback.rs`, `engine.rs`, `profile.rs`).
 - Options:
   - (a) Fan out to every impl at build time.
@@ -271,7 +271,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (b) plus narrowing by value flow.
 - Rec: (b) now, (c) later.
 
-### BQ-20: What gets analyzed, and external leaves — OPEN
+### BQ-20: What gets analyzed, and external leaves — DECIDED BY CLAUDE (Round 3 table)
 - Case: tests, `#[cfg(test)]`, `vite.config.ts`, `build.rs`; externals like `@tauri-apps/api/core.invoke`, dynamic `import("@tauri-apps/plugin-dialog")`, `window.location.search` (which decides `IS_HISTORY_WINDOW`), `std::fs`.
 - Options:
   - (a) All git-tracked source in the TS projects and Cargo members, tests included, with one external leaf per referenced symbol and external globals as state.
@@ -279,7 +279,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Index dependency source too.
 - Rec: (a). Tests are needed for "what reaches X" (Q-31).
 
-### BQ-21: The Tauri link — OPEN
+### BQ-21: The Tauri link — DECIDED BY CLAUDE (Round 3 table)
 - Case: `invoke<EqState>("set_fletcher_chain", { filters: own })` (`App.tsx:4724`) ↔ `fn set_fletcher_chain(filters: Vec<FilterIn>)` (`lib.rs:272`); `rename_all = "camelCase"` maps `fc_hz` to `fcHz`.
 - Options:
   - (a) Tauri-bridge plugin: `invoke` string = `#[tauri::command]` fn name, at command level, flagging fns missing from `generate_handler!`.
@@ -287,7 +287,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (a) plus argument-field links through `rename_all`.
 - Rec: (a). camelCase mapping is a transform, so it's the model's job.
 
-### BQ-22: Generic same-string links (events, bus dispatch) — OPEN
+### BQ-22: Generic same-string links (events, bus dispatch) — DECIDED BY CLAUDE (Round 3 table)
 - Case: `"hist-cmd"` in TS `emitTo`, TS `listen` and Rust `emit_to`; `{ type: "graft" }` ↔ `p.type === "graft"`; `"main"` appears everywhere (noise).
 - Options:
   - (a) None: plugin rules only.
@@ -309,7 +309,7 @@ What's the first thing that runs, and what's its pass condition?
 - Rec: (a) for the first milestone, then (b). The key format allows a dirty suffix from day one.
 
 ### BQ-24: Snapshot storage and cache key — ANSWERED (a)
-**Ruling:** built graphs are kept on disk under `%LOCALAPPDATA%\Insight\snapshots\`, loaded into memory when used, and evicted by LRU under the shared cache cap (BQ-07). **User note: an Insight snapshot can span multiple codebases** (ADR-0014). So: each codebase's graph is cached separately, keyed by (repo, commit or working-copy hash, Insight version), and the cross-repo link layer (wire links) is a small separate file keyed by the combination of its member keys. Changing one repo rebuilds only that repo plus the link layer. Including the Insight version in every key means a bug fix never serves a stale graph.
+**Ruling:** built graphs are kept on disk under `%LOCALAPPDATA%\Insight\snapshots\`, loaded into memory when used, and evicted by LRU under the shared cache cap (BQ-07). Format: one read-only SQLite file per codebase (ADR-0038). **User note: an Insight snapshot can span multiple codebases** (ADR-0014). So: each codebase's graph is cached separately, keyed by (repo, commit or working-copy hash, Insight version), and the cross-repo link layer (wire links) is a small separate file keyed by the combination of its member keys. Changing one repo rebuilds only that repo plus the link layer. Including the Insight version in every key means a bug fix never serves a stale graph.
 
 *(Original question:)*
 - Options:
@@ -412,7 +412,7 @@ What's the first thing that runs, and what's its pass condition?
 | 44 | Shared types are defined once in Rust (serde). TypeScript types for the window are **generated** (`ts-rs`, committed, CI fails if stale), and JSON Schema for extractors is generated (`schemars`, ADR-0034). That avoids the Fletcher `HistNode`/`HistTreeNode` copy bug (TB-082). |
 | 46 | Three test layers: (1) a **conformance suite**, small fixtures per rule that every language extractor must pass the same way; (2) **targeted Fletcher assertions** taken from the hand-traced keys (e.g. `graftNode` writes `children/nodes/current/next`; `invoke("history_save")` ↔ `fn history_save`); (3) an **oracle report** comparing against each toolchain's own "find all references", which prints the static resolution rate (TB-097). It's informative and doesn't block. No whole-graph golden files (too brittle). |
 
-### BQ-33: Views: whole documents or edits to a live view — OPEN
+### BQ-33: Views: whole documents or edits to a live view — DECIDED BY CLAUDE (Round 6 table)
 - Options:
   - (a) A complete view document every call.
   - (b) Imperative edits to a server-held current view.
@@ -429,7 +429,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Free-form markdown/mermaid plus refs.
 - Rec: (a). `provenance` enforces "visibly authored" mechanically.
 
-### BQ-35: Anchors below node level — OPEN
+### BQ-35: Anchors below node level — DECIDED BY CLAUDE (Round 6 table)
 - Case: pseudocode "walk up parents, count steps" should map to the `for (let steps = 1; c != null; steps++)` loop; a highlight on the `< 6` check in `nodeMove`.
 - Options:
   - (a) Node-level only.
@@ -447,7 +447,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Render everything marked "unmapped" (forbidden by ADR-0026).
 - Rec: (b).
 
-### BQ-37: Instance diagrams and before/after frames — OPEN
+### BQ-37: Instance diagrams and before/after frames — DECIDED BY CLAUDE (Round 6 table)
 - Case: `hist.nodes` holding `#0→#4→#5→#6→#7`; `graftNode(7, 4)` adds `#12` and `current` moves.
 - Options:
   - (a) A typed object graph `objects[{id, type_ref, fields{name: value | ->objId}}]` with each field mapped to its field node. A frame is a full instance, and Insight computes the diff.
@@ -497,21 +497,21 @@ What's the first thing that runs, and what's its pass condition?
   - (c) None.
 - Rec: (a).
 
-### BQ-42: No window open — OPEN
+### BQ-42: No window open — DECIDED BY CLAUDE (Round 6 table)
 - Options:
   - (a) Validate, store as the latest view, and return `window: not connected`.
   - (b) Error.
   - (c) Auto-launch the window.
 - Rec: (a), with auto-launch as an opt-in later. Headless is what makes it testable.
 
-### BQ-43: The push channel to the window — OPEN
+### BQ-43: The push channel to the window — DECIDED: local named pipe + Tauri events (Round 6 table; the WebSocket recommendation below is superseded)
 - Options:
   - (a) The backend hosts a WebSocket on an ephemeral 127.0.0.1 port with a token, and writes `%LOCALAPPDATA%\Insight\run\session.json` for the window to find.
   - (b) A named pipe relayed by Tauri events.
   - (c) A watched file.
 - Rec: (a). It works for Tauri, a browser tab and a test client alike.
 
-### BQ-44: Where the contract types are defined — OPEN
+### BQ-44: Where the contract types are defined — DECIDED BY CLAUDE (Round 6 table)
 - Case: adding a `timing` field must not silently drop out of the window. That's the same bug class as Fletcher's `HistNode` → `HistTreeNode` copy (TB-082).
 - Options:
   - (a) Rust serde types in `insight-contract`, with TS generated (`ts-rs` or `specta`), committed, and checked in CI.
@@ -531,7 +531,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Vendored files.
 - Rec: (a). It works in public CI (Insight is Apache-2.0).
 
-### BQ-46: The solver correctness suite — OPEN
+### BQ-46: The solver correctness suite — DECIDED BY CLAUDE (Round 6 table)
 - Options:
   - (a) Synthetic fixtures per rule plus curated assertions on Fletcher (e.g. `graftNode` writes `children/nodes/current/next`; `setHistVersion` ↔ the autosave deps; `invoke("history_save")` ↔ `fn history_save` → `fsx::write_atomic`).
   - (b) (a) plus whole-graph snapshot goldens.

@@ -1,28 +1,29 @@
 # Roadmap
 
-This file always states the **current focus**. Update it when the focus changes. Phases after 0 are provisional and will be reshaped by discovery.
+This file always states the **current focus**. Update it when the focus changes. Phases after the MVP are provisional and are reshaped by real use (BQ-45).
 
 ## Current focus
-**Question round complete; next: build M0** (ADR-0030; BQ-02). All backend questions in `docs/BUILD-QUESTIONS.md` are answered. Build order: M0 (`insight build` stats on a chosen repo) → M1 (`insight path … --to …`: algorithmic reachability with receipts, cycles and recursion reported; gate = drag steps 3 and 5–11 from `nodeUp` plus steps 1, 2 and 4 from `nodeDown`, R2-12) → M2 (the same over MCP in Claude Code) → the app and window.
+**Build M0** (ADR-0030; BQ-02). Both backend question rounds are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. Build order:
+1. **M0:** `insight build` on a chosen repo. Output goes to a log file, and the terminal shows only the log's path (R2-20). Pass = the function count matches an independent count exactly.
+2. **M1:** `insight path … --to …`: algorithmic reachability with receipts, with cycles and recursion reported (R2-12). Gate = drag steps 3 and 5–11 from `nodeUp`, plus steps 1, 2 and 4 from `nodeDown`.
+3. **M2:** the same over MCP in Claude Code.
+4. **The app and window,** after the frontend session.
 
-*(Earlier focus notes below.)*
-**Phase 0: Discovery, with the MVP now defined (ADR-0019).** Remaining before Phase 1: the Q-20 v1 data-edge cut (scoped to the MVP), a first SCHEMA draft (with node identity, Q-35), and the hand-traced key for TB-100. This is the long conversation. The goal is to get the whole idea out of the user's head and into VISION, ADRs, OPEN-QUESTIONS, and TESTBED. Settled so far: never wrong (ADR-0002), the static map with dynamic overlay (ADR-0003), the free-form knowledge profile (ADR-0004), annotations as committed repo files (ADR-0005), and the deterministic graph with the LLM tool API (ADR-0006). Also settled: language plugins (ADR-0007), containers + control edges (ADR-0008), and inline-first annotations (ADR-0009). The learning loop now has evidence (`docs/research/2026-10-learning-session-patterns.md`) and two new questions: the explanation layer and journal (Q-22), and the explain-differently ladder (Q-23). Settled: show, then tell (ADR-0010) and step-throughs with real values (ADR-0011; mechanism in Q-24). Purpose reframed (ADR-0012): learning ~60%, oversight of AI-written code ~40%, which adds the system diff (Q-25), expectations (Q-26), and directing agents from the graph (Q-27). The oversight loop is validated in `docs/examples/oversight-loop-worked-example.md`. Tracing strategy accepted (ADR-0015: static first, LLM where unsure, log probes as the runtime tracer); language set and build order accepted (ADR-0016: TS + Rust first; then Python, C/C++, Go, SQL; then Kotlin/Java, Swift, C#; definition and glue languages as wire links need them). Multi-codebase workspaces with wire links accepted (ADR-0014; matching in Q-28, value lineage in Q-29). Q-21 accepted as ADR-0013 (supersedes ADR-0006). The user notes it's hand-wavy, so the mechanisms go to a Phase 1 compiler spike. Next: (how much power the LLM has, which would supersede ADR-0006); data and boundary edges (Q-20); the annotation format and claim vocabulary (Q-15); and the editor relationship (Q-10/Q-18).
+## Phase 0: Discovery ✅ (2026-10-09)
+Design and both backend question rounds are complete (ADR-0001…ADR-0046, `docs/BUILD-QUESTIONS.md`).
 
-## Phase 0: Discovery (started 2026-10-09)
-- Map the full idea into docs: every decision becomes an ADR, every debate a Q-ID, every edge case a TB-ID.
-- Exit when Q-04, Q-05, Q-11, Q-15, and Q-18 are resolved. (Q-01 and Q-02 are already resolved.)
-
-## Phase 1: Research spikes
-- **UI + tool API spike (ADR-0024: this is the product).** The model calls tools that highlight, focus, and step on a real graph while it explains.
-- *(Deprioritized by ADR-0024: build only if real use demands it)* **Compiler spike (ADR-0013 is a rule set, not yet a mechanism).** On a small real codebase: quote-receipt matching, 3–5 claim kinds with deterministic checks, a chain receipt, a broken-receipt → re-anchor cycle, and redundant-claim linting. Rules that can't be built as stated get superseded.
-- LLM provider access and auth options (Q-06).
-- Analysis tooling: tree-sitter vs. LSP / rust-analyzer vs. SCIP, and runtime instrumentation (Q-02, Q-03).
-- Graph rendering and layout at scale (Q-08).
-- Output: reports in `docs/research/`, ADRs for the stack, and a frozen `SCHEMA.md` for the graph model.
+## Phase 1: Build the backend headless (M0–M2)
+- Scaffold the Cargo workspace (BQ-03), the extractors (TS compiler API, and a separate rust-analyzer helper; ADR-0034, R2-27), the build check (ADR-0036), and SQLite snapshot output (ADR-0038, R2-30).
+- Write `SCHEMA.md` from BQ-09 and the ADR-0038 / R2-30 tables at M0.
+- The `path` tool (R2-12), then the MCP bridge (ADR-0031, R2-13/14/33).
+- *Only if real use demands it:* claim checks / the compiler mechanism (ADR-0024).
+- Still open: the graph rendering and layout library (Q-08).
 
 ## Phase 2: Tracer bullet = the MVP (ADR-0019)
-Shape (ADR-0025): you ask Claude Code in the terminal, and it answers while driving the Insight window through MCP tools. Done when Fletcher answers: **"How does dragging a node onto another node work?"** (TB-100), matching the hand-traced key in `docs/examples/fletcher-history-graft-worked-example.md`. (The sensor "is the frequency correct?" question, TB-101, is the post-MVP cross-device target.) In scope: TS + Rust + the Tauri bridge static graph, effects, data-structure facts, timing kinds (ADR-0018), show-then-tell, the assurance trace (Q-31), and receipts. Out of scope: step-throughs, oversight, wire links, journal, live mode.
-One trigger in one small real codebase, end to end: trace → graph → LLM labels → zoomable view → chat about a bubble. **Lead candidate: Fletcher** (the user's open-source Tauri app: real, vibe-coded monolith, has its own docs for the "why"). The target question is already traced by hand in `docs/examples/fletcher-history-graft-worked-example.md`, so the tracer bullet has a known-correct answer to match. Fallback: Insight itself once it has code (TB-007).
+Shape (ADR-0025): you ask Claude Code in the terminal, and it answers while driving the Insight window through MCP tools. Done when Fletcher answers **"How does dragging a node onto another node work?"** (TB-100), matching the hand-traced key in `docs/examples/fletcher-history-graft-worked-example.md`.
+- **In scope:** the TS + Rust + Tauri-bridge static graph; build → SQL → `show` → window, with Claude answering in the terminal; all nine view elements, including steps (ADR-0040); receipts; the `path` and `compare` tools (R2-12, ADR-0041). Effects, timing meaning and the assurance trace are the model's output over the graph (ADR-0023).
+- **Out of scope:** executed/verified step-throughs, oversight (system diff, expectations), wire links, the journal.
+- The sensor "is the frequency correct?" question (TB-101) is the post-MVP cross-device target. Fletcher is the user's chosen test repo, not a dependency (BQ-45).
 
 ## Phase 3+: To be defined
-Breadth (more languages and trigger kinds), freshness, and learning UX. Shaped by what Phase 2 teaches.
+Breadth (more languages, oversight, multi-repo projects), shaped by real use and the wish list in `INSIGHT.md` (ADR-0044).

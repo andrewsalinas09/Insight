@@ -4,6 +4,50 @@ Unresolved design debates. Each gets an ID; when settled, mark `Resolved → ADR
 
 Source: the original pitch (`docs/archive/2026-10-09-original-pitch.md`) and the kickoff session.
 
+## Current status of every question (authoritative; updated after the R2 round, 2026-10-09)
+
+The entries below keep their discussion history. **Where a "Status:" line inside an entry disagrees with this table, this table wins.**
+
+| Q | Status |
+|---|---|
+| Q-01 | Resolved → ADR-0002, scoped by ADR-0041 |
+| Q-02 | Resolved → ADR-0003 (dynamic overlay post-MVP) |
+| Q-03 | Resolved → ADR-0016 (set and order); tooling → ADR-0034 / R2-15 |
+| Q-04 | Largely resolved by BQ-09/BQ-18 and R2-30. Remaining: how bubble inputs/outputs are drawn (frontend session) |
+| Q-05 | Partly resolved: mapping a prompt to entry points is the model's job via SQL (ADR-0035, ADR-0038). Open: pointing at an element in the running app (post-MVP) |
+| Q-06 | Closed by ADR-0025 |
+| Q-07 | Open, reduced by ADR-0025. Known so far: the build check runs build scripts and proc macros (ADR-0036, BQ-06); npm uses `--ignore-scripts` for installs (BQ-07); the MCP surface is a local named pipe (BQ-42/43); the signing key never leaves its store (ADR-0046) |
+| Q-08 | Partly resolved: analysis engines (ADR-0034); app shell = standalone app on Tauri 2 (ADR-0031, R2-13). Open: rendering and layout library (frontend session) |
+| Q-09 | Closed by ADR-0029 |
+| Q-10 | Resolved → ADR-0017 + ADR-0025: Insight never edits code (the agent does); it is the instrument beside the editor |
+| Q-11 | Resolved → ADR-0012 + ADR-0025 |
+| Q-12 | Model cost closed by ADR-0025 (Insight calls no model). Open: build and query latency targets (BQ-25, R2-19) |
+| Q-13 | Resolved: teaching moves are the model's (ADR-0035); Insight provides Steps and play mode (ADR-0040, BQ-39) |
+| Q-14 | Closed by ADR-0025 |
+| Q-15 | Resolved → ADR-0043 |
+| Q-16 | Resolved → ADR-0004 (lives in INSIGHT.md, ADR-0044) |
+| Q-17 | Open, post-MVP; runs are self-check tools for the model (ADR-0015, ADR-0037) |
+| Q-18 | Resolved by R2-10/10b and R2-17: snapshots ride the project's own successful builds (agent-agnostic after-build hook, plus Snapshot now); a working copy is exactly what built |
+| Q-19 | Resolved → ADR-0026 + ADR-0040 (views pinned to their snapshot, ADR-0029; storage in Q-37) |
+| Q-20 | Resolved → ADR-0023 + BQ-09/13/14/17 (Round 3) |
+| Q-21 | Resolved → ADR-0013, later amended by ADR-0024/0026/0029/0037 and R2-03 |
+| Q-22 | Open, post-MVP (journal). Entries pinned to their snapshot (ADR-0029); sharing is low priority (ADR-0025) |
+| Q-23 | Resolved: angles are the model's (ADR-0035, ADR-0037); visual angles = ADR-0040 elements |
+| Q-24 | Open, post-MVP; amended by ADR-0037 (self-check tools, not a gate). Non-building code is out of scope (ADR-0036) |
+| Q-25 | Open, post-MVP. Node matching → ADR-0028 (model reconciles); a diff is two snapshots in SQL (R2-32); prompt baseline → R2-34; presentation → frontend session |
+| Q-26 | Open, post-MVP. Query language = SQL (ADR-0038); storage and re-run timing open (with Q-37) |
+| Q-27 | Resolved → ADR-0017 (sub-questions: no hosting, ADR-0025; the agent queries mid-task via `sql`) |
+| Q-28 | Open, later. Exact matching = same-literal links (BQ-22); "same message" pairs are the model's (R2-38) |
+| Q-29 | Open, later. Def-use reach = one-hop value flow + declaration identity (BQ-13/15) |
+| Q-30 | Resolved → ADR-0021, amended by R2-09 (question box = terminal; layout deferred) |
+| Q-31 | Open (MVP output is the model's): the solver returns everything connected; the model sorts it (ADR-0023); fallbacks are a neutral row |
+| Q-32 | Open, low priority |
+| Q-33 | Mostly answered by BQ-45/46/47 + ADR-0037: generic CI fixtures, local untracked testbeds, an oracle report, and Claude tests from a dev session |
+| Q-34 | Resolved → ADR-0038 |
+| Q-35 | Resolved → ADR-0028 |
+| Q-36 | Open (frontend session / later) |
+| Q-37 | Open (frontend session). MVP: views aren't saved; the app holds the current view (BQ-33), and the loaded projects are restored on restart (R2-22) |
+
 ## Q-01: The truth model — **Resolved → ADR-0002**
 The graph may be incomplete, never wrong. Code analysis owns the structure; LLM output is verified or labeled as interpretation.
 

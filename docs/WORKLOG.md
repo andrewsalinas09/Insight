@@ -12,6 +12,17 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Docs consistency cleanup after the R2 round
+**Done:** Applied the consistency audit's stale-text list (approved by the user), reconciled with every R2 ruling (ADR-0041…0046 and R2-01…R2-33).
+- **Rewrote the living docs to describe now:** CLAUDE.md/AGENTS.md (build phase, stack, doc map, SCHEMA.md created at M0), README, VISION (goals updated; "What this is not" filled in), ARCHITECTURE (usage, pipeline, division of labor, graph model, snapshots, post-MVP, stack), GLOSSARY (re-sorted; superseded terms replaced; new terms such as snapshot, project, tag, receipt, extractor, causal order, view element), ROADMAP (M0→M2, Phase 0 done).
+- **Added authoritative status tables** at the top of OPEN-QUESTIONS (every Q) and TESTBED (every changed TB), so the original entries keep their history.
+- **Fixed stale headers in BUILD-QUESTIONS:** BQ-09…22, 33, 35, 37, 42–44 and 46 now show "decided"; BQ-24 notes SQLite.
+- **Appended amendment notes to ADR status lines** (0003, 0005, 0007, 0008, 0009, 0012, 0013, 0014, 0015, 0016, 0018, 0019, 0020, 0025). No ADR bodies were changed.
+- The proprietary-name check is clean.
+
+**Learned:** With ~46 ADRs amended many times over, status tables at the top of OPEN-QUESTIONS and TESTBED are the only practical way to keep current state findable without rewriting history.
+**Next:** The next review round requested by the user, then M0.
+
 ## 2026-10-09 (cont.) — Backend question round complete
 **Done:** Answered all 47 build questions with the user one at a time, plus the delegated ones. New ADRs: 0031 (standalone app, Claude drives it via MCP, stdio bridge), 0032 (tags are the compiler, opt-in modes), 0033 (language semantics live in plugins), 0034 (each language's best native toolchain via its own API, NDJSON facts), 0035 (the intelligence principle), 0036 (a snapshot must build; working copy allowed; multi-codebase), 0037 (defer to the intelligence; verification is a tool; Claude tests interactively), 0038 (Claude queries the graph in SQL over per-snapshot SQLite), 0039 (fixed tool, free composition, wishes go to the user), 0040 (nine-element view vocabulary). Delegated decisions are recorded in BUILD-QUESTIONS (Rounds 3 and 6, BQ-03/04/07/24 details). BQ-45: Insight never depends on Fletcher; CI uses generic fixtures; real-repo tests are local and untracked, so proprietary code never reaches the public repo.
 **Learned:** The user's corrections kept pulling intelligence out of the tool (no cwd default, no --to-effect, SQL instead of fixed queries, no mods, no value policing) and pushing toward reuse of existing tools. ADR-0035 is the rule that predicts them.

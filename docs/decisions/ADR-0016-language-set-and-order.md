@@ -1,6 +1,6 @@
 # ADR-0016: The supported language set and build order
 
-- **Status:** Accepted
+- **Status:** Accepted; tooling per language decided by ADR-0034 and R2-15
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 7. The core list is the user's; additions were proposed by Claude and accepted ("yes I agree with everything you said, add them")
 

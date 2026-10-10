@@ -1,6 +1,6 @@
 # ADR-0018: Time is explicit, never implied by edges
 
-- **Status:** Accepted; refined by ADR-0042 (time = causal order: ordered vs. "order unknown" at await points and functions handed to outside code; race candidates are a query; timing-kind labels and the swimlane view dropped)
+- **Status:** Accepted; refined by ADR-0042 (time = causal order: ordered vs. "order unknown" at await points and functions handed to outside code; race candidates are a query; timing-kind labels and the swimlane view dropped); also amended by ADR-0033 (language-level async is a plugin fact)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("Time needs to be very clear, I thought it would be clear with the edges but maybe it's not. That needs to be very explicit")
 

@@ -1,6 +1,6 @@
 # ADR-0025: A personal tool. You ask in the terminal; your agent drives the Insight desktop window
 
-- **Status:** Accepted
+- **Status:** Accepted; binaries named in R2-13 (insight.exe + insight-app.exe); two-way parity (R2-09)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("I would like for it to be in terminal if possible… it's single person on single thing so I think terminal / desktop makes the most sense. We're not really integrated, this isn't an application for other people"). On cost, the user noted that Claude's API credit allowances aren't much for Opus-class usage, while subscription agents (Claude Code, Codex) run against plan usage. These are the user's statements, not independently verified.
 

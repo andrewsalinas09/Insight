@@ -1,6 +1,6 @@
 # ADR-0007: Language support is pluggable; the core is language-agnostic
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0033/0034 (plugins are native-toolchain extractors emitting NDJSON); claim checks deprioritized (ADR-0024)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 3 ("This is not just rust… it must be able to have things for any language like a simple plugin / parser / whatever you may need")
 

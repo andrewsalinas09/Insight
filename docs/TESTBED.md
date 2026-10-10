@@ -2,9 +2,95 @@
 
 The permanent catalog of edge cases. **Every proposed design change must be checked against every case here. Every new edge case gets an entry the moment it's raised — before it's solved.** A design change that breaks any Solved case is rejected or must supersede the relevant ADR.
 
-Statuses: **Solved (design)** means a documented mechanism handles it (cite the ADR or doc). **Partial** means it's mostly handled, with a named gap. **OPEN** means there's no accepted answer yet (it should have a Q-ID in OPEN-QUESTIONS).
+Statuses: **Solved (design)** means a documented mechanism handles it (cite the ADR or doc). **Partial** means it's mostly handled, with a named gap. **OPEN** means there's no accepted answer yet (it should have a Q-ID in OPEN-QUESTIONS). **Out of scope** means a decision removed the case (cite the ADR).
 
 These are design-time tests today. Once code exists, each becomes an executable fixture: a small real codebase plus the expected graph.
+
+## Status update after the R2 round (authoritative, 2026-10-09)
+
+The cases below keep their original text and answers as history. **Where a case's own Status line disagrees with this table, this table wins.** Cases not listed are unchanged.
+
+| TB | Status now |
+|---|---|
+| 001 | Solved (design): `call` edges between function containers (BQ-09) |
+| 003 | Solved (design): one-hop value flow gives `possible` edges (BQ-15); callbacks into externals get `value-flow` (BQ-16) |
+| 004 | Solved (design): the graph stores edges, not paths; `path` reports recursion (BQ-09, R2-12) |
+| 005 | Solved (design) for TS/Rust: rust-analyzer with proc macros on (BQ-06) on code that always builds (ADR-0036); TS compiler API (ADR-0034) |
+| 006 | Partial: possible edges + same-literal links (BQ-15, BQ-22); computed keys stay `unresolved` (R2-03) |
+| 007 | Solved (design): Tauri command link (BQ-21, R2-31) + JSX render calls (BQ-16) |
+| 008 | OPEN, post-MVP: route strings may link via same-literal links (BQ-22) |
+| 009 | Partial: same-literal links (BQ-22); what a listener means is the model's (ADR-0023) |
+| 010 | Solved (design) for connections: `value-flow` into spawn (BQ-16), channel `cell` (BQ-17); ordering = ADR-0042 (may interleave) |
+| 011 | Solved (design): block containers with condition text (BQ-18); external globals are state (BQ-20) |
+| 012 | Solved (design): block + `exit` edge (BQ-18); naming it is the model's |
+| 013 | Solved (design): one `exit` per `?` (BQ-18); grouping via Groups/Collapse (ADR-0040) |
+| 014 | Partial: `throw` is an `exit` edge and `catch` is a block (BQ-18); the throw→catch connection isn't an edge |
+| 015 | Partial: a block per arm (BQ-18); layout is a frontend question |
+| 016 | Partial: loops are blocks (BQ-18); break/continue aren't modeled |
+| 017 | Solved (design): blocks, not paths (BQ-09/18); `path` visits each node once (R2-12) |
+| 018 | Partial: one external leaf per symbol (BQ-20); expanding into dependencies isn't designed |
+| 019 | Solved (design): all projects in a repo (R2-26); several repos = one Insight project (ADR-0045) |
+| 020 | Solved (design): everything the build compiles is in the fact layer (BQ-20, R2-17); what to show is curation (ADR-0022) |
+| 021 | Partial: JSX props bind handlers (BQ-16); picking in the running app is open (Q-05) |
+| 023 | Solved (design): the agent maps the prompt via SQL (ADR-0025, ADR-0035) |
+| 024 | Solved (design): labels are the model's notes, shown as interpretation (ADR-0041); the real code is one `source` call away |
+| 025 | Solved (design): ADR-0029 |
+| 026 | Partial: labeling cost is moot (ADR-0025); build cost and latency are open (Q-12) |
+| 027 | Solved (design): complete fact layer (ADR-0022); unreachability is a query |
+| 028 | Solved (design): the model's judgment (ADR-0035) |
+| 029 | Out of scope (ADR-0036) |
+| 030 | Solved (design): views reference only real nodes and edges; bad references return errors (ADR-0040, R2-02, BQ-36) |
+| 031 | Solved (design): linked references resolve (BQ-40); plain prose is the model's responsibility (ADR-0037, ADR-0041) |
+| 032 | Solved (design): ADR-0029 |
+| 040 | Solved (design): there's no add-edge tool (ADR-0039); the model notes it or picks a `possible` edge (R2-03) |
+| 041 | Solved (design): declaration-symbol state identity connects reads and writes regardless of injection (BQ-13, ADR-0023) |
+| 042 | Solved (design): BQ-13 + BQ-14 (`access` through locks) |
+| 043 | Solved (design): TB-007 + TB-042 + ADR-0040 groups and excerpts |
+| 044 | Solved (design): no claim compiler (ADR-0024); tags are declared, not checked (ADR-0032, ADR-0043) |
+| 046 | Solved (design) for TS/Rust via native toolchains (ADR-0034) |
+| 047 | Solved (design): callback candidates come from BQ-15; there's no inferred tier (R2-03) |
+| 048 | Solved (design): ADR-0029 |
+| 049 | Solved (design): Collapse and abstraction nodes expand to real nodes (ADR-0040) |
+| 050 | Solved (design): ADR-0026/0040 abstraction node |
+| 051 | Solved (design): exact spans within an immutable snapshot (BQ-12, ADR-0029) |
+| 052 | Solved (design): `path` with options (R2-12) |
+| 053 | Solved (design): a `possible` edge per assigned value, plus "absent" (BQ-15) |
+| 054 | Solved (design): tagging is opt-in per project (ADR-0032); annotations are optional (ADR-0024) |
+| 055 | Solved (design): no annotation; the model explains live (ADR-0024) |
+| 056 | Deferred to the frontend session (R2-11, "+N hidden") |
+| 057 | Solved (design): the model's call, reading code via `source` (ADR-0035) |
+| 058 | Out of scope for Insight: the model's teaching judgment (ADR-0035); journal post-MVP |
+| 059 | Solved (design): external leaves name their crate or package (BQ-20) |
+| 060 | Solved (design): Steps + Example data (ADR-0040) |
+| 061 | Solved (design): the model drives a Steps view (ADR-0040, BQ-39) |
+| 062 | OPEN, post-MVP (journal) |
+| 063 | Accepted risk: rewrites are the model's responsibility (ADR-0037); the real code is one expand away |
+| 064 | Solved (design): ADR-0029 |
+| 065 | Solved (design): Steps + Example data (ADR-0040), race candidates (ADR-0042); triggering the race is an optional self-check, post-MVP (ADR-0037) |
+| 066 | Out of scope (R2-07, ADR-0037) |
+| 070 | Post-MVP: the model may verify with the run tool before showing (ADR-0037); not a gate |
+| 071 | Out of scope (ADR-0036) |
+| 072 | OPEN, post-MVP: the model judges what to stub (ADR-0023); Q-07 |
+| 075 | Partial: the query is SQL (ADR-0038); storage and re-run timing open (Q-26, Q-37) |
+| 076 | Solved (design): the model reads the two-snapshot diff (ADR-0028, R2-32) |
+| 078 | Partial: the count is a SQL query (ADR-0038); post-MVP |
+| 080 | Partial: the query is SQL (ADR-0038); storage and re-run timing open (Q-26, Q-37) |
+| 081 | Solved (design): BQ-15 gives `onGraft?.()` main / pop-out / none; `hist-cmd` via BQ-22 |
+| 082 | Solved (design) for facts (BQ-13); the shape comparison is the model's (ADR-0035), or `compare` (ADR-0041) |
+| 083 | Solved (design): Tauri link (BQ-21) + call/write path to `fsx::write_atomic` (R2-12); "system-wide" is the model's |
+| 084 | Solved (design): `access` on `hist` (BQ-14) + setter `cell` (BQ-17); the check is a query or the model's |
+| 085 | Solved (design): the empty catch is an anonymous function with no calls (ADR-0022); reachability is a query |
+| 086 | Solved (design): ADR-0008 clarification + ADR-0022 + BQ-10 |
+| 090 | Partial, later: probes (ADR-0015); firmware builds (R2-37) |
+| 091 | Solved (design): a model-composed view with Collapse (ADR-0040) |
+| 095 | OPEN, post-MVP (ADR-0016 SQL plugin; ADR-0023) |
+| 097 | Measured by the BQ-46 oracle report (resolution rate per run) |
+| 098 | Solved (design): the model sorts the connected facts, with fallbacks as a neutral row (ADR-0023, Q-31) |
+| 099 | Solved (design): causal order (ADR-0042); `await` and handed-off functions are marked *may interleave* |
+| 100 | OPEN: the MVP acceptance test; M1 gate restated in R2-12 |
+| 102 | Solved (design): unchanged (BQ-17) |
+| 105 | Solved (design): code-standing elements must resolve, others are free (R2-02) |
+| 106 | Solved (design): Example data + frames (ADR-0040, R2 Round 6 table) |
 
 ---
 

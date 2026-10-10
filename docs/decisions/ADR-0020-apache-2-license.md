@@ -1,6 +1,6 @@
 # ADR-0020: Insight is open source under Apache-2.0
 
-- **Status:** Accepted
+- **Status:** Accepted; the business-model half of Q-14 was closed by ADR-0025
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("this is apache 2.0")
 

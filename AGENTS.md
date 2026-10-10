@@ -1,6 +1,6 @@
 # Insight
 
-An LLM-powered tool for understanding any codebase visually and interactively. You point it at a codebase and a trigger (a UI click, a CLI command, a function, or a plain-language prompt); it finds every branch of execution that trigger can reach, builds a hierarchical graph of it, has an LLM label the graph in human terms ("validation", "error handling", "retry"), and lets you explore and learn from it in conversation with an AI. Built for a world where most software is vibe coded and the person responsible for it didn't write it line by line. Two purposes on one engine (ADR-0012): **learning** (~60%) and **system-level oversight of AI-written code** (~40%), meaning the IDE and debugger for AI-first development.
+A personal desktop tool for seeing and checking code. Insight builds a complete, deterministic graph of a project (one or more repos) at a commit or at the working copy that just built successfully (ADR-0029, ADR-0036, ADR-0045). You ask your terminal agent (Claude Code, Codex), which queries the graph in SQL and drives the Insight window over MCP to show, group, annotate and step through the real code while it explains (ADR-0025, ADR-0031, ADR-0038–0040). Built for a world where most software is vibe coded and the person responsible for it didn't write it line by line. Two purposes on one engine (ADR-0012): **learning** (~60%) and **system-level oversight of AI-written code** (~40%).
 
 ## The two principles every proposal must pass
 
@@ -9,7 +9,14 @@ An LLM-powered tool for understanding any codebase visually and interactively. Y
 
 ## Current status
 
-**Discovery phase.** There is no code and no committed stack (Tauri 2 is proposed — see Q-08). The work right now is the long design conversation: getting the whole idea out of the user's head into docs, decisions, and open questions before building.
+**Build phase, starting M0.** The design and both backend question rounds are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. Stack:
+- a Rust Cargo workspace (BQ-03);
+- per-language extractors on each project's own native toolchain (ADR-0034, R2-15);
+- one read-only SQLite file per codebase snapshot (ADR-0038);
+- `insight.exe` (CLI and MCP bridge) plus `insight-app.exe` (the window), connected over a local named pipe (ADR-0031, R2-13);
+- Tauri 2 as the window shell.
+
+The graph rendering library is still open (Q-08).
 
 ## Doc map — where everything lives
 
@@ -17,18 +24,18 @@ An LLM-powered tool for understanding any codebase visually and interactively. Y
 |---|---|---|
 | `docs/VISION.md` | Why this exists, north-star goals | Starting any session |
 | `docs/ARCHITECTURE.md` | Current-state design: pipeline, systems | Touching design |
-| `docs/GLOSSARY.md` | Domain terms (trigger, branch edge, bubble, label…) | A term is unfamiliar |
+| `docs/GLOSSARY.md` | Domain terms (snapshot, receipt, tag, view element…) | A term is unfamiliar |
 | `docs/decisions/` | One ADR per settled decision, with the *why* | Before proposing any design change |
 | `docs/OPEN-QUESTIONS.md` | Unresolved debates, each with an ID and status | Before designing anything new |
 | `docs/TESTBED.md` | Every known edge case (TB-IDs); the design acceptance suite | Before AND after any design change |
 | `docs/examples/` | Worked examples tracing real code through the design | When applying or testing a pattern |
 | `docs/research/` | Research reports (tooling, LLM providers, rendering) | When a question needs evidence |
-| `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-IDs), asked one at a time | Before any backend design or code |
+| `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ- and R2-IDs), asked one at a time | Before any backend design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |
 | `docs/archive/` | Original raw notes, verbatim | Almost never (history only) |
 
-`docs/SCHEMA.md` (the frozen graph model) does not exist yet; it is created when Phase 1 freezes the model, and becomes normative.
+`docs/SCHEMA.md` (the graph model) does not exist yet. It is created at M0 from BQ-09 (node and edge kinds) and the SQL schema (ADR-0038, R2-30), and then becomes normative.
 
 ## Rules for every agent session
 

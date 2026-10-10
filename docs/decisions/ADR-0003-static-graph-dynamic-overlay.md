@@ -1,6 +1,6 @@
 # ADR-0003: Hybrid tracing: the static graph is the map, dynamic runs are overlays
 
-- **Status:** Accepted
+- **Status:** Accepted; the dynamic overlay is post-MVP (ADR-0015, ADR-0037)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 1 (Q-02: "Both. Static and then dynamic can show the path of _this_ point")
 

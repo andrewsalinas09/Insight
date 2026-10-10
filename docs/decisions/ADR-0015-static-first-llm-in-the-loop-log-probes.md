@@ -1,6 +1,6 @@
 # ADR-0015: Tracing is static-first, with the LLM in the loop where unsure, and LLM-placed log probes as the universal runtime tracer
 
-- **Status:** Accepted; the "inferred" tier (LLM-added edges) is retired by R2-03 (resolutions are exact / possible / unresolved, plus observed later)
+- **Status:** Accepted; the "inferred" tier (LLM-added edges) is retired by R2-03 (resolutions are exact / possible / unresolved, plus observed later); probes and runs are model self-check tools, post-MVP (ADR-0037)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 7 ("this is one of those things that can be traced with LLM in the loop. The tracer can come from logs (which the LLM can add) but also static analysis is good for like 99% of the time. The calls are direct, and whenever it's unsure LLM can again be in the loop")
 

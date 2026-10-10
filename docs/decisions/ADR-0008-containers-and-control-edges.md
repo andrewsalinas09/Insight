@@ -1,6 +1,6 @@
 # ADR-0008: Bubbles are code's own containers; control edges are calls, branches, returns, throws
 
-- **Status:** Accepted
+- **Status:** Accepted; refined by BQ-09/BQ-18 (branches are block containers; return/throw/? are exit edges; "package" is the module/file level)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 3 (Q-04, partial: "structs classes functions blocks packages files, they all feel logical… control yes calls branches returns throws")
 

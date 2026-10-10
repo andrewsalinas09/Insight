@@ -1,6 +1,6 @@
 # ADR-0012: Two purposes: learning (~60%) and system-level oversight of AI-written code (~40%)
 
-- **Status:** Accepted
+- **Status:** Accepted; the "compiler" mentioned here was deprioritized by ADR-0024; oversight is post-MVP
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 5 ("Actually 40% code development, to have insight into what's actually being vibe coded. The idea is that we no longer inspect line by line. We inspect system by system… There's no good tools for 'debugging' and 'IDE' for AI-first written code")
 

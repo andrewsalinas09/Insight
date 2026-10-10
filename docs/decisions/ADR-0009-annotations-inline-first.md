@@ -1,6 +1,6 @@
 # ADR-0009: Annotations are inline in source first; sidecar files are optional
 
-- **Status:** Accepted; format settled by ADR-0043 (`@insight <keyword>: <value>` parsed mechanically; `tag` first; free text is read by Claude, not parsed)
+- **Status:** Accepted; format settled by ADR-0043 (`@insight <keyword>: <value>` parsed mechanically; `tag` first; free text is read by Claude, not parsed); re-prioritized by ADR-0024 (a capability, not an obligation)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 3 ("primary inline, but also separate if you want / need")
 
