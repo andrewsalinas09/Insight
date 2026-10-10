@@ -34,7 +34,19 @@ Is the backend a headless `insight` program, separate from the window? And how d
 ### BQ-02: The first runnable milestone — ANSWERED (ruling)
 **Ruling:** M0 → M1 → M2 → app. The user flagged that `--to-effect write` puts semantics in the solver (ADR-0023), so **M1 uses an explicit target with pure reachability**: `insight path "HistoryTree › nodeUp" --to "fsx::write_atomic"`. It passes when every receipt in steps 1–12 of the drag-graft example is on the printed path. Semantic targets come via tags (BQ-02b).
 
-### BQ-02b: Tags: declared meaning, parsed statically — OPEN
+### BQ-02b: Tags: declared meaning, parsed statically — ANSWERED → ADR-0032
+**Ruling:** tags are "the compiler". Claude tags inline by default (`@insight tag: …` above the symbol); the sidecar `.insight/tags.toml` is for dependency symbols, with simple `*` globs; plain names only for now.
+
+### BQ-02c: Making sure Claude remembers to tag — OPEN
+User: "My main worry is Claude won't remember to do this. Or it needs to be _very_ easy to say 'hey Claude, don't forget to annotate this with insight'."
+- Options (they can be combined):
+  - (a) **Standing instruction:** Insight's MCP server instructions plus a snippet that `insight init` adds to the repo's CLAUDE.md/AGENTS.md: "when you add or change code that touches the outside world or matters for understanding, add `@insight tag:` comments."
+  - (b) **One-word command:** a Claude Code skill/slash command `/insight-tag` that tags everything in the current uncommitted diff. Saying "tag it" is all you do.
+  - (c) **A mechanical coverage tool:** `tag_coverage` lists, deterministically, what in the current diff calls into a dependency symbol or is a new function with no tag nearby. These are candidates, not judgments, and Claude decides.
+  - (d) **An automatic reminder:** a Claude Code hook that runs `tag_coverage` when Claude finishes a turn that changed code and, if something's untagged, reminds it once.
+- Rec: (a) + (b) + (c) now, and (d) if (a)–(c) still miss things in practice.
+
+*(Original BQ-02b text, kept for history:)*
 User: "maybe this is when the doc comes into play… you simply define what you want in the code file itself (and that gets parsed) or a standalone file… It needs to be extendable."
 - Proposal:
   - A **tag** is any label (`disk-write`, `ui-gesture`, `logger`…) attached to a symbol.
