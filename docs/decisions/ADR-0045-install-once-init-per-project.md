@@ -10,7 +10,7 @@
   - run inside a repo, it creates a **project** named after the folder;
   - `insight init --project <name>` in another repo adds that repo to an existing project.
 - **A project is Insight's unit:** a named set of one or more repos. Opening a project (in the window, or Claude via `load`) loads all its repos together as one multi-codebase snapshot (ADR-0036, BQ-24). Cross-repo link passes (same-literal, and wire links later) run **only within a project**, so unrelated repos never connect.
-- **Where a project lives (proposed, confirmed in R2-16):** `%APPDATA%\Insight\projects\<name>\`, holding the project's `INSIGHT.md` (ADR-0044) and its per-repo build settings. That's outside the repos, so it works across several repos, for old commits, and for proprietary code. `insight init` may also add the tagging snippet to each repo's CLAUDE.md/AGENTS.md (BQ-02c).
+- **Where a project lives (confirmed in R2-16):** `%APPDATA%\Insight\projects\<name>\`, holding the project's `INSIGHT.md` (ADR-0044) and its per-repo build settings. That's outside the repos, so it works across several repos, for old commits, and for proprietary code. `insight init` may also add the tagging snippet to each repo's CLAUDE.md/AGENTS.md (BQ-02c).
 
 ## Why
 The user's real systems span repos (firmware + desktop app), so the natural unit is the project, not the repo. Git's mental model (install the tool once, init where you work) is already familiar.
