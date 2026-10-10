@@ -45,6 +45,28 @@ Zooming in a left-to-right graph moves the camera. Opening a box is what reshape
   - (d) (a) and (c) together, with (b) as a setting.
 - Rec: (d). Explicit opening never moves things unexpectedly. Focus is what makes the graph "reshape based on what's selected". Zoom-to-open is the most magical, but it relayouts while you are moving, so it should be tried before it becomes the default. All three are switchable in the prototype.
 
+**User feedback on the prototype (2026-10-10):** "This is actually really really cool." On zoom-to-open: "I think should switch it a little sooner and when you zoom out it should also be sooner. (with hysteresis since it overlaps in my mind…) We can put these little things in settings too."
+- Prototype v2 opens at 15% of the screen (was 30%).
+- A box opened by zooming closes once you zoom out 20% past the scale it opened at. Both numbers and the animation speed are in a Settings panel.
+- FQ-01 is not closed by this: the user tuned zoom-to-open but didn't choose between the options.
+
+### FQ-06: The visual encoding — OPEN
+User: "we need to figure out how we should actually show things … Lots of color coding … library code, user code, different edge types, structs vs functions … useful just on glance. If you use this a lot the colors and structure can mean something in your head."
+- **Proposal (prototype v2):**
+  - **One meaning per color:** ink for your code's structure and control flow; blue for data (fields, statics, reads, writes); violet for handoffs (a function passed on to run later); grey hatching for library code. Orange is reserved for what Claude is showing you.
+  - **One look per kind of box:**
+    - package: a heavy top rule;
+    - file: plain, with a language tag;
+    - type: a green tint, marked ◆;
+    - function: an ink stripe on the left, marked ƒ;
+    - block: dashed;
+    - field or static: a blue chip;
+    - library: hatched, with a dashed border.
+  - **Lines by kind:** calls are solid ink; possible calls are dashed; handoffs are violet dash-dot; library calls are grey; writes are thick blue; reads are thin blue and drawn from the field to the reader; references taken are dotted blue.
+  - **A legend that is also the filter:** tick a line kind to show it, with its total count. Reads and references start hidden.
+  - **Closed boxes show their size:** lines, functions (ƒ) and types (◆).
+- To be judged on the prototype.
+
 ### FQ-02: Edges between levels — OPEN
 How a call looks when one end is inside a closed box: merged into one line to the box (the prototype, thicker for more calls), ports on the box's sides, or hidden until opened.
 
