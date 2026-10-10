@@ -17,6 +17,6 @@ BQ-01 asked whether the backend is a headless program launched per Claude sessio
 It matches how the user works: an instrument that's open on screen, which both the human and the agent use. One running app means one graph and one window, even with Claude Code and Codex connected together, which avoids BQ-01's duplicate-backend problem.
 
 ## Consequences
-- How Claude Code reaches the running app is a sub-question (BQ-01b): the app hosts a local MCP endpoint, or a small `insight mcp` stdio bridge connects to it (launching the app if needed).
+- **How Claude Code reaches the app (BQ-01b, user chose (b)):** a tiny `insight mcp` stdio bridge, registered once with `claude mcp add insight -- insight mcp`. It forwards each call to the running app and launches `Insight.exe` if it isn't running. It works for any agent that speaks stdio MCP (Claude Code, Codex).
 - Tauri 2 (Q-08) is the natural shell, but backend crates never depend on it.
 - MCP tool parity with the UI becomes a standing requirement for every feature.
