@@ -144,8 +144,9 @@ fn run() -> Result<()> {
     }
     let mut externals = BTreeSet::new();
     let mut states = HashMap::new();
+    let mut next_group = 0u64;
     for (ix, db) in dbs.iter().enumerate() {
-        let mut g = Global { fns, paths, externals, states, db, ix };
+        let mut g = Global { fns, paths, externals, states, db, ix, next_group };
         // Type inference (method resolution) needs the database attached to this thread.
         ra_ap_hir::attach_db(db, || -> Result<()> {
             let mine: Vec<&Indexed> = indexed.iter().filter(|f| f.sema.is_some_and(|(i, _)| i == ix)).collect();
@@ -159,7 +160,7 @@ fn run() -> Result<()> {
             }
             Ok(())
         })?;
-        (fns, paths, externals, states) = (g.fns, g.paths, g.externals, g.states);
+        (fns, paths, externals, states, next_group) = (g.fns, g.paths, g.externals, g.states, g.next_group);
     }
     for id in externals {
         let name = id.rsplit(':').next().unwrap_or(&id).to_string();
@@ -382,6 +383,8 @@ struct Global<'a> {
     /// (database index, FileId) -> repo-relative path.
     paths: HashMap<(usize, FileId), String>,
     externals: BTreeSet<String>,
+    /// Extractor-local group ids for `possible` candidates.
+    next_group: u64,
     /// (file, start, end) of a declaration -> state node id.
     states: HashMap<(String, u32, u32), String>,
     db: &'a RootDatabase,
@@ -429,6 +432,25 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
             match resolve_call(sema, &call) {
                 Callee::Fn(func) => {
                     let (to, external) = target_of(g, func);
+                    // A trait method the call can't pin to one type (a `dyn` or generic
+                    // receiver): every implementation in the analyzed code, as possible
+                    // candidates, like a virtual call.
+                    let impls = if to.is_none() && !external { trait_impls(g, func) } else { Vec::new() };
+                    if !impls.is_empty() {
+                        g.next_group += 1;
+                        for t in impls {
+                            out.emit(Record::Edge(EdgeFact {
+                                kind: EdgeKind::Call,
+                                subkind: None,
+                                from: from.clone(),
+                                to: Some(t),
+                                resolution: Resolution::Possible,
+                                group: Some(g.next_group),
+                                receipts: vec![receipt.clone()],
+                            }))?;
+                        }
+                        break;
+                    }
                     out.emit(Record::Edge(EdgeFact {
                         kind: EdgeKind::Call,
                         subkind: None,
@@ -564,6 +586,31 @@ fn target_of(g: &mut Global<'_>, func: ra_ap_hir::Function) -> (Option<String>, 
         g.externals.insert(id);
         true
     })
+}
+
+/// For a trait method: the function nodes of every implementation of it in the analyzed
+/// code (and the trait's own default body, if it has one there).
+fn trait_impls(g: &mut Global<'_>, func: ra_ap_hir::Function) -> Vec<String> {
+    use ra_ap_hir::{AssocItem, AssocItemContainer};
+    let db = g.db;
+    let Some(assoc) = func.as_assoc_item(db) else { return Vec::new() };
+    let AssocItemContainer::Trait(tr) = assoc.container(db) else { return Vec::new() };
+    let name = func.name(db);
+    let mut out: Vec<String> = Vec::new();
+    for imp in ra_ap_hir::Impl::all_for_trait(db, tr) {
+        for item in imp.items(db) {
+            if let AssocItem::Function(f) = item {
+                if f.name(db) == name {
+                    if let (Some(id), false) = target_of(g, f) {
+                        out.push(id);
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Closures and function items passed as arguments, mapped to their function nodes.

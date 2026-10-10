@@ -35,6 +35,10 @@ pub struct RepoSettings {
     /// The build check (ADR-0036). Empty = discovered defaults (R2-26).
     #[serde(default)]
     pub check: Vec<String>,
+    /// Environment for the install and check commands and the extractors (which run the
+    /// project's build scripts too), e.g. a build-time input file. Approved with the commands.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
 }
 
 /// Extracts and parses every ```` ```insight ```` block in an INSIGHT.md.
@@ -74,7 +78,9 @@ pub struct Commands(pub BTreeMap<String, (Vec<String>, Vec<String>)>);
 
 impl Commands {
     pub fn of(s: &Settings) -> Self {
-        Commands(s.repo.iter().map(|(k, r)| (k.clone(), (r.install.clone(), r.check.clone()))).collect())
+        // Environment entries are approved as part of the install list (`env KEY=VALUE`).
+        let install = |r: &RepoSettings| r.env.iter().map(|(k, v)| format!("env {k}={v}")).chain(r.install.iter().cloned()).collect();
+        Commands(s.repo.iter().map(|(k, r)| (k.clone(), (install(r), r.check.clone()))).collect())
     }
     pub fn fingerprint(&self) -> String {
         let canonical = serde_json::to_vec(&self.0).expect("serializable");

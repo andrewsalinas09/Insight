@@ -302,7 +302,13 @@ for (const abs of fileOrder) {
     if (blocks.length) {
       const bodies = new Set(blocks.map(([, b]) => b));
       ts.forEachChild(n, (c) => {
-        if (!bodies.has(c)) visit(c, nextScope, nextParent);
+        if (bodies.has(c)) return;
+        // A catch clause's block is a body; only its variable belongs to the enclosing container.
+        if (ts.isCatchClause(c)) {
+          if (c.variableDeclaration) visit(c.variableDeclaration, nextScope, nextParent);
+          return;
+        }
+        visit(c, nextScope, nextParent);
       });
       for (const [label, body] of blocks) {
         const id = blockId(label);

@@ -253,7 +253,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     // Install and check, in Insight's tree only, watched by the tripwire (R3-02).
     let toolchain = rustc_version().unwrap_or_else(|_| "unknown".into());
     let target = paths::cargo_target_dir(project, &toolchain)?;
-    let env = vec![("CARGO_TARGET_DIR".to_string(), target.display().to_string())];
+    let mut env = vec![("CARGO_TARGET_DIR".to_string(), target.display().to_string())];
+    env.extend(repo.env.iter().map(|(k, v)| (k.clone(), v.clone())));
     for (kind, list) in [("install", &repo.install), ("check", &repo.check)] {
         for c in list {
             log.line(format!("-- {kind}: {c}"));
@@ -280,7 +281,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     let cache = paths::cache_root()?;
     if !projects.ts_projects.is_empty() {
         log.line(format!("node {}", insight_lang_ts::node_version()?));
-        let cmd = insight_lang_ts::command(&cache, &tree, &projects.ts_projects, FACT_SCHEMA_VERSION)?;
+        let mut cmd = insight_lang_ts::command(&cache, &tree, &projects.ts_projects, FACT_SCHEMA_VERSION)?;
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
         ingest(cmd, "ts", &tree, &exported, &mut w, &mut tally, log)?;
     }
     if !projects.rust_packages.is_empty() {
@@ -290,7 +292,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
         ingest(cmd, "rust", &tree, &exported, &mut w, &mut tally, log)?;
     }
     if !compdbs.is_empty() {
-        let cmd = insight_lang_cpp::command(&tree, &compdbs, FACT_SCHEMA_VERSION)?;
+        let mut cmd = insight_lang_cpp::command(&tree, &compdbs, FACT_SCHEMA_VERSION)?;
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
         ingest(cmd, "cpp", &tree, &exported, &mut w, &mut tally, log)?;
     }
     link_literals(&mut w, &tally, log)?;
