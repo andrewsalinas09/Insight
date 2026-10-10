@@ -5,7 +5,7 @@ An LLM-powered tool for understanding any codebase visually and interactively. Y
 ## The two principles every proposal must pass
 
 1. **Never wrong, only incomplete** (ADR-0002), for Insight's own facts. What Claude says is interpretation, and checkable claims get tools (ADR-0041).
-2. **The intelligence principle** (ADR-0035): the tool does what's trivial (deterministic, by algorithm); the second there's a question, it's the model's. "Tracing a call stack is not intelligent. Explaining how it works is."
+2. **The intelligence principle** (ADR-0035): the tool does what's trivial (deterministic, by algorithm); the second there's a question, it's the model's. "Tracing a call stack is not intelligent. Explaining how it works is." Practical test: if a compiler could do it, it's allowed (ADR-0043).
 
 ## Current status
 

@@ -63,7 +63,7 @@ Options: chat grounded on the selection, guided walkthroughs of a flow, quizzes 
 
 ## Q-14: Distribution and business model — **Closed by ADR-0025** (a personal tool, Apache-2.0 per ADR-0020, no business model)
 
-## Q-15: A defined annotation format, plus a "compiler" that removes hallucinations
+## Q-15: A defined annotation format, plus a "compiler" that removes hallucinations — **Resolved → ADR-0043** (`@insight <keyword>: <value>`, parsed mechanically)
 User idea: a clearly defined documentation style that is generated automatically ("like doxygen but way better"), then run through a compiler that removes hallucinations. The proposed shape (not ruled) splits every annotation into two parts:
 - **Checkable claims**: structured statements such as `calls: validate, write`, `returns Err when: !valid`, `writes: fs`, `reads: config.theme`. The compiler checks each one against the static graph, and a claim that fails is rejected rather than displayed (ADR-0002).
 - **Prose**: free-text explanation that can't be fully verified. It must cite the claims and source spans it relies on, and it's displayed as interpretation. A cheap check flags any identifier mentioned in the prose that doesn't exist in the code.

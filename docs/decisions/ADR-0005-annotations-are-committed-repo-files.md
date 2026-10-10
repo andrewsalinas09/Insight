@@ -1,6 +1,6 @@
 # ADR-0005: Annotations are committed files that live with the repo
 
-- **Status:** Accepted
+- **Status:** Accepted; format settled by ADR-0043 (`@insight <keyword>: <value>` parsed mechanically; `tag` first; free text is read by Claude, not parsed)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 2 (Q-15 sub-question: where annotations live)
 

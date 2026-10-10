@@ -20,3 +20,4 @@ For the first time there's a program that makes intelligent decisions. Writing i
 - This unifies and explains ADR-0023 (solver connects, model understands), ADR-0024 (Insight is the instrument), ADR-0028 (the model reconciles renames), ADR-0032 (tags are declared, not inferred), ADR-0033 (language semantics are the deterministic part) and ADR-0034 (use existing toolchains).
 - It sits beside ADR-0002 ("incomplete, never wrong") as one of the two principles every proposal must pass: *Is this trivial? Then make it exact. Is it a question? Then it's the model's.*
 - Stated aim: verifying that what was built is what you wanted, "in a fast way to keep up". Exact verification is a goal, not a promise ("that's not always possible").
+- **Practical test (ADR-0043, user): "if a compiler could do it, it's allowed."** Parsing, keyword grammars, name resolution and structural checks belong in the tool; interpreting free text belongs to the model.

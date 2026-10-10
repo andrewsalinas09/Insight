@@ -586,7 +586,8 @@ ADR-0036 says refuse if the check fails. BQ-07 still says "fall back to no depen
 - Options: (a) refuse on anything: a failed check, a missing toolchain, failed dependencies; (b) refuse on a failed check, and if a whole language's toolchain is missing, skip that language with a clear notice; delete BQ-07's no-dependencies fallback; (c) allow old commits with a "check skipped" stamp.
 - Rec: (b).
 
-### R2-06: Is anything parsed from source besides tags? — OPEN (vis)
+### R2-06: Is anything parsed from source besides tags? — ANSWERED → ADR-0043
+**Ruling:** if a compiler could do it, it's allowed. `@insight <keyword>: <value>` keywords are parsed (`tag` first; more via the wish rule); compiler-like structural checks are allowed; free-text comments and docs are just text Claude reads.
 ADR-0005/0009 and Q-15 describe annotations as "claims + prose, checked by the compiler". ADR-0024 deprioritized the compiler, ADR-0032 made tags "the compiler", and ADR-0037 says no gating.
 - Options: (a) tags are the only thing Insight parses; ordinary comments are just code the model reads; close Q-15; (b) also parse a free `@insight note:` as unchecked data; (c) keep the claims compiler as a post-MVP plan.
 - Rec: (a).
