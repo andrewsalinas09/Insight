@@ -316,7 +316,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) No persistence.
 - Rec: (a). Including the solver version means a solver bug fix never serves a stale graph. SQLite later only for mutable things (saved views).
 
-### BQ-25: Repo loading, build trigger and time budget — OPEN
+### BQ-25: Repo loading, build trigger and time budget — ANSWERED (explicit loading)
+**Ruling (user):** you load codebases in the Insight app, then open Claude and ask, and Claude sees what's loaded. Or you tell Claude to load them and it calls the load tool. **No default from Claude's working folder:** that guesses intent (ADR-0035). The repo for a loaded folder is decided by git's own rule (walk up to `.git`, i.e. `git rev-parse --show-toplevel`), which is mechanical. A folder outside any git repo is refused. With nothing loaded, tools return "nothing loaded" and Claude asks you or loads it. Builds stay on demand (BQ-07), and a cold build runs in the background with a progress/ETA status Claude can poll.
+
+*(Original question:)*
 - Case: `claude` started in `Fletcher\app` (a subfolder); a cold build might exceed an MCP call timeout.
 - Options:
   - (a) Default to the cwd's repo at HEAD, start building eagerly in the background at MCP startup, override with an `open(repo, rev)` tool, plus `insight build` on the CLI.
