@@ -12,6 +12,33 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — M0 built and passing; SCHEMA.md
+**Done:**
+- **Cargo workspace:**
+  - `insight-model`: the NDJSON protocol.
+  - `insight-engine`: SQLite snapshots, atomic, read-only open.
+  - `insight-solver`: settings, approval fingerprint, gix commit export, install/check in Insight's own tree with the tripwire, discovery, ingest with protocol and byte checks, cache key, count gate, "not analyzed" diagnostics.
+  - `insight-lang-ts` and `insight-lang-rust`: launchers.
+  - `insight-count`: tree-sitter.
+  - `insight-cli`: `init` / `approve` / `build`, log path plus exit code.
+- **Extractors:**
+  - `extractors/ts/extract.mjs` runs on the repo's own TypeScript.
+  - `extractors/rust` (`insight-extract-rust.exe`) runs on rust-analyzer semantics (ra_ap 0.0.345), with build scripts and proc macros on.
+- **M0 result:** Fletcher `cd5d6ff` = 1,936 functions in 24 files, 0 mismatches. Insight on itself passes too.
+- **`docs/SCHEMA.md` written** (normative), with Built/Planned status per concept.
+- **Drifts reported and fixed with the user:**
+  1. Macro-argument functions are now counted. R3-11 says re-parse them; a first cut skipped them.
+  2. The Rust extractor uses full rust-analyzer semantics now, not the parser only. User: don't build scaffolding that M1 tears down.
+  3. Node kinds now follow BQ-09: `kind='container'` with a `subkind`.
+- `extractors/ts` got its own `package.json` and tsconfig, so dogfooding covers the TS extractor.
+
+**Learned:**
+- rust-analyzer crates newer than 0.0.345 need rustc > 1.95 or a newer salsa. `unicode-ident` must stay at 1.0.22 to match rust-analyzer's lexer.
+- `json!({...})` and `matches!(x, Pat)` arguments aren't Rust expressions, so the independent counter needs a per-piece fallback.
+- The cache key must include the DB layout version. Without it, a layout change silently reused an old snapshot.
+
+**Next:** M1: call / read / write / binds / names edges with receipts in both extractors, then `insight path` and the required-hop gate (R3-12).
+
 ## 2026-10-09 (cont.) — Round 4: concept coverage, runtime-Claude simulation, leftovers
 **Done:** Three reviews.
 1. A concept-coverage stress test across TS, Rust, Python, Go, C/C++, Kotlin/Java, Swift, C# and SQL found 14 gaps (P1–P14).

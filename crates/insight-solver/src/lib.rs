@@ -218,6 +218,7 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     let mut h = Sha256::new();
     h.update(commit.as_bytes());
     h.update(FACT_SCHEMA_VERSION.to_le_bytes());
+    h.update(insight_engine::DB_LAYOUT_VERSION.to_le_bytes());
     h.update(&ts_script);
     h.update(&rust_helper);
     h.update(settings::Commands::of(&settings::Settings { tagging: String::new(), repo: [(name.to_string(), repo.clone())].into() }).fingerprint());
@@ -293,7 +294,7 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     log.line(format!("snapshot: {}", snapshot.display()));
     let conn = insight_engine::open_snapshot(&snapshot)?;
     for (lang, kind, n) in insight_engine::node_counts(&conn)? {
-        log.line(format!("  {lang:5} {kind:9} {n}"));
+        log.line(format!("  {lang:5} {kind:19} {n}"));
     }
     Ok(Built { repo: name.to_string(), snapshot, functions: total })
 }

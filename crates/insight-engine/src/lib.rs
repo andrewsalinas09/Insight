@@ -12,7 +12,7 @@ use insight_model::{Diagnostic, FileFact, NodeFact, NodeKind, Severity};
 use rusqlite::{Connection, params};
 
 /// Bumped whenever the table layout changes; recorded in `meta`.
-pub const DB_LAYOUT_VERSION: u32 = 1;
+pub const DB_LAYOUT_VERSION: u32 = 2;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -120,8 +120,8 @@ impl SnapshotWriter {
         let nid = self.next_nid;
         self.next_nid += 1;
         self.conn.execute(
-            "INSERT INTO nodes(nid, path, parent_nid, kind, name, lang, file, byte_start, byte_end, line_start, line_end)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO nodes(nid, path, parent_nid, kind, subkind, name, lang, file, byte_start, byte_end, line_start, line_end)
+             VALUES (?1, ?2, ?3, 'container', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 nid,
                 fact.id,
@@ -178,20 +178,21 @@ pub fn open_snapshot(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-/// Node counts by (lang, kind), for the M0 stats log.
+/// Node counts by (lang, kind/subkind), for the M0 stats log.
 pub fn node_counts(conn: &Connection) -> Result<Vec<(String, String, i64)>> {
-    let mut stmt = conn.prepare("SELECT coalesce(lang,''), kind, count(*) FROM nodes GROUP BY 1, 2 ORDER BY 1, 2")?;
+    let mut stmt = conn.prepare("SELECT coalesce(lang,''), kind || '/' || coalesce(subkind,''), count(*) FROM nodes GROUP BY 1, 2 ORDER BY 1, 2")?;
     let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
 /// Function counts per file and language, for the independent-count check (R3-11).
 pub fn function_counts_by_file(conn: &Connection) -> Result<Vec<(String, i64)>> {
-    let mut stmt = conn.prepare("SELECT file, count(*) FROM nodes WHERE kind = 'function' GROUP BY file ORDER BY file")?;
+    let mut stmt = conn.prepare("SELECT file, count(*) FROM nodes WHERE kind = 'container' AND subkind = 'function' GROUP BY file ORDER BY file")?;
     let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
+/// The container subkind (BQ-09: `container{file|module|type|function|block}`).
 pub fn kind_str(k: NodeKind) -> &'static str {
     match k {
         NodeKind::File => "file",

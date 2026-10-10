@@ -1,0 +1,10 @@
+{
+  "name": "insight-extract-ts",
+  "private": true,
+  "type": "module",
+  "description": "Insight's TS/JS extractor. At runtime it uses the analyzed repo's own TypeScript; this devDependency only lets Insight analyze and check this script itself.",
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "@types/node": "24.0.0"
+  }
+}

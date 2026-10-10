@@ -3,8 +3,8 @@
 This file always states the **current focus**. Update it when the focus changes. Phases after the MVP are provisional and are reshaped by real use (BQ-45).
 
 ## Current focus
-**Build M0** (ADR-0030; BQ-02). All four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. Build order:
-1. **M0:** `insight init` then `insight build Fletcher --commit cd5d6ff` (R3-06, R3-09); commit export from git is part of M0. Output goes to a log file, and the terminal shows only the log's path (R2-20). Pass = the function count matches an independent tree-sitter count exactly (R3-11). **Crates (BQ-03 as amended by R4-C):** `insight-model`, `insight-solver` (pipeline plus the generic same-literal and `names` link passes), `insight-lang-ts` and `insight-lang-rust` (thin launchers for the out-of-process extractors), `insight-engine`, `insight-mcp`, `insight-cli`. No framework link crates (ADR-0048).
+**Build M1** (ADR-0030; BQ-02). All four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. Build order:
+1. **M0 ✅ (2026-10-09):** `insight build Fletcher --commit cd5d6ff` → 1,936 functions in 24 files, 0 mismatches against the independent count; Insight on itself passes too. `docs/SCHEMA.md` written. Not yet built from the M0 list: `insight-mcp` (comes with M2), the "ask first" size estimate with `--yes` (R3-10), and node_modules reuse (R2-25). Spec: `insight init` then `insight build Fletcher --commit cd5d6ff` (R3-06, R3-09); commit export from git is part of M0. Output goes to a log file, and the terminal shows only the log's path (R2-20). Pass = the function count matches an independent tree-sitter count exactly (R3-11). **Crates (BQ-03 as amended by R4-C):** `insight-model`, `insight-solver` (pipeline plus the generic same-literal and `names` link passes), `insight-lang-ts` and `insight-lang-rust` (thin launchers for the out-of-process extractors), `insight-engine`, `insight-mcp`, `insight-cli`. No framework link crates (ADR-0048).
 2. **M1:** `insight path <from> --to <to> --follow …`: algorithmic reachability with receipts, where the caller chooses the hop kinds and cycles and recursion are reported (R2-12, ADR-0047). Gate = the required-hop list for the drag walkthrough, with the Tauri step as a `names` hop (R3-12, ADR-0048).
 3. **M2:** the same over MCP in Claude Code.
 4. **The app and window,** after the frontend session.
@@ -14,7 +14,7 @@ Design and all three backend question rounds are complete (ADR-0001…ADR-0048, 
 
 ## Phase 1: Build the backend headless (M0–M2)
 - Scaffold the Cargo workspace (BQ-03), the extractors (TS compiler API, and a separate rust-analyzer helper; ADR-0034, R2-27), the build check (ADR-0036), and SQLite snapshot output (ADR-0038, R2-30).
-- Write `SCHEMA.md` at M0 from BQ-09, the ADR-0038 / R2-30 tables and the R4-B concept and schema additions (P1–P11, `call_eid`/`arg_index`, `base_nid`, `via_eid`, `has-type`, `origin`, follow-token predicates, pedantic switches per ADR-0049). Finalize `docs/MCP-INSTRUCTIONS.md` at M2.
+- ✅ `SCHEMA.md` (normative), written at M0. Each planned concept is marked with the milestone that brings it. Finalize `docs/MCP-INSTRUCTIONS.md` at M2.
 - The `path` tool (R2-12), then the MCP bridge (ADR-0031, R2-13/14/33).
 - *Only if real use demands it:* claim checks / the compiler mechanism (ADR-0024).
 - Still open: the graph rendering and layout library (Q-08).

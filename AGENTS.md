@@ -10,7 +10,7 @@ A personal desktop tool for seeing and checking code. Insight builds a complete,
 
 ## Current status
 
-**Build phase, starting M0.** The design and all three backend question rounds (BQ, R2, R3) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
+**Build phase: M0 done, building M1.** The design and all four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
 - a Rust Cargo workspace (BQ-03);
 - per-language extractors on each project's own native toolchain (ADR-0034, R2-15), run against a frozen source copy (R3-05);
 - one read-only SQLite file per codebase snapshot (ADR-0038);
@@ -32,12 +32,13 @@ The graph rendering library is still open (Q-08).
 | `docs/examples/` | Worked examples tracing real code through the design | When applying or testing a pattern |
 | `docs/research/` | Research reports (tooling, LLM providers, rendering) | When a question needs evidence |
 | `docs/MCP-INSTRUCTIONS.md` | Draft of the up-front instructions agents receive | Designing or changing MCP tools |
+| `docs/SCHEMA.md` | The graph model (normative) | Touching extractors, the engine or SQL |
 | `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-, R2- and R3-IDs), asked one at a time | Before any backend design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |
 | `docs/archive/` | Original raw notes, verbatim | Almost never (history only) |
 
-`docs/SCHEMA.md` (the graph model) does not exist yet. It is created at M0 from BQ-09 (node and edge kinds) and the SQL schema (ADR-0038, R2-30), and then becomes normative.
+`docs/SCHEMA.md` is the graph model (normative): node and edge kinds, IDs, spans, tables, counting rules, extractor protocol. Each concept is marked Built or Planned (Mn).
 
 ## Rules for every agent session
 
@@ -48,5 +49,5 @@ The graph rendering library is still open (Q-08).
 4b. **Every edge case goes to TESTBED.md the moment it's raised** — before it's solved. Every design change must be checked against every TB case.
 5. **End every session with a WORKLOG entry.** What changed, what was learned, what's next. Use the template at the top of `docs/WORKLOG.md`.
 6. **Living docs describe *now*.** `ARCHITECTURE.md`, `GLOSSARY.md`, `ROADMAP.md` are always current-state — update them in place. History belongs in ADRs, the worklog, and git.
-7. **Graph-model changes touch SCHEMA.md** (normative, once it exists) and, if a decision was involved, an ADR; then sync the derived summaries.
-8. **Document authority:** ADRs, `TESTBED.md`, and (later) `SCHEMA.md` are normative; `ARCHITECTURE.md` and `README.md` are derived — on conflict, normative wins.
+7. **Graph-model changes touch SCHEMA.md** (normative) and, if a decision was involved, an ADR; then sync the derived summaries.
+8. **Document authority:** ADRs, `TESTBED.md`, and `SCHEMA.md` are normative; `ARCHITECTURE.md` and `README.md` are derived — on conflict, normative wins.
