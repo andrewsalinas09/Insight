@@ -574,7 +574,8 @@ ADR-0013/0015/0019 promise an "inferred" tier (LLM additions with receipts). BQ-
 - Options: (a) drop "inferred": the model voices a suspicion in a note or step, or picks one of the solver's `possible` edges; the vocabulary is exact / possible / unresolved, plus "observed" later with probes; (b) add an "authored edge" element, unverified; (c) build the receipt checker.
 - Rec: (a).
 
-### R2-04: How is time shown? — OPEN (vis)
+### R2-04: How is time shown? — ANSWERED → ADR-0042
+**Ruling (user):** time means *causal order*. Ordered code is ordered; `await` and functions handed to outside code (callbacks, spawns, timers, listeners) are order breaks ("may interleave"). Race candidates = unordered regions touching the same state with a write, as a SQL query. Claude judges, and later proves, real races.
 ADR-0018 promises timing kinds on every edge, visible execution contexts, and a first-class swimlane view. The timing owner differs across ADR-0023 (model) and ADR-0033 (plugin, for async/await). BQ-09 has no timing field, and ADR-0040's nine elements have no timing or lanes.
 - Options: (a) language-level `await`/`async` is an edge fact; the model sets an optional `timing` on edges in `show`; lanes are a layout mode for groups (a vocabulary change, through you); (b) timing only in note and step text, dropping swimlanes; (c) a tenth "sequence" element.
 - Rec: (a).
