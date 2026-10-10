@@ -796,10 +796,12 @@ The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncomm
 
 ## R3-C: The CLI and milestones (before M0)
 
-### R3-09: Is `insight init` required, and what does `build` take? — OPEN (vis)
+### R3-09: Is `insight init` required, and what does `build` take? — ANSWERED
+**Ruling:** `insight init` first; then `insight build <project> [--commit <rev>]`. Building an un-init'ed folder refuses with "run insight init first".
 - Rec: `insight init` first, then `insight build <project> [--commit <rev>]`.
 
-### R3-10: How the CLI "asks first" when it only prints a log path — OPEN (vis)
+### R3-10: How the CLI "asks first" when it only prints a log path — ANSWERED
+**Ruling:** a distinct exit code, the size estimate in the log, and re-run with `--yes`. Over MCP, Claude gets "needs confirmation" with the numbers and asks you.
 - Rec: a distinct exit code, the estimate in the log, and re-run with `--yes`. MCP returns "needs confirmation" to Claude.
 
 ### R3-11: What counts as "a function" for M0's exact-count pass — OPEN (vis)
