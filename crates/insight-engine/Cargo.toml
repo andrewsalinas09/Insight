@@ -1,0 +1,14 @@
+[package]
+name = "insight-engine"
+description = "Snapshot storage: one read-only SQLite database per codebase snapshot (ADR-0038, R2-30)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+insight-model.workspace = true
+rusqlite = { version = "0.40.2", features = ["bundled"] }

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "extractors/rust"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/andrewsalinas09/Insight"
+
+[workspace.dependencies]
+insight-model = { path = "crates/insight-model" }
+insight-engine = { path = "crates/insight-engine" }
+insight-solver = { path = "crates/insight-solver" }
+insight-lang-ts = { path = "crates/insight-lang-ts" }
+insight-lang-rust = { path = "crates/insight-lang-rust" }
+insight-count = { path = "crates/insight-count" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
