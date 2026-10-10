@@ -522,7 +522,7 @@ What's the first thing that runs, and what's its pass condition?
 ## Round 7: Testing
 
 ### BQ-45: How tests reach real repos — ANSWERED
-**Ruling (user):** Fletcher is just the repo the user chose to test with; Insight is its own thing and must work on any repo, including proprietary ones. So: no submodule and no repo-specific data in Insight's public repo. **CI runs only the generic per-rule fixtures.** Real-repo testing is local: an untracked list of repos plus pinned commits, with optional hand-written expected answers, kept outside the repo (e.g. `%APPDATA%\Insight\testbeds.toml`). Claude runs it from a development session. Expected answers derived from proprietary code never go in the public repo. Fletcher's existing worked examples stay, since Fletcher is open source.
+**Ruling (user):** Fletcher is just the repo the user chose to test with; Insight is its own thing and must work on any repo, including proprietary ones. So: no submodule and no repo-specific data in Insight's public repo. **CI runs only the generic per-rule fixtures.** Real-repo testing is local: an untracked list of repos plus pinned commits, with optional hand-written expected answers, kept outside the repo (e.g. `%APPDATA%\Insight\testbeds.toml`). Claude runs it from a development session. Expected answers derived from proprietary code never go in the public repo. Fletcher's existing worked examples stay, since Fletcher is open source. **Primary feedback loop (user):** "the testing and updates are from me actually using it and realizing what's missing." Automated tests guard what's built; what to build next comes from real use (through ADR-0039's wish rule).
 
 *(Original question:)*
 - Options:
