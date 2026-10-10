@@ -1,0 +1,12 @@
+[package]
+name = "insight-lang-ts"
+description = "Launcher for the TypeScript/JavaScript extractor (extractors/ts), which runs on the repo's own TypeScript."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.104"

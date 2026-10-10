@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "extractors/rust"]
-default-members = ["crates/*"]
+default-members = ["crates/*", "extractors/rust"]
 
 [workspace.package]
 version = "0.1.0"
