@@ -761,7 +761,8 @@ BQ-07's `--ignore-scripts` claim is dropped; it isn't a security control.
 An after-build snapshot running `npm ci` in place would delete `node_modules` under your running `tauri dev`. Insight's own `tsc -b` would write `.tsbuildinfo` into `app/`.
 - Rec: install steps never run against the live working copy (only in Insight-owned trees), and Insight's own checks write all outputs into its cache. Drop BQ-07's `--ignore-scripts` claim; it isn't a security control.
 
-### R3-03: Secrets — OPEN (vis)
+### R3-03: Secrets — ANSWERED (yes)
+**Ruling:** `source` serves only files in the snapshot's input set; Insight mechanically honors the agent's file deny rules (e.g. Claude Code `Read(.env*)`) for `source` and stored literal text; `insight purge <project>` wipes cached snapshots. No secret-guessing heuristics.
 `source`, string literals and receipts can serve an API key, even one your Claude Code deny rules (`Read(.env*)`) would block. Old snapshots keep secrets you've since removed.
 - Rec: `source` serves only files in the snapshot's input set; mechanically honor the agent's file deny globs for `source` and literal text; add `insight purge <project>`. No guessing which strings look secret.
 
