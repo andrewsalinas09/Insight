@@ -883,3 +883,57 @@ An agent working in a worktree builds and fires the hook.
 13. **Rust `&self` mutation:** `access` when the receiver type contains `UnsafeCell` (computed); otherwise conservative.
 14. **The self-pair race query** (see R3-14).
 15. **Deterministic discovery order** (sorted by path).
+
+---
+
+# Fourth pass (R4): concept coverage, runtime-Claude simulation, leftovers audit (2026-10-09)
+
+## R4-A: User decisions
+- **R4-01 (vis): Where "the language" ends.** Spec-defined builtins (JS `Array.prototype.map`/`bind`/`then`, Python `len`, Rust's `Iterator`/`Future` items, Go's `append`). Rec: **strict.** Language = syntax plus calls the compiler itself inserts or recognizes. Every library function, standard library and ECMAScript builtins included, stays an external leaf. Never wrong, just noisier, and Claude filters. A per-language builtin table only via the wish rule.
+- **R4-02 (vis): Framework "flavors" in the language set.** ADR-0016 lists Arduino/ESP-IDF/Zephyr/FreeRTOS conventions and Vue/Svelte templates. Rec: drop the conventions. Anything with its own compiler (`.ino` preprocessing, Vue/Svelte compilers) is a language, mapped to concepts with no runtime meaning.
+- **R4-03 (vis): A global INSIGHT.md?** Rec: a global file for **prose only** (knowledge notes, preferences); all settings stay per project (R3-07/R3-01). Wishes go in the global file.
+- **R4-04 (vis): Tagging default.** Rec: `insight init` writes `tagging = "on-request"` explicitly into the project's INSIGHT.md, so there's no hidden default.
+
+## R4-B: Internal (vocabulary, schema, tools); pending explicit delegation
+**Concepts (concept-coverage stress test):**
+- P1: a `timing` column (inline / eager-start / deferred-create / concurrent / scope-exit / load / build / unsequenced) for lazy futures, Drop/`defer`/`finally`/RAII, decorators, module load and unsequenced operands.
+- P2: `suspend{await|yield}` plus `resume` edges for generators.
+- P3: implicit calls (operators, accessors, conversions, Deref, Index, iteration, destructors…).
+- P5: exits with kinds and targets; catch types; throws / nothrow / diverges.
+- P6: `binds` for every argument→parameter with modes (value/move/ref/mut-ref/out/inout/pointer) and closure captures.
+- P7: inheritance, overrides, structural conformance, default methods, an open-world candidate.
+- P8: generic bounds plus `instantiates` facts (C++ instantiations later).
+- P9: macro-definition nodes and `expand` edges; inactive `cfg`/`#if` blocks recorded.
+- P10: executing decorators (load timing) plus `annotates` edges for metadata.
+- P11: `imports` edges, module `init` containers, init order where the language defines it, qualified-name `names` matches.
+- Later: P12 (Go/Java/C#/Swift concurrency syntax), P13 (SQL tables plus embedded SQL that parses against the project's schema; this one is user-visible, ask when SQL is built), P14 (linkage/FFI, entry points, memory-mapped registers, unions).
+
+**JSX:** a handoff to the external JSX factory **plus** prop→field `binds` from the TS checker's contextual typing (plain desugaring). Keeps `onGraft → graftNode` for M1. No `call/render`.
+
+**Tools and schema (runtime-Claude simulation):**
+- Follow tokens defined as exact SQL predicates (`names` = function→literal→symbol).
+- `call_eid` and `arg_index` on edges inside argument lists.
+- `base_nid` on state accesses, so 72 `useRef`s don't merge into one.
+- `via_eid` on `access`, so Claude sees *which* method (`Map.get` vs `Map.set`).
+- `has-type` edges plus inline-type IDs.
+- `path` with an optional `from` or `to` (forward/reverse reachability, frontier external leaves) and set-valued ends.
+- `reach()` and `nid()` as built-in SQL table functions.
+- `entries` and `order_breaks` tables plus a `race_candidates` view.
+- `follow` constraints (`max_occurrences`, `target_kind`, `avoid`, `max_depth`) plus an `edges_sql` escape hatch.
+- A path-shaped read-only frozen-source folder (native Grep/Read hit snapshot bytes) plus batched `source`.
+- `path` returns a compact DAG with receipt detail as a parameter.
+- `status` carries DDL, enums, follow-token definitions and views.
+- External leaves carry package/module/version.
+- `show` accepts an embedded path spec.
+- Generated (macro) facts flagged `generated=1`.
+- `sql(max_rows, timeout_ms)` as parameters under hard ceilings (replaces the fixed 200-row cap).
+- `tag_coverage(scope, kinds)` returns untagged symbols and Claude picks.
+- `names` targets every named declaration, with target kind and match count as facts.
+- Wire "pairs" are view notes/groups only, never edges.
+- Plus the ~280-word MCP instructions draft from the simulation.
+
+## R4-C: Cleanup (mechanical, pending OK)
+- Framework remnants: `insight-link-tauri`/`LinkPlugin` in the BQ-03 crate plan; BQ-16 `render`; "JSX handoffs" and "props" wording; R3-13/R3-14 unlabeled old recs; R3-G #2 subkinds; Status notes on ADR-0007/0016/0018/0019/0034; Q-28 "protocol plugins"; a header note on the drag-graft example (the key's effects and timing are the model's answer); scope ADR-0048 to *analysis* (Insight's own Tauri shell is fine).
+- ADR-0047 defaults: BQ-22 positional filter; ADR-0044's "same-literal limit"; the 200-row cap everywhere; `path` caps; R2-12 implicit hop set; `tag_coverage` heuristic; ADR-0021/0022 auto-collapse; Q-19 relevance classifier; Q-25 "refactors collapse".
+- Re-anchor the drag-graft example's line numbers to `cd5d6ff` (they're ~18 lines off; they were traced on the dirty working tree).
+- VISION third principle; OPEN-QUESTIONS stale rows; Q-IDs for open debates.
