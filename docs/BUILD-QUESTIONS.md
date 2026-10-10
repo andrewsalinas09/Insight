@@ -676,11 +676,12 @@ Fletcher at the pinned commit likely fails a plain `cargo check`: Tauri's `gener
 - Rec: (a), amending BQ-20's "git-tracked only" for working copies.
 
 ### R2-18: How Rust names are typed — ANSWERED
-**Ruling (user):** "whatever works. It can search, it shows whatever, and it can choose the scope as needed." Any reasonable form resolves: the full location path, a file path, the language-native name (`fsx::write_atomic`, `HistoryTree.nodeUp`), or a bare unique name. If a name matches several symbols, all candidates come back for Claude to choose from, and Claude can narrow the scope (repo, file, container) as needed. Resolution is mechanical (ADR-0043).
+**Ruling (user):** "whatever works. It can search, it shows whatever, and it can choose the scope as needed." Any reasonable form resolves: the full location path, a file path, the language-native name (`fsx::write_atomic`, `HistoryTree.nodeUp`), or a bare unique name. If a name matches several symbols, all candidates come back for Claude to choose from, and Claude can narrow the scope (repo, file, container) as needed. Resolution is mechanical (ADR-0043). User: "it can query, get back multiple, and then refine based on the feedback."
 - Options: (a) node paths are crate › module › item, and typing `fsx::write_atomic` or `a.b` is normalized, so you type names the way Rust and TS write them; (b) file-path based (`crates/fletcher-core/src/fsx.rs › write_atomic`); (c) both stored.
 - Rec: (a).
 
-### R2-19: When Insight asks before a big build — OPEN (vis)
+### R2-19: When Insight asks before a big build — ANSWERED (a)
+**Ruling:** ask whenever a dependency set (lockfile) has never been built by Insight before, showing exact counts (crates/packages not yet built) and the download size. Warm builds never ask. In normal use, snapshots ride on your own successful build (R2-10), so this mostly applies when Claude loads an old commit with different dependencies.
 Predicting a build's time or size isn't trivial.
 - Options: (a) ask whenever a dependency set (lockfile) has never been built before, showing the exact count of crates/packages to fetch and their download size; warm builds never ask; (b) start, and pause to ask after 3 minutes; (c) never ask, only show an ETA.
 - Rec: (a). It's exact, not a guess.
