@@ -122,7 +122,10 @@ What's the first thing that runs, and what's its pass condition?
   - (e) The native TS port (`tsgo`), when its API is usable.
 - Rec: the solver agent says (a), because field-level state is impossible without types. The architecture agent says (b), for one binary and no Node or PATH surprises. Needs your call.
 
-### BQ-06: The Rust engine and macro expansion — OPEN
+### BQ-06: The Rust engine and macro expansion — ANSWERED (c)
+**Ruling:** rust-analyzer (ADR-0034), with proc macros and build scripts **on**. User: "if my program builds it should be possible". `cargo build` already runs the same dependency code. Fall back to expansion-off only when the snapshot doesn't build (e.g. a half-written dirty tree), and flag that build as partial.
+
+*(Original question:)*
 - Case: `#[tauri::command] fn set_fletcher_chain` is registered only inside `tauri::generate_handler![…]` (`lib.rs:5029`). `#[derive(Serialize)]` generates the field reads. Neither is visible without expanding macros, which runs dependency code.
 - Options:
   - (a) rust-analyzer as a library (`ra_ap_*`), with proc macros and build scripts **on**.
