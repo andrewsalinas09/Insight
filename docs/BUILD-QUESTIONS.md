@@ -552,7 +552,7 @@ What's the first thing that runs, and what's its pass condition?
 
 # Second pass (R2): found by three review agents on 2026-10-09
 
-The agents were (1) a dry run of building M0→M2 and the MVP question, (2) a consistency audit of all ADRs and living docs, and (3) day-to-day workflows. Duplicates are merged. **Vis** = user-visible / internal. Asked one at a time; internal items only by explicit delegation. The audit's stale-text list (part B) is applied *after* these are answered, since many fixes depend on them.
+The agents were (1) a dry run of building M0→M2 and the MVP question, (2) a consistency audit of all ADRs and living docs, and (3) day-to-day workflows. Duplicates are merged. **Vis** = user-visible / internal. **Frontend questions are deferred to their own session** (user, during R2-11). Asked one at a time; internal items only by explicit delegation. The audit's stale-text list (part B) is applied *after* these are answered, since many fixes depend on them.
 
 ## R2-A: Contradictions between accepted decisions
 
@@ -620,7 +620,7 @@ VISION says "shows structure instantly as you work". BQ-07 says builds are on de
 - Options: (a) on request only, and "re-run on every change" becomes "on each new snapshot"; (b) opt-in auto-build of the working copy on save; (c) on every commit.
 - Rec: (a), with (b) via the wish rule if real use wants it.
 
-### R2-11: Is "+N hidden" automatic? — OPEN (vis)
+### R2-11: Is "+N hidden" automatic? — DEFERRED to the frontend session (user: "anything FE will be its own session")
 ADR-0013/0021/0022 say omissions always show "+N hidden". ADR-0040 allows any subset of nodes, with the count only in the Collapse element.
 - Options: (a) the renderer always shows, per visible container, how many real children aren't in the view; (b) only when the model uses Collapse; (c) a per-view option.
 - Rec: (a). Counting is trivial, so it's the tool's job.
@@ -668,15 +668,15 @@ Predicting a build's time or size isn't trivial.
 - Options: (a) per language: files, nodes by kind, edges by kind and resolution, the unresolved rate, and time (check / extract / link). Pass = both extractors run *and* the function count matches an independent count exactly, which catches silently dropped anonymous functions; (b) it runs without error; (c) it matches a hand count for one file.
 - Rec: (a).
 
-### R2-21: You clicking while Claude updates the view — OPEN (vis)
+### R2-21: You clicking while Claude updates the view — DEFERRED to the frontend session
 - Options: (a) the view document (Claude's) and your interaction state (step, expansions, selection) are separate, so Claude's patches keep your place, and `selection` tells Claude where you are; (b) your clicks make new versions, and Claude's stale patches are rejected; (c) Claude's patch resets you.
 - Rec: (a).
 
-### R2-22: What comes back the next day — OPEN (vis)
+### R2-22: What comes back the next day — PARTLY DEFERRED: restoring the last view and step goes to the frontend session; the backend part (which snapshots are loaded) stays OPEN
 - Options: (a) restore the loaded snapshots plus the last view and its step, and `status` lists the last few views (title, when, which session) so a new Claude conversation can say "continue where we left off"; (b) nothing persists; (c) full per-repo view history.
 - Rec: (a).
 
-### R2-23: Two Claude sessions on one window — OPEN (vis)
+### R2-23: Two Claude sessions on one window — DEFERRED to the frontend session (the backend part, that `unload` must not pull a snapshot another session uses, stays with R2-32)
 - Options: (a) the last `show` wins the screen, but every view is labeled with its session and kept in a short history (one click back), and `unload` doesn't pull a snapshot another session is using; (b) last write wins on everything; (c) a tab per session.
 - Rec: (a).
 
@@ -700,7 +700,7 @@ Windows locks a running exe, and open Claude sessions keep their old bridge (and
 ## R2-D: Later (record now, decide when needed)
 
 - **R2-34:** the baseline for "what did this prompt change". Rec: a Claude Code hook records the working tree as a git tree object when you submit a prompt, and it's built only if you ask for a diff. *(vis, oversight)*
-- **R2-35:** can one view show two snapshots (added/removed styling for a system diff)? Rec: yes, with styling computed by Insight. A vocabulary change, through you. *(vis, oversight)*
+- **R2-35 (DEFERRED to the frontend session):** can one view show two snapshots (added/removed styling for a system diff)? Rec: yes, with styling computed by Insight. A vocabulary change, through you. *(vis, oversight)*
 - **R2-36:** named workspaces (e.g. "sensor-system" = firmware + app), with link passes only within one. *(vis, multi-repo)*
 - **R2-37:** what "must build" means for firmware: an explicit build command and environment (PlatformIO env, ESP-IDF, maybe WSL), with the environment and Rust features as part of the snapshot key. *(vis, before TB-101)*
 - **R2-38:** cross-repo wire links: exact same-literal facts, plus model-declared "same message" pairs citing them. Runtime evidence (serial logs) is read by Claude first, with an ingest tool only if a wish asks. *(internal)*
