@@ -768,7 +768,8 @@ An after-build snapshot running `npm ci` in place would delete `node_modules` un
 
 ## R3-B: What a snapshot is, exactly (before M0)
 
-### R3-04: Re-run the check after your build, and storms — OPEN (vis)
+### R3-04: Re-run the check after your build, and storms — ANSWERED
+**Ruling:** the agent hook is only a trigger. Insight runs the project's own check itself (warm, in its own copy), and that's the build gate (refines R2-10's "your build satisfies the check"). Triggers are coalesced: one snapshot at a time per project, only the newest pending trigger kept, a 10 s quiet period, and nothing happens if the content hash is unchanged.
 `tauri dev` runs `vite`, which never type-checks; `cargo test -p x` builds one crate; agent edit/check loops fire every 20 s.
 - Rec: the hook is only a **trigger**. Insight runs the project's own check, warm, in its private dirs, as the gate. Triggers are **coalesced**: one snapshot at a time per project, only the newest pending, a 10 s quiet period, skipped if the content hash is unchanged.
 
