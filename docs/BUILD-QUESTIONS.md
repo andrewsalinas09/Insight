@@ -123,7 +123,7 @@ What's the first thing that runs, and what's its pass condition?
 - Rec: the solver agent says (a), because field-level state is impossible without types. The architecture agent says (b), for one binary and no Node or PATH surprises. Needs your call.
 
 ### BQ-06: The Rust engine and macro expansion — ANSWERED (c)
-**Ruling:** rust-analyzer (ADR-0034), with proc macros and build scripts **on**. User: "if my program builds it should be possible". `cargo build` already runs the same dependency code. Fall back to expansion-off only when the snapshot doesn't build (e.g. a half-written dirty tree), and flag that build as partial.
+**Ruling:** rust-analyzer (ADR-0034), with proc macros and build scripts **on**. User: "if my program builds it should be possible". `cargo build` already runs the same dependency code. *(The expansion-off fallback was dropped by ADR-0036: snapshots must build, so expansion always works.)*
 
 *(Original question:)*
 - Case: `#[tauri::command] fn set_fletcher_chain` is registered only inside `tauri::generate_handler![…]` (`lib.rs:5029`). `#[derive(Serialize)]` generates the field reads. Neither is visible without expanding macros, which runs dependency code.
@@ -151,8 +151,8 @@ What's the first thing that runs, and what's its pass condition?
   - (c) No dependencies: external symbols stay unresolved.
 - Rec: (a), falling back to (c).
 
-### BQ-08: Code that doesn't parse or type-check — ANSWERED by existing ADRs (no question needed)
-**Ruling:** (b): build anyway, with per-file diagnostics, `unresolved` stubs, and nodes in error ranges flagged `degraded`. This follows directly from ADR-0002 (incomplete, never wrong) and the BQ-06 fallback.
+### BQ-08: Code that doesn't parse or type-check — SUPERSEDED → ADR-0036
+**Ruling:** refuse. A snapshot must build (`cargo check`, `tsc --noEmit`, …). If it doesn't, Insight says "build first". *(Earlier ruling "build anyway with diagnostics" reversed.)*
 
 *(Original question:)*
 - Options:
@@ -295,7 +295,10 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 4: Snapshots
 
-### BQ-23: Uncommitted code — OPEN
+### BQ-23: Uncommitted code — ANSWERED → ADR-0036
+**Ruling:** (b): the working copy can be its own snapshot (no commit needed), but **every snapshot must build**, or Insight refuses.
+
+*(Original question:)*
 - Case: Claude Code just edited `App.tsx` without committing, and you ask "how does graft work now?"
 - Options:
   - (a) Commits only, with every response stamped `snapshot: cd5d6ff (working tree differs in 2 files)`.

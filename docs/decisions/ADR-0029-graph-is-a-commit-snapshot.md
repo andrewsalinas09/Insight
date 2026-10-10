@@ -1,6 +1,6 @@
 # ADR-0029: A graph is a snapshot of one git commit; explanations are snapshots too
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0036 (a snapshot is a commit *or* the working copy, and either must build)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("the graph is generated on build and you ask questions about it. There's not _really_ a concept of things changing. We could just make it track git though and each git commit is its own graph. Two graphs are just two commits… explanations are snapshots in time, not really designed to be carried over (but again we can use git for this + LLM if it's tricky)")
 
