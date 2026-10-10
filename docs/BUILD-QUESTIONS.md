@@ -613,8 +613,8 @@ The UI is deferred (ADR-0027) and the "question box" is the terminal (ADR-0025).
 ### R2-10: Live mode: build on save, on request, or never? — ANSWERED (direction), mechanism in R2-10b
 **Ruling (user):** "when things are built it uses that. It does it together. You don't really ask questions until you see the software anyway." Insight snapshots **together with the project's own successful builds**, which also satisfy the ADR-0036 build check. Plus on demand. Not on every save.
 
-### R2-10b: How Insight notices your build — OPEN (vis)
-See the chat proposal: a Claude Code hook after build commands, a wrapper command, or watching build outputs.
+### R2-10b: How Insight notices your build — ANSWERED
+**Ruling (user):** the agent's hook fires on a successful build, and the mechanism is **model/agent-agnostic**. Insight exposes one entry point, `insight snapshot --after-build` (also an MCP call). `insight init` installs the success hook for each agent present (Claude Code's post-command hook now; Codex's equivalent as supported). Agents with no hooks are told by the MCP instructions to call it after successful builds. A **Snapshot now** menu item covers builds you run yourself.
 
 VISION says "shows structure instantly as you work". BQ-07 says builds are on demand only. ADR-0036 makes builds non-instant (`cargo check`).
 - Options: (a) on request only, and "re-run on every change" becomes "on each new snapshot"; (b) opt-in auto-build of the working copy on save; (c) on every commit.
