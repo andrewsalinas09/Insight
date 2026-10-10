@@ -592,7 +592,8 @@ ADR-0005/0009 and Q-15 describe annotations as "claims + prose, checked by the c
 - Options: (a) tags are the only thing Insight parses; ordinary comments are just code the model reads; close Q-15; (b) also parse a free `@insight note:` as unchecked data; (c) keep the claims compiler as a post-MVP plan.
 - Rec: (a).
 
-### R2-07: Where does "tell" live, and must sentences link? — OPEN (vis)
+### R2-07: Where does "tell" live, and must sentences link? — ANSWERED (a)
+**Ruling (user):** "Claude can do whatever it wants. But usually it's in the terminal and you're following along purely with visual stuff as a helpful guide." The explanation normally lives in the terminal; the window is the visual guide. Links in notes and steps are available, never required or flagged. TB-066 is out of scope.
 ADR-0010 says every sentence links, and an unlinked one is a smell (TB-066). ADR-0025 says the answer is plain terminal text, and BQ-40 says links only in window notes and steps.
 - Options: (a) prose lives in the terminal, plain; links are available in window notes and steps, never required or flagged; (b) mirror all narration into the window with links required; (c) a `say(text, refs)` tool.
 - Rec: (a).

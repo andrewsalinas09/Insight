@@ -1,6 +1,6 @@
 # ADR-0010: Show, then tell: every answer drives the graph as well as the prose
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by R2-07 (the "tell" usually lives in the terminal as Claude's plain text; the window is the visual guide you follow along with; sentence links are available in window notes and steps, never required or flagged). Claude can do whatever it wants
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 5 ("when I asked why not AtomicBool, it could highlight instantly why on the app for me to spell it out + the prose… because the graph is navigable it is an _excellent_ companion")
 

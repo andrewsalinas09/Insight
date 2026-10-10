@@ -290,7 +290,7 @@ The learner proposes an alternative the code doesn't contain. Insight highlights
 
 ### TB-066: A prose sentence with nothing to highlight
 An explanation contains a sentence that links to no graph element.
-**Stresses:** grounding. **Status:** OPEN (proposed answer: allowed for general concepts, e.g. "a mutex grants one holder at a time", but a sentence that makes a claim *about this code* with no link is flagged; ADR-0010, ADR-0002).
+**Stresses:** grounding. **Status:** Out of scope (R2-07, ADR-0037: links are optional; nothing is flagged). *Earlier proposal:* (allowed for general concepts, e.g. "a mutex grants one holder at a time", but a sentence that makes a claim *about this code* with no link is flagged; ADR-0010, ADR-0002).
 
 ## N. Step-throughs (ADR-0011)
 
