@@ -1,6 +1,6 @@
 # ADR-0021: The home screen is the whole system plus a question box
 
-- **Status:** Accepted
+- **Status:** Accepted, layout deferred with the UI (ADR-0027); amended by R2-09: the question box is the terminal, and the window offers every tool directly (two-way parity, ADR-0031). Kept: no curated landing page
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 (Q-30: "honestly for the home screen maybe just show the whole thing. The idea is you ask what you want")
 

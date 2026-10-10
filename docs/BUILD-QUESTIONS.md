@@ -604,7 +604,8 @@ ADR-0004 says Insight stores a knowledge profile, but Insight calls no model (AD
 - Options: (a) both live outside Insight: the profile is your agent's memory or CLAUDE.md, and the MCP instructions tell Claude to append wishes to a `WISHLIST.md` in the Insight repo; (b) Insight stores the profile (returned by `status`) and adds a `wish` tool; (c) chat only.
 - Rec: (a).
 
-### R2-09: Is ADR-0021 (home screen) still a decision? — OPEN (vis)
+### R2-09: Is ADR-0021 (home screen) still a decision? — ANSWERED
+**Ruling (user):** the question box is the terminal. Parity is two-way: everything Claude can do, you can do in the window directly; the terminal is the default way to get Claude to do it for you. The home-screen layout is deferred with the UI (ADR-0027).
 The UI is deferred (ADR-0027) and the "question box" is the terminal (ADR-0025).
 - Options: (a) mark it deferred, keeping only "no curated landing page"; (b) keep it: the window opens on a top-level overview; (c) the window is blank until Claude calls `show`.
 - Rec: (a).
