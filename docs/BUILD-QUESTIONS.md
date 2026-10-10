@@ -675,7 +675,8 @@ Fletcher at the pinned commit likely fails a plain `cargo check`: Tauri's `gener
 - Options: (a) `insight build <repo>` defaults to the working copy if dirty and HEAD if clean; a working copy includes **untracked, not-ignored** files (agents add new files), and a build is discarded with "files changed during build, retry" if anything changes mid-build; (b) default HEAD, working copy opt-in; (c) tracked files only.
 - Rec: (a), amending BQ-20's "git-tracked only" for working copies.
 
-### R2-18: How Rust names are typed — OPEN (vis)
+### R2-18: How Rust names are typed — ANSWERED
+**Ruling (user):** "whatever works. It can search, it shows whatever, and it can choose the scope as needed." Any reasonable form resolves: the full location path, a file path, the language-native name (`fsx::write_atomic`, `HistoryTree.nodeUp`), or a bare unique name. If a name matches several symbols, all candidates come back for Claude to choose from, and Claude can narrow the scope (repo, file, container) as needed. Resolution is mechanical (ADR-0043).
 - Options: (a) node paths are crate › module › item, and typing `fsx::write_atomic` or `a.b` is normalized, so you type names the way Rust and TS write them; (b) file-path based (`crates/fletcher-core/src/fsx.rs › write_atomic`); (c) both stored.
 - Rec: (a).
 
