@@ -460,7 +460,7 @@ A 60-line worker loop is shown as one authored node with six lines of pseudocode
 
 ### TB-105: An authored element with nothing behind it
 The model creates a "retry manager" group, but none of the nodes it maps to involve retries, or it maps to nothing at all.
-**Answer:** an unmapped element is rejected (ADR-0026 invariant). A *mismapped* one is visible, because expanding it shows the real nodes don't match. That's the model being wrong where you can see it, not hidden. **Status:** Partial (mapping check is structural only).
+**Answer (R2-02):** groups, collapses, abstractions and excerpts must resolve to real code, so an unmapped one is returned as an error; notes and example data may stand alone. A *mismapped* one is visible, because expanding it shows the real nodes don't match. That's the model being wrong where you can see it, not hidden. **Status:** Partial (mapping check is structural only).
 
 ### TB-106: "How is the tree held in memory?"
 Fletcher's undo tree is a flat `Map<number, HistNode>` whose tree shape exists only in `parent` / `children` fields. The code graph shows a Map; the answer needs a *tree*.

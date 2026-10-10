@@ -1,6 +1,6 @@
 # ADR-0026: The model authors teaching views: annotations, regrouping, re-hierarchy, abstraction, simplified code
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0037 and R2-02 (the window styles by element kind automatically; only elements that stand in for code must resolve to real code; notes and example data needn't point anywhere); vocabulary fixed by ADR-0040
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("I feel like annotations is huge. We need to let it change hierarchy / abstraction / grouping / smaller simpler code as needed for demonstration. Use the QA notes to see what I mean")
 

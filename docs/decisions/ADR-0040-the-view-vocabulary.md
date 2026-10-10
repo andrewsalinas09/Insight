@@ -27,3 +27,4 @@ This is the smallest set that covers every move in the user's learning log and b
 ## Consequences
 - Supersedes the open parts of Q-19/ADR-0026 on *what* a view can hold. Per ADR-0037 nothing about content is policed; only references to real nodes must resolve.
 - Expands ADR-0019's MVP scope with the full teaching-view vocabulary.
+- **Styling and mapping (R2-02, user: "yeah"):** the window styles elements by kind automatically. Real nodes, edges and code excerpts look *real*; abstraction nodes, example data, notes and simplified code look like *Claude's interpretation*. Claude marks nothing by hand. Groups, collapses, abstractions and excerpts must resolve to real code (that's the only check). Notes and example data may point at nothing.

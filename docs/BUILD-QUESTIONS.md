@@ -562,7 +562,8 @@ ADR-0002 says every label must be true or marked, and LLM output must be checked
 - Options: (a) narrow ADR-0002 to Insight's deterministic layer (graph, paths, receipts, reference resolution); (b) every model element carries a mandatory "interpretation" marker; (c) merge both into a new ADR.
 - Rec: (a), which is ADR-0037's own sentence.
 
-### R2-02: Must authored view content be styled as authored and mapped to real nodes? — OPEN (vis)
+### R2-02: Must authored view content be styled as authored and mapped to real nodes? — ANSWERED (a), recorded in ADR-0040/0026
+**Ruling:** automatic styling by element kind (real vs. Claude's interpretation); only code-standing-in elements must resolve; notes and example data are free.
 ADR-0026 says styling is enforced and unmapped elements are rejected (TB-105). ADR-0037 says styling is optional and only references must resolve. ADR-0040 says every element maps to real nodes.
 - Options: (a) the renderer styles by element *kind* (abstraction, example data and excerpts always look authored); a mapping is required only for kinds that stand for code (group, collapse, abstraction, excerpt), and optional for notes and example data; (b) no styling or mapping rules at all; (c) keep ADR-0026 in full.
 - Rec: (a). Styling by kind is trivial rendering and polices no content.
