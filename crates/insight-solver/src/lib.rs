@@ -82,8 +82,9 @@ pub struct Log {
 }
 
 impl Log {
+    /// A log inside an existing project; never creates a project folder.
     pub fn create(project: &str, verb: &str) -> Result<Self> {
-        Self::create_in(&paths::project_dir(project)?.join("logs"), verb)
+        Self::create_in(&project_dir_checked(project)?.join("logs"), verb)
     }
     /// A log outside any project (e.g. `init` before the project exists).
     /// Names are unique per call: `create_new` never overwrites an earlier log.
@@ -489,7 +490,7 @@ fn receipt_at(text: &str, file: &str, s: u64, e: u64, role: &str, container: Opt
 
 /// The newest complete snapshot of a project (any repo), unless one is named.
 pub fn latest_snapshot(project: &str) -> Result<PathBuf> {
-    let dir = paths::cache_root()?.join("snapshots").join(project);
+    let dir = paths::snapshots_dir(project)?;
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
     for e in std::fs::read_dir(&dir).with_context(|| format!("no snapshots for `{project}`: run `insight build` first"))? {
         let p = e?.path();

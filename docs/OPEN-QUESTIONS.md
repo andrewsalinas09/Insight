@@ -287,6 +287,24 @@ ADR-0026 views (groups, abstractions, simplified code, annotations) need a home.
 
 Also: what happens to a saved view when the real code it maps to changes (broken mappings get flagged, like broken receipts). Status: open.
 
+## Q-38: Loading an API's documentation next to the code
+User (2026-10-10): "We should be able to load not a repo, but an API doc or something, and Claude can make those fake nodes for the API endpoints … so we can see how our code interacts with the API. 100% needs to work. I give it my codebase and an API doc. I should see the API calls and responses and everything from that side." (TB-152)
+
+Claude's proposal, not yet decided. There are two cases, split by whether the doc is machine-readable:
+- **Machine-readable spec** (OpenAPI/JSON Schema, GraphQL SDL, protobuf/gRPC, AsyncAPI, a C header for a device protocol). A spec has its own grammar, so under R4-02 it is a *language*.
+  - An extractor turns it into real facts:
+    - each endpoint/operation becomes a declaration;
+    - request and response bodies become types with fields;
+    - the doc's line ranges become receipts.
+  - Code links to it with generic, exact link rules. A URL or route literal in the code matches an endpoint's path template (`/users/{id}` ↔ `` `/users/${id}` ``). An operation name or message type equal to a declared name is the existing `names` link.
+  - These are facts, styled as real.
+- **Prose documentation** (an HTML/PDF/Markdown page). Nothing deterministic can be extracted, so Claude reads it and creates **abstraction nodes** for the endpoints and payloads (ADR-0040).
+  - They are styled as Claude's interpretation (R2-02).
+  - Each carries a quote from the doc as its receipt, and links to the code's real call sites.
+- Either way, the API's own behavior (what the server does with a request) is outside the analyzed code. It is shown as the API's declared contract, never as traced code.
+
+Status: open. To be decided when it's built; it needs the view work (abstraction nodes) for the prose case.
+
 ## Q-20: Data and ownership edges, not just control flow
 The user's example asks how a function *gets its members*, which is a data question: the path from framework-managed state through a lock into a core struct, then a nested model, then a field. A call graph doesn't show that. Candidate second edge family: containment/ownership (struct A owns field B), access paths (`state.core.lock().model.items[id]`), and injection (the framework hands a command its state). Open: is this part of the same graph, or a second view? Which data edges can be proven statically (ADR-0002)? A catalogue of everything code "has" (data, types, concurrency, links, effects, meta), with a proposed v1 cut, is in `docs/research/2026-10-what-code-has.md`. Status: open; the user asked for guidance ("I don't know what I don't know").
 

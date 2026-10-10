@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use insight_model::{Diagnostic, FileFact, NodeFact, NodeKind, Receipt, Severity, Span};
+pub mod query;
 pub use rusqlite;
 use rusqlite::{Connection, params};
 

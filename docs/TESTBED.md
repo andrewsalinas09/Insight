@@ -771,3 +771,12 @@ Insight analyzing itself, whose fixtures and docs are full of the syntax.
 ### TB-151: An ambiguous endpoint
 `cmd` is both the bus's no-op initializer and the real bus.
 **Answer:** candidates come back and Claude narrows (R2-18). **Status:** Solved (design).
+
+### TB-152: A codebase plus an external API's documentation
+The user loads their code and the docs of an HTTP API it calls. They expect to see each request the code makes and each response it handles, against the API's endpoints. Cases:
+- an OpenAPI spec where code builds URLs with template strings;
+- a prose-only doc page;
+- an endpoint the code never calls;
+- a code URL that matches no endpoint.
+
+**Answer:** see Q-38. **Status:** Open.

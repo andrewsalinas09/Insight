@@ -23,7 +23,7 @@ fn require(r: &PathResult, hops: &[(&str, &str, &str)]) {
 fn drag_reaches_graft_node_in_both_windows() {
     let conn = snapshot();
     let opts = Options { follow: vec![Follow::Call, Follow::Handoff, Follow::Literal], max_occurrences: Some(20), max_depth: Some(6) };
-    let r = path(&conn, "HistoryTree › nodeUp", &["MainApp › graftNode".into()], &opts).unwrap();
+    let r = path(&conn, &["HistoryTree › nodeUp".into()], &["MainApp › graftNode".into()], &opts).unwrap();
     require(
         &r,
         &[
@@ -45,7 +45,7 @@ fn drag_reaches_graft_node_in_both_windows() {
 fn graft_node_reaches_the_file_write_across_languages() {
     let conn = snapshot();
     let opts = Options { follow: vec![Follow::Call, Follow::Names], max_occurrences: None, max_depth: None };
-    let r = path(&conn, "MainApp › graftNode", &["fsx.rs › write_atomic".into()], &opts).unwrap();
+    let r = path(&conn, &["MainApp › graftNode".into()], &["fsx.rs › write_atomic".into()], &opts).unwrap();
     require(
         &r,
         &[

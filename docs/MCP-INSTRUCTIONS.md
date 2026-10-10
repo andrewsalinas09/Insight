@@ -1,19 +1,16 @@
-# MCP instructions (DRAFT)
+# MCP instructions
 
-The text Insight's MCP server gives an agent up front. It's adapted from the Round 4 runtime-Claude simulation, and gets finalized at M2. This is a draft and not normative: the ADRs and BUILD-QUESTIONS win.
+The text `insight mcp` gives an agent up front (MCP `instructions`). Everything after the first `---` line is served verbatim; it's compiled into `insight.exe` from this file (`crates/insight-mcp`). It was adapted from the Round 4 runtime-Claude simulation and finalized at M2 to describe only what's built. Add a line when a tool lands (`compare`, `show`, `selection`, `tag_coverage`, `reach()`/`nid()`, the `writers` and `race_candidates` views, pedantic switches). The ADRs, BUILD-QUESTIONS and SCHEMA.md win over this text.
 
 ---
 
-Insight is a read-only, deterministic graph of a loaded project snapshot. Its facts are complete and exact; deciding what they mean is your job. Insight has no framework or library knowledge.
+Insight is a read-only, deterministic graph of a project's code at a snapshot. Its facts are exact but incomplete, and every gap is stated. Deciding what they mean is your job. Insight has no framework or library knowledge: everything is in generic programming concepts (containers, calls, value flow, literals, names).
 
-1. **Call `status` first.** It lists the loaded snapshots (SQL aliases; the active one is unqualified and stays pinned until you switch), the schema, enum values with counts, the definition of each `follow` token, the shipped views (`callers`, `writers`, `receipt_text`, `race_candidates`), the frozen-source folder, and the **pedantic switches**.
-2. **Output is lean by default.** Rarely-relevant detail is off until you ask for it: standard-library handoffs, built-in implicit calls, macro-generated facts, unsequenced groups. Turn it on with the switches when it matters.
-3. **Find things** with `sql` (one read-only statement; you set `max_rows` and `timeout_ms` within the ceilings). Use `nid('name')` to resolve names and `reach(from, follow, dir)` for reachability. For text search, Grep and Read the frozen-source folder, not the working tree.
-4. **Trace** with `path(from?, to?, follow=[…])`. Nothing is followed unless you name it. Hops are labeled; `possible` and absent candidates, cycles and recursion are reported. Leave one end open for forward or reverse reachability.
-5. **Effects** (disk, network, IPC, UI): group external leaves by package, decide which ones mean the effect, then reverse-reach from them. Literal and `names` links are exact text equality; whether they're real connections is your call.
-6. **Order:** `await`, handoffs, `names` hops and un-awaited async calls are order-unknown, and `timing` states the real moment for deferred code. Judge `race_candidates` yourself.
-7. **`access` means "may write".** Check `via_eid` for the method behind it. Split merged generic fields by `base_nid`.
-8. **Read a function in full before explaining it.** A quiet reminder may arrive; read more or carry on, and don't narrate it.
-9. **Show:** `show(view)` composes the nine elements, by name or by an embedded `path` spec. The explanation stays in the terminal; the window is the visual guide.
-10. **"How do these differ?"** Use `compare`.
-11. **Wishes:** if you wish Insight could do X, tell the user and append it to the Wishes section of the global INSIGHT.md.
+1. **Call `status` first.** It lists projects and their snapshots, what's loaded, the live schema, enum values with counts, the exact definition of each `follow` token, the shipped views, the frozen-source folder, the ceilings, and what's not built yet.
+2. **Load** with `load(project)`. It becomes the unqualified `main` schema and stays pinned until you `load` again without an alias. `load(project, alias=…)` attaches another snapshot for SQL as `<alias>.<table>`. `build` makes a new snapshot of an approved project. It never switches what's loaded, and nothing over MCP can create or approve a project: that's the user's step.
+3. **Find things** with `sql`: one read-only SQLite statement. You choose `max_rows` and `timeout_ms` within the ceilings, and the result always reports the total row count. Node ids are paths (`app/src/App.tsx › MainApp › graftNode`); `nodes.path LIKE '%› name'` finds by name. For text search, Grep and Read the frozen-source folder (exactly the snapshot's bytes), not the working tree.
+4. **Trace** with `path(from?, to?, follow=[…])`. Nothing is followed unless you name it: `call`, `handoff`, `literal`, `names`. Give both ends for routes between them, only `from` for everything reachable, or only `to` for everything that reaches it. Ends can be lists. Results are labeled hops with receipts. `possible` candidates, cycles and recursion are reported, never hidden. Use `max_occurrences` to skip common strings and `max_depth` to bound route length; pick them per question.
+5. **Literal and `names` links are exact text equality** (a string equal to another string, or to a declaration's name). Whether one is a real connection (an RPC name, an event name, a message type) is your call, so check the receipts.
+6. **Unresolved is a fact, not an error.** `resolution='unresolved'` edges and `to_nid IS NULL` mark calls the compiler couldn't pin down. Say so; don't guess.
+7. **Read before explaining.** Use `source(refs=[…])` (node ids, `file`, `file:line`, `file:start-end`; batched) or the frozen-source folder. Read a function in full before you explain it.
+8. **Wishes:** if you wish Insight could do something it can't, tell the user why. If they agree, append it to the Wishes section of the global INSIGHT.md. Don't work around a missing tool by guessing.

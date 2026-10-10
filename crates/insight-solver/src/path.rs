@@ -159,94 +159,115 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
     Ok(g)
 }
 
-pub fn path(conn: &Connection, from: &str, to: &[String], opts: &Options) -> Result<PathResult> {
-    let start = resolve(conn, from)?;
-    let mut starts = vec![start];
-    let mut stmt = conn.prepare("SELECT to_nid FROM edges WHERE from_nid = ?1 AND kind = 'value-flow' AND subkind = 'returns'")?;
-    for r in stmt.query_map([start], |r| r.get::<_, i64>(0))? {
-        starts.push(r?);
-    }
-    let targets: Vec<i64> = to.iter().map(|t| resolve(conn, t)).collect::<Result<_>>()?;
-    let g = load(conn, opts)?;
-
-    // Forward from the starts (with distances), backward from the targets.
-    let mut depth: HashMap<i64, usize> = HashMap::new();
+/// Breadth-first distances from `seeds` over `adj`, never continuing through a node in `stop`.
+fn bfs(adj: &HashMap<i64, Vec<(i64, &'static str, i64)>>, seeds: &[i64], stop: &BTreeSet<i64>) -> HashMap<i64, usize> {
+    let mut dist: HashMap<i64, usize> = HashMap::new();
     let mut q: VecDeque<i64> = VecDeque::new();
-    for s in &starts {
-        depth.insert(*s, 0);
+    for s in seeds {
+        dist.insert(*s, 0);
         q.push_back(*s);
     }
-    let is_target: BTreeSet<i64> = targets.iter().copied().collect();
     while let Some(n) = q.pop_front() {
-        let d = depth[&n];
-        // A route ends at its target; it never continues through it.
-        if is_target.contains(&n) {
+        let d = dist[&n];
+        if stop.contains(&n) {
             continue;
         }
-        for (m, _, _) in g.out.get(&n).into_iter().flatten() {
-            if !depth.contains_key(m) {
-                depth.insert(*m, d + 1);
+        for (m, _, _) in adj.get(&n).into_iter().flatten() {
+            if !dist.contains_key(m) {
+                dist.insert(*m, d + 1);
                 q.push_back(*m);
             }
         }
     }
-    if opts.max_depth.is_some() && targets.is_empty() {
-        bail!("--max-depth needs --to (it bounds routes between two ends)");
+    dist
+}
+
+/// Reachability between two ends (R2-12, R4-B). Either end may be open:
+/// - `from` and `to`: every hop on some route from a start to a target;
+/// - only `from`: everything reachable forward (targets are terminal);
+/// - only `to`: everything that reaches a target (reverse reachability).
+///
+/// Ends are sets: several starts or several targets.
+pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -> Result<PathResult> {
+    if from.is_empty() && to.is_empty() {
+        bail!("give a start (`from`), a target (`to`), or both");
     }
-    // Distance to the nearest target, walking edges backward.
-    let mut to_target: HashMap<i64, usize> = HashMap::new();
-    let mut q: VecDeque<i64> = VecDeque::new();
-    for t in &targets {
-        to_target.insert(*t, 0);
-        q.push_back(*t);
-    }
-    while let Some(n) = q.pop_front() {
-        let d = to_target[&n];
-        for (m, _, _) in g.rev.get(&n).into_iter().flatten() {
-            if !to_target.contains_key(m) {
-                to_target.insert(*m, d + 1);
-                q.push_back(*m);
-            }
+    let mut starts = Vec::new();
+    let mut stmt = conn.prepare("SELECT to_nid FROM edges WHERE from_nid = ?1 AND kind = 'value-flow' AND subkind = 'returns'")?;
+    for f in from {
+        let s = resolve(conn, f)?;
+        starts.push(s);
+        for r in stmt.query_map([s], |r| r.get::<_, i64>(0))? {
+            starts.push(r?);
         }
     }
+    starts.sort();
+    starts.dedup();
+    let mut targets: Vec<i64> = to.iter().map(|t| resolve(conn, t)).collect::<Result<_>>()?;
+    targets.sort();
+    targets.dedup();
+    let g = load(conn, opts)?;
+
+    let (fwd, bwd) = (!starts.is_empty(), !targets.is_empty());
+    let is_target: BTreeSet<i64> = targets.iter().copied().collect();
+    // Forward from the starts (a route ends at its target, never continues through it); backward from the targets.
+    let depth = if fwd { bfs(&g.out, &starts, &is_target) } else { HashMap::new() };
+    let to_target = if bwd { bfs(&g.rev, &targets, &BTreeSet::new()) } else { HashMap::new() };
     let limit = opts.max_depth.unwrap_or(usize::MAX);
-    let on_route = |n: &i64| targets.is_empty() || to_target.get(n).is_some_and(|b| depth.get(n).is_some_and(|f| f.saturating_add(*b) <= limit));
-    let keep: BTreeSet<i64> = depth.keys().copied().filter(|n| on_route(n)).collect();
+    let route_len = |n: &i64| -> Option<usize> {
+        match (fwd, bwd) {
+            (true, true) => Some(depth.get(n)?.saturating_add(*to_target.get(n)?)),
+            (true, false) => depth.get(n).copied(),
+            _ => to_target.get(n).copied(),
+        }
+    };
+    let reached: Vec<i64> = if fwd { depth.keys().copied().collect() } else { to_target.keys().copied().collect() };
+    let keep: BTreeSet<i64> = reached.into_iter().filter(|n| route_len(n).is_some_and(|l| l <= limit)).collect();
 
     let mut hops: BTreeMap<(i64, i64, &str), Vec<i64>> = BTreeMap::new();
     for n in keep.iter().filter(|n| !is_target.contains(n)) {
         for (m, label, eid) in g.out.get(n).into_iter().flatten() {
-            let within = targets.is_empty() || depth[n].saturating_add(1).saturating_add(to_target.get(m).copied().unwrap_or(usize::MAX)) <= limit;
-            // Progress: a hop moves further from the start or closer to a target.
-            let progress = targets.is_empty()
+            if !keep.contains(m) {
+                continue;
+            }
+            let within = match (fwd, bwd) {
+                (true, true) => depth[n].saturating_add(1).saturating_add(to_target[m]) <= limit,
+                (true, false) => depth[n] < limit,
+                _ => to_target[m] < limit,
+            };
+            // Progress (both ends): a hop moves further from the start or closer to a target.
+            let progress = !(fwd && bwd)
                 || is_target.contains(m)
                 || depth.get(m).is_some_and(|dm| *dm > depth[n])
-                || to_target.get(m).is_some_and(|tm| to_target.get(n).is_some_and(|tn| tm < tn));
-            if keep.contains(m) && within && progress {
+                || to_target.get(m).is_some_and(|tm| tm < &to_target[n]);
+            if within && progress {
                 hops.entry((*n, *m, label)).or_default().push(*eid);
             }
         }
     }
     let mut hops: Vec<Hop> = hops.into_iter().map(|((from, to, label), eids)| Hop { from, to, label: label.to_string(), eids }).collect();
     prune(&mut hops, &starts, &targets);
-    let keep: BTreeSet<i64> = if targets.is_empty() {
-        keep
-    } else {
-        hops.iter().flat_map(|h| [h.from, h.to]).chain(starts.iter().copied()).chain(targets.iter().copied()).collect()
-    };
+    let keep: BTreeSet<i64> = hops.iter().flat_map(|h| [h.from, h.to]).chain(starts.iter().copied()).chain(targets.iter().copied()).collect();
 
     let mut nodes = BTreeMap::new();
     let mut stmt = conn.prepare("SELECT path FROM nodes WHERE nid = ?1")?;
-    for n in keep.iter().chain(&starts).chain(&targets) {
+    for n in &keep {
         nodes.insert(*n, stmt.query_row([n], |r| r.get::<_, String>(0))?);
     }
     let cycles = cycles(&keep, &hops);
+    // Display order: distance from the starts, or (reverse only) from the open end toward the targets.
+    let depth = if fwd {
+        depth
+    } else {
+        let max = keep.iter().filter_map(|n| to_target.get(n)).max().copied().unwrap_or(0);
+        keep.iter().filter_map(|n| to_target.get(n).map(|d| (*n, max - d))).collect()
+    };
     Ok(PathResult { starts, targets, nodes, hops, cycles, depth })
 }
 
 /// Removes hops that are not on any real route, to a fixpoint:
 /// - a literal connects two *different* functions: `F → lit → F` is not a hop;
-/// - (with targets) a node other than a start or target needs a way in and a way out.
+/// - with starts, a node other than a start needs a way in; with targets, a node other than a target needs a way out.
 fn prune(hops: &mut Vec<Hop>, starts: &[i64], targets: &[i64]) {
     loop {
         let before = hops.len();
@@ -273,12 +294,12 @@ fn prune(hops: &mut Vec<Hop>, starts: &[i64], targets: &[i64]) {
             "literal" => preds.get(&h.from).is_some_and(|p| p.iter().any(|f| *f != h.to)),
             _ => true,
         });
-        if !targets.is_empty() {
-            let has_in: BTreeSet<i64> = hops.iter().map(|h| h.to).collect();
-            let has_out: BTreeSet<i64> = hops.iter().map(|h| h.from).collect();
-            let fixed = |n: &i64| starts.contains(n) || targets.contains(n);
-            hops.retain(|h| (fixed(&h.from) || has_in.contains(&h.from)) && (fixed(&h.to) || has_out.contains(&h.to)));
-        }
+        let has_in: BTreeSet<i64> = hops.iter().map(|h| h.to).collect();
+        let has_out: BTreeSet<i64> = hops.iter().map(|h| h.from).collect();
+        hops.retain(|h| {
+            (starts.is_empty() || starts.contains(&h.from) || has_in.contains(&h.from))
+                && (targets.is_empty() || targets.contains(&h.to) || has_out.contains(&h.to))
+        });
         if hops.len() == before {
             return;
         }
@@ -343,15 +364,15 @@ fn cycles(keep: &BTreeSet<i64>, hops: &[Hop]) -> Vec<Vec<i64>> {
 }
 
 /// Renders a result as text: nodes in breadth-first order, each with its outgoing hops and receipts.
-pub fn render(conn: &Connection, r: &PathResult) -> Result<String> {
+/// With `receipts` false, hops are listed without their source lines.
+pub fn render(conn: &Connection, r: &PathResult, receipts: bool) -> Result<String> {
     let mut out = String::new();
     let name = |n: &i64| r.nodes.get(n).cloned().unwrap_or_default();
-    out.push_str(&format!("start: {}\n", r.starts.iter().map(name).collect::<Vec<_>>().join(", ")));
-    if !r.targets.is_empty() {
-        out.push_str(&format!("to:    {}\n", r.targets.iter().map(name).collect::<Vec<_>>().join(", ")));
-    }
+    let open = |v: &[i64]| if v.is_empty() { "(open)".to_string() } else { v.iter().map(name).collect::<Vec<_>>().join(", ") };
+    out.push_str(&format!("start: {}\n", open(&r.starts)));
+    out.push_str(&format!("to:    {}\n", open(&r.targets)));
     out.push_str(&format!("{} nodes, {} hops\n", r.nodes.len(), r.hops.len()));
-    if r.nodes.is_empty() {
+    if r.hops.is_empty() {
         out.push_str("no path\n");
         return Ok(out);
     }
@@ -367,6 +388,9 @@ pub fn render(conn: &Connection, r: &PathResult) -> Result<String> {
         out.push_str(&format!("\n{}\n", name(&n)));
         for h in by_from.get(&n).into_iter().flatten() {
             out.push_str(&format!("  --{}--> {}\n", h.label, name(&h.to)));
+            if !receipts {
+                continue;
+            }
             for eid in &h.eids {
                 let rows: Vec<(String, String, i64, i64, i64, i64)> =
                     rstmt.query_map([eid], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?, x.get(4)?, x.get(5)?)))?.collect::<Result<_, _>>()?;

@@ -1,0 +1,507 @@
+//! `insight mcp`: the MCP stdio server (ADR-0031, ADR-0039, R4-B).
+//!
+//! Newline-delimited JSON-RPC 2.0 on stdin/stdout; stdout carries protocol
+//! messages only. Until the window app exists, the server runs the backend
+//! itself against the on-disk snapshot cache (R2-13: "when it's closed, they
+//! run the same backend standalone").
+//!
+//! Over MCP, nothing can create or approve a project or change its commands
+//! (R3-01): `build` refuses unapproved projects the same way the CLI does.
+//! The snapshot a session queries is pinned until `load` switches it (R3-17).
+
+mod deny;
+
+use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, bail};
+use insight_engine::query::{MAX_ROWS_CEILING, QueryDb, TIMEOUT_CEILING_MS, VIEWS};
+use insight_solver::path::Follow;
+use insight_solver::{paths, settings};
+use serde_json::{Value, json};
+
+use deny::DenyRules;
+
+const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// The up-front instructions: the text after the first `---` line of docs/MCP-INSTRUCTIONS.md.
+fn instructions() -> &'static str {
+    let doc = include_str!("../../../docs/MCP-INSTRUCTIONS.md");
+    doc.split_once("\n---\n").map_or(doc, |(_, body)| body).trim()
+}
+
+struct Loaded {
+    project: String,
+    main: PathBuf,
+    attached: Vec<(String, PathBuf)>,
+    db: QueryDb,
+    repo_root: Option<PathBuf>,
+    deny: DenyRules,
+    /// Snapshot files the agent's deny rules cover.
+    denied: Vec<String>,
+    frozen: PathBuf,
+}
+
+#[derive(Default)]
+struct Session {
+    loaded: Option<Loaded>,
+}
+
+pub fn serve() -> Result<()> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout().lock();
+    let mut session = Session::default();
+    for line in stdin.lock().lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let reply = match serde_json::from_str::<Value>(&line) {
+            Ok(msg) => session.handle(&msg),
+            Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": format!("parse error: {e}")}})),
+        };
+        if let Some(r) = reply {
+            serde_json::to_writer(&mut stdout, &r)?;
+            stdout.write_all(b"\n")?;
+            stdout.flush()?;
+        }
+    }
+    Ok(())
+}
+
+impl Session {
+    fn handle(&mut self, msg: &Value) -> Option<Value> {
+        let id = msg.get("id").cloned();
+        let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
+        let params = msg.get("params").cloned().unwrap_or(json!({}));
+        // Notifications (no id) get no reply.
+        let id = id?;
+        let result = match method {
+            "initialize" => {
+                let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
+                let version = PROTOCOL_VERSIONS.iter().find(|v| **v == asked).unwrap_or(&PROTOCOL_VERSIONS[0]);
+                Ok(json!({
+                    "protocolVersion": version,
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "insight", "version": env!("CARGO_PKG_VERSION")},
+                    "instructions": instructions(),
+                }))
+            }
+            "ping" => Ok(json!({})),
+            "tools/list" => Ok(json!({"tools": tools()})),
+            "tools/call" => {
+                let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+                let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                let (text, is_error) = match self.call(&name, &args) {
+                    Ok(t) => (t, false),
+                    Err(e) => (format!("{e:#}"), true),
+                };
+                Ok(json!({"content": [{"type": "text", "text": text}], "isError": is_error}))
+            }
+            _ => Err(json!({"code": -32601, "message": format!("method not found: {method}")})),
+        };
+        Some(match result {
+            Ok(r) => json!({"jsonrpc": "2.0", "id": id, "result": r}),
+            Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": e}),
+        })
+    }
+
+    fn call(&mut self, name: &str, a: &Value) -> Result<String> {
+        match name {
+            "status" => self.status(),
+            "load" => self.load(req_str(a, "project")?, opt_str(a, "snapshot"), opt_str(a, "alias")),
+            "build" => build(req_str(a, "project")?, opt_str(a, "commit")),
+            "sql" => {
+                let l = self.loaded()?;
+                let r = l.db.query(req_str(a, "query")?, req_u64(a, "max_rows")? as usize, req_u64(a, "timeout_ms")?)?;
+                Ok(r.render())
+            }
+            "path" => self.path(a),
+            "source" => self.source(a),
+            other => bail!("unknown tool `{other}`"),
+        }
+    }
+
+    fn loaded(&self) -> Result<&Loaded> {
+        self.loaded.as_ref().context("no snapshot is loaded: call `load` (see `status` for projects and snapshots)")
+    }
+
+    fn status(&self) -> Result<String> {
+        let mut o = format!(
+            "Insight {} (fact schema {}, DB layout {})\n",
+            env!("CARGO_PKG_VERSION"),
+            insight_model::FACT_SCHEMA_VERSION,
+            insight_engine::DB_LAYOUT_VERSION
+        );
+        let global = paths::data_root()?.join("INSIGHT.md");
+        o.push_str(&format!(
+            "Global INSIGHT.md (prose: knowledge notes, preferences, Wishes): {}{}\n",
+            global.display(),
+            if global.exists() { "" } else { " (not created yet)" }
+        ));
+        o.push_str("\n## Projects\n");
+        let root = paths::data_root()?.join("projects");
+        let mut projects: Vec<String> = std::fs::read_dir(&root)
+            .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().join("INSIGHT.md").exists()).map(|e| e.file_name().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        projects.sort();
+        if projects.is_empty() {
+            o.push_str("(none: the user creates projects with `insight init`)\n");
+        }
+        for p in &projects {
+            let dir = paths::project_dir(p)?;
+            let approval = match (settings::load(&dir), settings::approved(&dir)) {
+                (Ok(s), Ok(Some(a))) if a.fingerprint() == settings::Commands::of(&s).fingerprint() => "commands approved",
+                (Ok(_), Ok(_)) => "commands NOT approved (the user runs `insight approve`)",
+                _ => "INSIGHT.md unreadable",
+            };
+            o.push_str(&format!("- {p}: {approval}\n"));
+            for (file, repo, commit) in snapshots(p) {
+                o.push_str(&format!("  - snapshot `{file}`: repo {repo}, commit {commit}\n"));
+            }
+        }
+        o.push_str("\n## Loaded\n");
+        let Some(l) = &self.loaded else {
+            o.push_str("nothing: call `load`\n");
+            o.push_str(&static_status());
+            return Ok(o);
+        };
+        o.push_str(&format!("- `main` (unqualified, pinned): {} / {}\n", l.project, file_name(&l.main)));
+        for (alias, p) in &l.attached {
+            o.push_str(&format!("- `{alias}`: {}\n", file_name(p)));
+        }
+        o.push_str(&format!("\nFrozen-source folder (Grep/Read these bytes, not the working tree): {}\n", l.frozen.display()));
+        if !l.denied.is_empty() {
+            o.push_str(&format!(
+                "Deny rules hide {} file(s) of this snapshot: `source` refuses them, they're absent from the folder, and `files.content` reads as NULL.\n",
+                l.denied.len()
+            ));
+        }
+        if !l.deny.sources.is_empty() {
+            o.push_str(&format!("Mirrored deny rules: {}\n", l.deny.sources.join("; ")));
+        }
+        o.push_str("\n## Schema (main)\n");
+        let mut stmt = l.db.conn().prepare("SELECT sql FROM main.sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name")?;
+        for s in stmt.query_map([], |r| r.get::<_, String>(0))? {
+            o.push_str(&format!("{};\n", s?));
+        }
+        o.push_str("\n## Enum values with counts (main)\n");
+        for (title, q) in [
+            ("nodes kind/subkind", "SELECT kind || coalesce('/' || subkind, ''), count(*) FROM main.nodes GROUP BY 1 ORDER BY 2 DESC"),
+            ("nodes lang", "SELECT coalesce(lang, 'NULL'), count(*) FROM main.nodes GROUP BY 1 ORDER BY 2 DESC"),
+            ("edges kind/subkind", "SELECT kind || coalesce('/' || subkind, ''), count(*) FROM main.edges GROUP BY 1 ORDER BY 2 DESC"),
+            ("edges resolution", "SELECT resolution, count(*) FROM main.edges GROUP BY 1 ORDER BY 2 DESC"),
+            ("receipts role", "SELECT role, count(*) FROM main.receipts GROUP BY 1 ORDER BY 2 DESC"),
+            ("meta", "SELECT key, value FROM main.meta ORDER BY key"),
+        ] {
+            let mut stmt = l.db.conn().prepare(q)?;
+            let vals: Vec<String> = stmt.query_map([], |r| Ok(format!("{}={}", r.get::<_, String>(0)?, r.get_ref(1)?.as_str().map(String::from).unwrap_or_else(|_| r.get::<_, i64>(1).map(|v| v.to_string()).unwrap_or_default()))))?.collect::<Result<_, _>>()?;
+            o.push_str(&format!("- {title}: {}\n", vals.join(", ")));
+        }
+        o.push_str(&static_status());
+        Ok(o)
+    }
+
+    fn load(&mut self, project: &str, snapshot: Option<&str>, alias: Option<&str>) -> Result<String> {
+        paths::check_name(project)?;
+        let file = match snapshot {
+            Some(name) => {
+                let known: Vec<String> = snapshots(project).into_iter().map(|(f, _, _)| f).collect();
+                if !known.iter().any(|k| k == name) {
+                    bail!("`{name}` is not a snapshot of `{project}`; known: {}", known.join(", "));
+                }
+                paths::snapshots_dir(project)?.join(name)
+            }
+            None => insight_solver::latest_snapshot(project)?,
+        };
+        if let Some(alias) = alias {
+            let l = self.loaded.as_mut().context("load a main snapshot (no alias) first")?;
+            if alias.eq_ignore_ascii_case("main") || alias.eq_ignore_ascii_case("temp") || l.attached.iter().any(|(a, _)| a == alias) {
+                bail!("alias `{alias}` is taken");
+            }
+            l.db.attach(alias, &file)?;
+            l.attached.push((alias.to_string(), file.clone()));
+            return Ok(format!("attached {} as `{alias}`: query it as `{alias}.nodes`, `{alias}.edges`, …", file_name(&file)));
+        }
+        let db = QueryDb::open(&file)?;
+        let repo: String = db.conn().query_row("SELECT value FROM main.meta WHERE key = 'repo'", [], |r| r.get(0))?;
+        let repo_root = settings::load(&paths::project_dir(project)?).ok().and_then(|s| s.repo.get(&repo).map(|r| PathBuf::from(&r.path)));
+        let deny = DenyRules::load(repo_root.as_deref());
+        let files: Vec<String> = {
+            let mut stmt = db.conn().prepare("SELECT path FROM main.files ORDER BY path")?;
+            stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
+        };
+        let denied: Vec<String> = files.iter().filter(|f| deny.denies(repo_root.as_deref(), f)).cloned().collect();
+        let frozen = paths::frozen_source_dir(&file)?;
+        freeze(&db, &frozen, &files, &denied)?;
+        db.set_hide_content(!denied.is_empty());
+        let summary = format!(
+            "loaded {} / {} as `main` (pinned until the next `load` without an alias)\n{} files; frozen-source folder: {}{}",
+            project,
+            file_name(&file),
+            files.len(),
+            frozen.display(),
+            if denied.is_empty() { String::new() } else { format!("\n{} file(s) hidden by the agent's deny rules", denied.len()) }
+        );
+        self.loaded = Some(Loaded { project: project.to_string(), main: file, attached: Vec::new(), db, repo_root, deny, denied, frozen });
+        Ok(summary)
+    }
+
+    fn path(&self, a: &Value) -> Result<String> {
+        let l = self.loaded()?;
+        let follow = a.get("follow").and_then(Value::as_array).context("`follow` is required: choose the hop kinds; there is no default (ADR-0047)")?;
+        let follow: Vec<&str> = follow.iter().filter_map(Value::as_str).collect();
+        let follow = Follow::parse_list(&follow.join(","))?;
+        let opts = insight_solver::path::Options {
+            follow,
+            max_occurrences: a.get("max_occurrences").and_then(Value::as_u64).map(|v| v as usize),
+            max_depth: a.get("max_depth").and_then(Value::as_u64).map(|v| v as usize),
+        };
+        let receipts = match a.get("receipts").and_then(Value::as_str).unwrap_or("expr") {
+            "expr" => true,
+            "none" => false,
+            other => bail!("receipts is `expr` or `none`, not `{other}`"),
+        };
+        let r = insight_solver::path::path(l.db.conn(), &str_list(a, "from"), &str_list(a, "to"), &opts)?;
+        insight_solver::path::render(l.db.conn(), &r, receipts)
+    }
+
+    fn source(&self, a: &Value) -> Result<String> {
+        let l = self.loaded()?;
+        let refs = str_list(a, "refs");
+        if refs.is_empty() {
+            bail!("`refs` is required: node ids/suffixes, `file`, `file:line` or `file:start-end`");
+        }
+        let mut out = String::new();
+        for r in &refs {
+            match self.one_source(l, r) {
+                Ok(t) => out.push_str(&t),
+                Err(e) => out.push_str(&format!("== {r}\n{e:#}\n")),
+            }
+            out.push('\n');
+        }
+        Ok(out)
+    }
+
+    fn one_source(&self, l: &Loaded, r: &str) -> Result<String> {
+        let conn = l.db.conn();
+        let exists = |f: &str| conn.query_row("SELECT 1 FROM main.files WHERE path = ?1", [f], |_| Ok(())).is_ok();
+        // `file`, `file:line`, `file:start-end`; otherwise a node.
+        let (file, range) = match r.rsplit_once(':') {
+            Some((f, lines)) if exists(f) => {
+                let (s, e) = match lines.split_once('-') {
+                    Some((s, e)) => (s.trim().parse::<usize>()?, e.trim().parse::<usize>()?),
+                    None => {
+                        let n = lines.trim().parse::<usize>()?;
+                        (n, n)
+                    }
+                };
+                (f.to_string(), Some((s, e)))
+            }
+            _ if exists(r) => (r.to_string(), None),
+            _ => {
+                let nid = insight_solver::path::resolve(conn, r)?;
+                let (path, file, s, e): (String, Option<String>, Option<i64>, Option<i64>) =
+                    conn.query_row("SELECT path, file, line_start, line_end FROM main.nodes WHERE nid = ?1", [nid], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?)))?;
+                let file = file.with_context(|| format!("`{path}` has no source (an external or literal node)"))?;
+                return self.lines(l, &file, s.zip(e).map(|(s, e)| (s as usize, e as usize)), &path);
+            }
+        };
+        self.lines(l, &file, range, r)
+    }
+
+    fn lines(&self, l: &Loaded, file: &str, range: Option<(usize, usize)>, title: &str) -> Result<String> {
+        if l.denied.iter().any(|d| d == file) || l.deny.denies(l.repo_root.as_deref(), file) {
+            bail!("`{file}` is covered by the agent's deny rules");
+        }
+        let content: Vec<u8> = l.db.conn().query_row("SELECT content FROM main.files WHERE path = ?1", [file], |r| r.get(0))?;
+        let text = String::from_utf8_lossy(&content);
+        let all: Vec<&str> = text.lines().collect();
+        let (s, e) = range.unwrap_or((1, all.len()));
+        if s == 0 || s > e || s > all.len().max(1) {
+            bail!("{file} has {} lines; asked for {s}-{e}", all.len());
+        }
+        let e = e.min(all.len());
+        let mut out = format!("== {title} ({file}:{s}-{e})\n");
+        for (i, line) in all[s - 1..e].iter().enumerate() {
+            out.push_str(&format!("{:>5}  {line}\n", s + i));
+        }
+        Ok(out)
+    }
+}
+
+/// Writes the snapshot's allowed files once into a read-only folder.
+fn freeze(db: &QueryDb, dir: &Path, files: &[String], denied: &[String]) -> Result<()> {
+    let marker = dir.join(".insight-complete");
+    if marker.exists() {
+        return Ok(());
+    }
+    let mut stmt = db.conn().prepare("SELECT content FROM main.files WHERE path = ?1")?;
+    for f in files {
+        // Paths come from extractors; never write outside the folder.
+        let rel = Path::new(f);
+        if denied.contains(f) || rel.is_absolute() || rel.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+            continue;
+        }
+        let dest = dir.join(rel);
+        if let Some(p) = dest.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let bytes: Vec<u8> = stmt.query_row([f], |r| r.get(0))?;
+        if dest.exists() {
+            let mut perm = std::fs::metadata(&dest)?.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perm.set_readonly(false);
+            std::fs::set_permissions(&dest, perm)?;
+        }
+        std::fs::write(&dest, bytes)?;
+        let mut perm = std::fs::metadata(&dest)?.permissions();
+        perm.set_readonly(true);
+        std::fs::set_permissions(&dest, perm)?;
+    }
+    std::fs::write(marker, b"")?;
+    Ok(())
+}
+
+fn build(project: &str, commit: Option<&str>) -> Result<String> {
+    let mut log = insight_solver::Log::create(project, "build")?;
+    let r = insight_solver::build(project, &insight_solver::BuildOptions { commit: commit.map(String::from) }, &mut log);
+    let mut o = format!("log: {}\n", log.path.display());
+    match r {
+        Ok(built) => {
+            for b in built {
+                o.push_str(&format!("OK {}: {} functions -> snapshot `{}`\n", b.repo, b.functions, file_name(&b.snapshot)));
+            }
+            o.push_str("The loaded snapshot is unchanged (pinned); call `load` to switch.\n");
+            Ok(o)
+        }
+        Err(e) => {
+            let code = e.downcast_ref::<insight_solver::Refusal>().map(insight_solver::Refusal::exit_code).unwrap_or(1);
+            bail!("{o}refused (exit {code}): {e:#}")
+        }
+    }
+}
+
+/// (file name, repo, commit) of each complete snapshot of a project, newest first.
+fn snapshots(project: &str) -> Vec<(String, String, String)> {
+    let Ok(dir) = paths::snapshots_dir(project) else { return Vec::new() };
+    let mut out: Vec<(std::time::SystemTime, String, String, String)> = Vec::new();
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.extension().is_none_or(|x| x != "sqlite") {
+            continue;
+        }
+        let Ok(conn) = insight_engine::open_snapshot(&p) else { continue };
+        let meta = |k: &str| conn.query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get::<_, String>(0)).unwrap_or_default();
+        let t = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+        out.push((t, file_name(&p), meta("repo"), meta("commit")));
+    }
+    out.sort_by_key(|x| std::cmp::Reverse(x.0));
+    out.into_iter().map(|(_, f, r, c)| (f, r, c)).collect()
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default()
+}
+
+fn req_str<'a>(a: &'a Value, k: &str) -> Result<&'a str> {
+    a.get(k).and_then(Value::as_str).with_context(|| format!("`{k}` (string) is required"))
+}
+
+fn opt_str<'a>(a: &'a Value, k: &str) -> Option<&'a str> {
+    a.get(k).and_then(Value::as_str)
+}
+
+fn req_u64(a: &Value, k: &str) -> Result<u64> {
+    a.get(k).and_then(Value::as_u64).with_context(|| format!("`{k}` (integer) is required"))
+}
+
+/// A string or a list of strings.
+fn str_list(a: &Value, k: &str) -> Vec<String> {
+    match a.get(k) {
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Array(v)) => v.iter().filter_map(Value::as_str).map(String::from).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn static_status() -> String {
+    let views: String = VIEWS.iter().map(|(name, what, _)| format!("- {name}: {what}\n")).collect();
+    STATIC_STATUS.replace("{views}", &views).replace("{max_rows}", &MAX_ROWS_CEILING.to_string()).replace("{timeout}", &TIMEOUT_CEILING_MS.to_string())
+}
+
+const STATIC_STATUS: &str = "
+## `follow` tokens (exact predicates over `edges`)
+- call: kind='call' AND to_nid IS NOT NULL (resolution 'possible' is labeled `call (possible)`)
+- handoff: kind='value-flow' AND subkind='handoff'
+- literal: F -[kind='link' AND subkind='literal']-> literal node <-[same]- G, for G != F
+- names: F -[link/literal]-> literal node -[kind='link' AND subkind='names']-> declaration
+- constraints: max_occurrences (skip literals occurring more often), max_depth (route length)
+
+## Shipped views (TEMP schema)
+{views}
+
+## Pedantic switches
+None yet: nothing lean-by-default is withheld today (standard-library origin, implicit calls and macro-generated facts aren't recorded yet).
+
+## Ceilings
+sql: max_rows <= {max_rows}, timeout_ms <= {timeout}; one read-only statement; no ATTACH/PRAGMA writes/extensions.
+
+## Not built yet (see SCHEMA.md)
+reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; state nodes and read/write/access, binds, implements, exits, timing.
+";
+
+fn tools() -> Value {
+    json!([
+        {
+            "name": "status",
+            "description": "Projects, snapshots, what's loaded, the live schema with enum counts, follow-token definitions, shipped views, the frozen-source folder, ceilings. Call first.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "load",
+            "description": "Load a snapshot. Without `alias` it becomes the pinned, unqualified `main` (replacing the previous one); with `alias` it's attached for SQL as `<alias>.<table>`.",
+            "inputSchema": {"type": "object", "properties": {
+                "project": {"type": "string"},
+                "snapshot": {"type": "string", "description": "A snapshot file name from `status`; default: the project's newest."},
+                "alias": {"type": "string", "description": "Attach under this SQL alias instead of replacing `main`."}
+            }, "required": ["project"]}
+        },
+        {
+            "name": "build",
+            "description": "Build snapshots of an initialized, approved project (refuses otherwise). Doesn't change the loaded snapshot.",
+            "inputSchema": {"type": "object", "properties": {
+                "project": {"type": "string"},
+                "commit": {"type": "string", "description": "A git revision; default: the working copy."}
+            }, "required": ["project"]}
+        },
+        {
+            "name": "sql",
+            "description": "One read-only SQLite statement against the loaded snapshot(s). You set the row and time limits (under the ceilings in `status`); the result reports the total row count.",
+            "inputSchema": {"type": "object", "properties": {
+                "query": {"type": "string"},
+                "max_rows": {"type": "integer", "minimum": 0, "maximum": MAX_ROWS_CEILING},
+                "timeout_ms": {"type": "integer", "minimum": 1, "maximum": TIMEOUT_CEILING_MS}
+            }, "required": ["query", "max_rows", "timeout_ms"]}
+        },
+        {
+            "name": "path",
+            "description": "Deterministic reachability with receipts. You choose every hop kind (no default). Give `from`, `to`, or both (each a node id/suffix or a list). Returns every hop on some route, labeled, with cycles and recursion reported.",
+            "inputSchema": {"type": "object", "properties": {
+                "from": {"type": "array", "items": {"type": "string"}},
+                "to": {"type": "array", "items": {"type": "string"}},
+                "follow": {"type": "array", "items": {"type": "string", "enum": ["call", "handoff", "literal", "names"]}, "minItems": 1},
+                "max_occurrences": {"type": "integer", "minimum": 1, "description": "Skip literals that occur more often than this."},
+                "max_depth": {"type": "integer", "minimum": 1, "description": "Keep only routes of at most this many hops."},
+                "receipts": {"type": "string", "enum": ["expr", "none"], "description": "Source lines per hop (expr) or none."}
+            }, "required": ["follow"]}
+        },
+        {
+            "name": "source",
+            "description": "Read snapshot source, batched: each ref is a node id/suffix (its span), `file`, `file:line` or `file:start-end` (repo-relative). Serves only snapshot files.",
+            "inputSchema": {"type": "object", "properties": {
+                "refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+            }, "required": ["refs"]}
+        }
+    ])
+}

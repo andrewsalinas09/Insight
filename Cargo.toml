@@ -16,6 +16,7 @@ insight-solver = { path = "crates/insight-solver" }
 insight-lang-ts = { path = "crates/insight-lang-ts" }
 insight-lang-rust = { path = "crates/insight-lang-rust" }
 insight-count = { path = "crates/insight-count" }
+insight-mcp = { path = "crates/insight-mcp" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

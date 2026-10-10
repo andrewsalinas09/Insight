@@ -12,6 +12,40 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — M2: `insight mcp`, after a security review
+**Security review** (MCP is where outside input reaches Insight). Findings and fixes:
+1. **Project and repo names became paths unchecked.** `..\..\x` from an agent could reach folders outside Insight's. Fixed: `paths::check_name` on every project, repo and snapshot path. Snapshot names over MCP must be one of the project's listed files.
+2. **A command against a missing project created its folder** (the log was created before the check). Fixed: `Log::create` requires an existing project.
+3. **SQL** (R3-G #7):
+   - immutable read-only URI open;
+   - authorizer allowlist (ATTACH, DETACH, PRAGMA writes, `load_extension` and all writes denied);
+   - one statement;
+   - a progress-handler deadline;
+   - `hard_heap_limit` plus length limits;
+   - `max_rows` and `timeout_ms` as parameters under ceilings.
+
+   Snapshots are attached only by Insight, with the authorizer lifted for that one statement. Tested: multi-statement, ATTACH, DELETE, `PRAGMA writable_schema`, `load_extension` and an infinite recursive CTE are all refused or interrupted.
+4. **`source`** reads only the snapshot's `files` table, never the disk. `../../Windows/win.ini` and `C:/Windows/win.ini` resolve to nothing.
+5. **Secrets (R3-03):** Claude Code's `Read(...)` deny rules are mirrored, from user and repo settings. A covered file is refused by `source`, left out of the frozen-source folder, and makes `files.content` read as NULL.
+6. **The frozen-source folder** only accepts relative, normal paths from the snapshot; anything else is skipped. Files are written read-only.
+7. **Over MCP, nothing can create or approve a project or change its commands.** `build` refuses unapproved projects (R3-01).
+8. **Not applicable yet:** named-pipe hardening (R3-G #6), because there's no app process to talk to. Repo text returned to the agent is untrusted data, the same as any file the agent reads.
+
+**Done:**
+- `crates/insight-mcp`: newline-delimited JSON-RPC MCP server, protocol 2025-06-18 (also 2025-03-26 and 2024-11-05). Tools: `status`, `load` (pinned `main`; `alias` attaches), `build`, `sql`, `path`, `source`.
+- `insight mcp` subcommand.
+- `insight-engine::query`: the hardened SQL, plus the `callers` and `receipt_text` views.
+- `path` takes set-valued ends, and either end may be open (forward or reverse reachability). The CLI accepts `--no-receipts`. The M1 gate still passes.
+- `docs/MCP-INSTRUCTIONS.md` finalized to describe only what's built, and compiled into the binary.
+- SCHEMA §10–11, ARCHITECTURE, ROADMAP updated.
+- New Q-38 / TB-152: load an external API's documentation next to the code (user idea).
+
+**Learned:**
+- The `immutable=1` URI plus the authorizer gives read-only access with no locks and no writes, and needs no unsafe code. `hard_heap_limit` is a pragma, so it doesn't need FFI either.
+- `reach()`/`nid()` as table functions need rusqlite's `vtab`, whose trait is `unsafe`, against our `unsafe_code = "forbid"`. They're deferred; `path` covers reachability.
+
+**Next:** the user registers the server and tries it in Claude Code: `claude mcp add -s user insight -- <repo>\target\debug\insight.exe mcp`. Then the C/C++ extractor (clangd on the project's `compile_commands.json`) and data-flow edges, validated on the user's private C++ firmware.
+
 ## 2026-10-10 — M1: edges, link passes, `insight path`; the gate passes
 **Done:**
 - **Protocol (fact schema 2):** edge, literal and external records, plus the `anonymous` flag. **Engine** layout 4: an `anonymous` column and edge indexes.

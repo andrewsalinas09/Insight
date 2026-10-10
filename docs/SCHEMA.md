@@ -182,7 +182,9 @@ The engine stores a container `kind` as `kind='container'` with that `subkind`, 
 
 ## 10. `path` (R2-12, ADR-0047, R4-B)
 
-`insight path <project> <from> [--to <to>]… --follow <tokens> [--max-occurrences N] [--max-depth N] [--snapshot <file>]`
+`insight path <project> [<from>…] [--to <to>]… --follow <tokens> [--max-occurrences N] [--max-depth N] [--snapshot <file>] [--no-receipts]`
+
+Over MCP: `path(from?, to?, follow, max_occurrences?, max_depth?, receipts=expr|none)`.
 
 **Follow tokens** are always explicit; there is no default. Each one is an exact predicate over `edges`:
 - `call`: `kind='call'` with a target. `possible` is labeled `call (possible)`.
@@ -192,6 +194,7 @@ The engine stores a container `kind` as `kind='container'` with that `subkind`, 
 
 **Ends:**
 - **Resolution:** an exact id, or a unique suffix starting at a ` › `, `/` or `:` boundary. An ambiguous suffix returns the candidates.
+- **Sets and open ends (R4-B):** each end is a set. Give both for routes between them, only `from` for forward reachability, or only `to` for reverse reachability (everything that reaches a target).
 - **The start** also includes the functions it returns (`value-flow/returns`, R3-G #5).
 - **Targets** are terminal: a route ends there.
 
@@ -202,10 +205,24 @@ The engine stores a container `kind` as `kind='container'` with that `subkind`, 
 **Result:** every hop on some route from a start to a target. The rules:
 - **Progress:** each hop moves further from the start or closer to a target.
 - **Literal round trips:** `F → lit → F` is never a hop.
-- **Pruning:** nodes with no way in or no way out are removed.
+- **Pruning:** with starts, a node other than a start needs a way in; with targets, a node other than a target needs a way out.
 - **Loops:** strongly connected groups and self-loops are reported as cycles or recursion, never followed forever.
 - **Receipts:** each hop lists its receipts with the source text.
 
 The answer goes to stdout; the build-log rule (R2-20) is for builds.
+
+## 11. Agent SQL (ADR-0038, R3-G #7, R4-B)
+
+`sql(query, max_rows, timeout_ms)` runs over the loaded snapshot (`main`) and any attached ones (`<alias>.<table>`). The rules:
+- **Open:** immutable and read-only.
+- **Authorizer allowlist:** SELECT, reads, recursive CTEs, functions except `load_extension`, and read-only introspection pragmas. Everything else is denied, including ATTACH and DETACH.
+- **Limits:**
+  - one statement;
+  - `timeout_ms` (a progress-handler deadline);
+  - a 1 GiB heap limit and length limits;
+  - `max_rows` ≤ 10,000 and `timeout_ms` ≤ 30,000.
+- **Result:** the total row count is always reported, and it's a lower bound if the deadline hit while counting. Blobs show as their size.
+- **Shipped views (TEMP):** `callers` and `receipt_text`. `writers` and `race_candidates` are Planned, with read/write edges. `reach()` and `nid()` are Planned.
+- **Deny rules:** when the agent's deny rules cover a file in the snapshot, `files.content` reads as NULL.
 
 **M1 gate (R3-12):** `crates/insight-solver/tests/m1_gate.rs` checks the drag-and-drop walkthrough's required hops on Fletcher `cd5d6ff`. It covers both windows' routes to `graftNode` and the cross-language route to `fsx::write_atomic` through a `names` hop.
