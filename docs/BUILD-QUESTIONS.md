@@ -134,7 +134,16 @@ What's the first thing that runs, and what's its pass condition?
   - (d) tree-sitter or `syn` plus our own resolver.
 - Rec: (a), falling back to (b) when expansion fails.
 
-### BQ-07: Where a commit's bytes and dependencies come from — OPEN
+### BQ-07: Where a commit's bytes and dependencies come from — ANSWERED (a), with the user's constraints
+**Ruling:** sources are read exactly from git (`gix`); dependencies are materialized per lockfile, falling back to "no dependencies" (unresolved externals) if that fails. User constraints: "build as needed / have the LLM build as needed… efficient… cache without bloat… if it requires something crazy like downloading 20 GB it should say first."
+**Efficiency rules (decided by Claude, delegated):**
+1. **Reuse when it's provably identical.** If the commit's lockfiles (`package-lock.json`, `Cargo.lock`) match the working tree's byte for byte, use your existing `node_modules`/`target` directly. That's the common case (asking about HEAD), and it costs nothing extra.
+2. **Otherwise share by lockfile hash:** one dependency install per distinct lockfile, reused by every commit that has it. Use the global package caches (npm cache, `~/.cargo/registry`) so nothing is downloaded twice.
+3. **Size cap with LRU eviction:** a total cache budget (default 10 GB, configurable), with the least recently used installs deleted first. Snapshot graphs are small and kept longer.
+4. **Ask first when it's big:** before any install or build estimated over 1 GB to download, or over ~3 minutes, Insight returns a "needs confirmation" result with the estimate, instead of doing it. Claude relays it to you.
+5. **Builds are on demand only:** triggered by you in the UI or by Claude through MCP, never in the background on every commit.
+
+*(Original question:)*
 - Case: Fletcher's working tree is dirty right now and `core.autocrlf=true`. Reading from disk would label uncommitted edits as `cd5d6ff`. Types for `useState` and `invoke` need `node_modules`, and rust-analyzer needs crates pinned by `Cargo.lock`.
 - Options:
   - (a) Read sources from git's object store (`gix`) for exact bytes, and materialize dependencies in a cached worktree (`npm ci --ignore-scripts`, `cargo fetch`, keyed by lockfile hash).
@@ -142,7 +151,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) No dependencies: external symbols stay unresolved.
 - Rec: (a), falling back to (c).
 
-### BQ-08: Code that doesn't parse or type-check — OPEN
+### BQ-08: Code that doesn't parse or type-check — ANSWERED by existing ADRs (no question needed)
+**Ruling:** (b): build anyway, with per-file diagnostics, `unresolved` stubs, and nodes in error ranges flagged `degraded`. This follows directly from ADR-0002 (incomplete, never wrong) and the BQ-06 fallback.
+
+*(Original question:)*
 - Options:
   - (a) Fail the build.
   - (b) Build anyway, with per-file diagnostics, `unresolved` stubs, and nodes in error ranges flagged `degraded`.
