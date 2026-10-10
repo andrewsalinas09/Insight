@@ -110,7 +110,11 @@ fn run() -> Result<()> {
             .get_diagnostics()
             .into_iter()
             .filter(|d| matches!(d.get_severity(), clang::diagnostic::Severity::Error | clang::diagnostic::Severity::Fatal))
-            .map(|d| d.get_text())
+            .map(|d| {
+                let at = d.get_location().get_file_location();
+                let file = at.file.map(|f| f.get_path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()).unwrap_or_default();
+                format!("{file}:{}: {}", at.line, d.get_text())
+            })
             .collect();
         if !errors.is_empty() {
             let shown: Vec<&str> = errors.iter().take(5).map(String::as_str).collect();
@@ -224,8 +228,13 @@ impl Drivers {
                     if VALUED.contains(&a.as_str()) {
                         out.push(a.clone());
                         out.extend(it.next().cloned());
-                    } else if VALUED.iter().any(|p| a.starts_with(p) && a.len() > p.len()) || a.starts_with("-std=") {
+                    } else if VALUED.iter().any(|p| a.starts_with(p) && a.len() > p.len()) {
                         out.push(a.clone());
+                    } else if a.starts_with("-std=") {
+                        // The language version selects both what clang parses and which macros
+                        // the compiler predefines (gcc 15 defaults C to C23).
+                        out.push(a.clone());
+                        target_flags.push(a.clone());
                     } else if a.starts_with("-m") || a.starts_with("-f") || a.starts_with("--sysroot") || a.starts_with("-std=") || a.starts_with("-O") {
                         target_flags.push(a.clone());
                     }
@@ -265,7 +274,17 @@ fn query_gcc(index: &Index, compiler: &str, dir: &Path, target_flags: &[String],
         .stdin(std::process::Stdio::null())
         .output()
         .with_context(|| format!("running {compiler} to read its configuration"))?;
-    let macros = String::from_utf8_lossy(&out.stdout).to_string();
+    // gcc announces its extended floating types (`_Float32`, `_Float64x`, …) through these
+    // macros; clang has none of them, and headers that see the macros would use the types.
+    let macros: String = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !["__FLT32", "__FLT64", "__FLT128", "__BFLT16", "__STDCPP_FLOAT", "__STDCPP_BFLOAT"].iter().any(|p| l.starts_with(&format!("#define {p}"))))
+        .map(|l| format!("{l}\n"))
+        .chain(
+            // The parser is clang: headers that adapt to clang (types it builds in) must see it.
+            ["#define __clang__ 1\n".to_string()],
+        )
+        .collect();
     let err = String::from_utf8_lossy(&out.stderr);
     let mut includes = Vec::new();
     let mut inside = false;
@@ -387,6 +406,8 @@ struct Extractor {
     /// Expressions in a write position (not reads): (file, offset).
     skip_read: HashSet<(String, usize)>,
     externals: BTreeMap<String, String>,
+    /// Type definitions already walked: (file, start, end).
+    types_seen: HashSet<(String, usize, usize)>,
     /// Every node id emitted (ids are unique per snapshot).
     ids: HashSet<String>,
 }
@@ -583,6 +604,10 @@ impl Extractor {
                     return Ok(());
                 }
                 let Some((rel, s, en)) = self.range_in(e.get_range())? else { return Ok(()) };
+                // `class X { … } member;` lists the definition twice (also under the member).
+                if !self.types_seen.insert((rel.clone(), s, en)) {
+                    return Ok(());
+                }
                 let (name, anon) = match e.get_name().filter(|n| !n.is_empty() && !e.is_anonymous()) {
                     Some(n) => (n, false),
                     None => (kind_word(e.get_kind()).to_string(), true),
