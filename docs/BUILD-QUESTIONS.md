@@ -329,7 +329,10 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 5: Queries and the MCP tool API
 
-### BQ-26: The query layer (Q-34 for the MVP) — OPEN
+### BQ-26: The query layer (Q-34 for the MVP) — ANSWERED → ADR-0038
+**Ruling:** a query language. Claude writes SQL against a documented schema (nodes, edges, receipts, tags); each codebase's snapshot is a read-only SQLite file. This refines BQ-24's storage format. It also shrinks BQ-27/28/29.
+
+*(Original question:)*
 - Case: "every path from `nodeUp` to a file write"; "all writers of `hist.*`" (the mutation matrix).
 - Options:
   - (a) Hand-written traversal primitives as fixed tools: `related(node, relation, direction, depth)`, `paths(from, to, kinds)`, `matrix(rows, cols, relation)`, with facts stored as plain relations so Datalog can be added later.

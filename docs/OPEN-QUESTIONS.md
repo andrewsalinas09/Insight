@@ -223,7 +223,7 @@ How we know Insight's answers are right and getting better. Gold set:
 
 Metrics: correct receipts, no rejected claims shown, coverage of the key's points. It plays the same role as HTT's retrieval harness. Status: open.
 
-## Q-34: The graph query language
+## Q-34: The graph query language — **Resolved → ADR-0038** (SQL over per-snapshot SQLite)
 The hidden backbone: lenses, sibling comparison, "every error path that skips X", the system diff, expectations, and the assurance trace are all graph queries the LLM translates into and the engine runs deterministically. It needs reachability, effects, timing kinds (ADR-0018), and data lineage. Candidates to study: Datalog, CodeQL's QL, Cypher. Status: open, core technical bet.
 
 ## Q-35: Node identity across versions — **Resolved → ADR-0028** (identity = location, rebuilt every build; the solver emits a structural diff; the model reconciles renames and moves. Only matters once things are saved; not MVP)
