@@ -29,7 +29,13 @@ Template:
   - The sensor builds (firmware + PC): 3,647 functions, 0 mismatches.
   - The gateway configures with ESP-IDF but stops on its five missing submodules, which is reported as such.
 
-**Next:** once the user has run `git submodule update --init --recursive` in the gateway, build the pair and trace a field from the sensor's send to the gateway's receive with `same`.
+**Then (same session):**
+- The export's reuse check now includes the submodules exported, so a tree exported before they were available is redone.
+- `path` lists equality links (`literal`, `names`, `same`) under "to review": they are shortcuts, not compiler facts (user).
+- `status` shows each project's settings file and every repo's last build result, so Claude can do setup (user: setup is Claude's work).
+- The private gateway now gets through configure and compile, but its committed code needs the ESP-IDF version it pins (6.2.0); 5.5.3 is installed.
+
+**Next:** ESP-IDF 6.2 (the user decides), then build the pair and trace a field across repos with `same`.
 
 ## 2026-10-10 (cont.) — Data flow for TypeScript and Rust; external leaves are never passed through
 **Done:**

@@ -155,7 +155,23 @@ impl Session {
                 (Ok(_), Ok(_)) => "commands NOT approved (the user runs `insight approve`)",
                 _ => "INSIGHT.md unreadable",
             };
-            o.push_str(&format!("- {p}: {approval}\n"));
+            o.push_str(&format!("- {p}: {approval}; settings: {}\n", dir.join("INSIGHT.md").display()));
+            // The last build, per repo, so setup problems are visible at a glance.
+            let last_log = std::fs::read_dir(dir.join("logs"))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("build-"))
+                .max_by_key(|e| e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH))
+                .map(|e| e.path());
+            if let Some(log) = last_log {
+                let text = std::fs::read_to_string(&log).unwrap_or_default();
+                o.push_str(&format!("  - last build log: {}\n", log.display()));
+                for l in text.lines().filter(|l| l.starts_with("built ") || l.starts_with("== repo") && l.contains("FAILED") || l.starts_with("result:")) {
+                    let l: String = l.chars().take(300).collect();
+                    o.push_str(&format!("    {l}\n"));
+                }
+            }
             for (file, repo, commit) in snapshots(p) {
                 o.push_str(&format!("  - snapshot `{file}`: repo {repo}, commit {commit}\n"));
             }

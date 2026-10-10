@@ -574,6 +574,15 @@ pub fn render(conn: &Connection, r: &PathResult, receipts: bool) -> Result<Strin
             }
         }
     }
+    // Links found by exact equality (a shared literal, a string equal to a name, identical
+    // source in another repo) are shortcuts, not compiler facts: listed for review.
+    let review: Vec<&Hop> = r.hops.iter().filter(|h| matches!(h.label.as_str(), "literal" | "names" | "same code")).collect();
+    if !review.is_empty() {
+        out.push_str(&format!("\nto review ({}): equality links, not compiler facts; confirm each by reading both ends:\n", review.len()));
+        for h in review {
+            out.push_str(&format!("  {} --{}--> {}\n", name(&h.from), h.label, name(&h.to)));
+        }
+    }
     if !r.cycles.is_empty() {
         out.push_str("\ncycles (reported, not followed):\n");
         for c in &r.cycles {

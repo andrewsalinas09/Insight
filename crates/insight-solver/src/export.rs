@@ -36,25 +36,28 @@ pub fn resolve(repo_path: &Path, rev: &str) -> Result<String> {
 
 /// Exports `commit` into `dir` unless an identical export is already there.
 pub fn export(repo_path: &Path, commit: &str, dir: &Path) -> Result<Exported> {
-    let marker = dir.join(".insight-export");
-    let reuse = std::fs::read_to_string(&marker).map(|s| s.trim() == commit).unwrap_or(false);
-    let tmp = dir.with_extension("tmp");
-    if !reuse {
-        if tmp.exists() {
-            std::fs::remove_dir_all(&tmp)?;
-        }
-        if dir.exists() {
-            std::fs::remove_dir_all(dir)?;
-        }
-    }
-    let mut ex = Exported { commit: commit.to_string(), dir: dir.to_path_buf(), files: BTreeMap::new(), skipped: Vec::new(), submodules: Vec::new() };
     let repo = gix::open(repo_path)?;
-    write_commit(&repo, repo_path, commit, "", if reuse { None } else { Some(&tmp) }, &mut ex)?;
-    if !reuse {
-        std::fs::write(tmp.join(".insight-export"), commit)?;
-        std::fs::rename(&tmp, dir)?;
+    // What this export contains: the commit plus every submodule exported (a submodule
+    // that became available since the last export makes it stale).
+    let mut ex = Exported { commit: commit.to_string(), dir: dir.to_path_buf(), files: BTreeMap::new(), skipped: Vec::new(), submodules: Vec::new() };
+    write_commit(&repo, repo_path, commit, "", None, &mut ex)?;
+    let stamp = std::iter::once(commit.to_string()).chain(ex.submodules.iter().map(|(p, c)| format!("{p} {c}"))).collect::<Vec<_>>().join("\n");
+    let marker = dir.join(".insight-export");
+    if std::fs::read_to_string(&marker).is_ok_and(|s| s.trim() == stamp) {
+        return Ok(ex);
     }
-    Ok(ex)
+    let tmp = dir.with_extension("tmp");
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    if dir.exists() {
+        std::fs::remove_dir_all(dir)?;
+    }
+    let mut written = Exported { commit: commit.to_string(), dir: dir.to_path_buf(), files: BTreeMap::new(), skipped: Vec::new(), submodules: Vec::new() };
+    write_commit(&repo, repo_path, commit, "", Some(&tmp), &mut written)?;
+    std::fs::write(tmp.join(".insight-export"), stamp)?;
+    std::fs::rename(&tmp, dir)?;
+    Ok(written)
 }
 
 /// Writes one commit's tree under `prefix`, recursing into submodules.
