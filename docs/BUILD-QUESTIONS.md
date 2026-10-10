@@ -809,7 +809,8 @@ The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncomm
 Rust macros generate functions with no source text; closures sit inside `format!(…)`.
 - Rec: count function syntax *written in the source*, with a completely separate parser (tree-sitter). Macro-generated functions are excluded. The rules go in SCHEMA.md, and mismatches are printed per file.
 
-### R3-12: The M1 gate as a list of required hops — OPEN (vis)
+### R3-12: The M1 gate as a list of required hops — ANSWERED
+**Ruling:** M1's gate is a list of required function→function hops with edge kind (e.g. `nodeUp → onGraft`, `onGraft → graftNode`, `graftNode → applySnap`, Tauri link `invoke("set_fletcher_chain") → set_fletcher_chain`…), each checked exactly. Lines inside functions are found by Claude via `sql`/`source`. User's framing: "the solver gives what it knows (and to Claude) and then Claude can do whatever it thinks it needs to do to answer your question and display it to you… this is really Claude's way to show you something it can't easily do itself."
 Several "receipts" in the walkthrough are a comment, a local or an object field. They can never be hops on a path.
 - Rec: rewrite the gate as required function→function hops (with edge kind). Interesting lines inside a function are found with `sql`/`source`.
 
