@@ -547,3 +547,146 @@ What's the first thing that runs, and what's its pass condition?
   - (b) (a) plus a manual `insight eval` running headless `claude -p` with the MCP attached, scored against the hand key.
   - (c) (b) plus an LLM judge.
 - Rec: (b), with JSONL session logging always on (`%LOCALAPPDATA%\Insight\sessions\`). Recorded sessions also let the window be built without a live agent.
+
+---
+
+# Second pass (R2): found by three review agents on 2026-10-09
+
+The agents were (1) a dry run of building M0→M2 and the MVP question, (2) a consistency audit of all ADRs and living docs, and (3) day-to-day workflows. Duplicates are merged. **Vis** = user-visible / internal. Asked one at a time; internal items only by explicit delegation. The audit's stale-text list (part B) is applied *after* these are answered, since many fixes depend on them.
+
+## R2-A: Contradictions between accepted decisions
+
+### R2-01: Does "never wrong" cover the model, or only Insight's own facts? — OPEN (vis)
+ADR-0002 says every label must be true or marked, and LLM output must be checked. ADR-0037 says model content is never gated, and "Insight never states something false; the model is responsible for what it says."
+- Options: (a) narrow ADR-0002 to Insight's deterministic layer (graph, paths, receipts, reference resolution); (b) every model element carries a mandatory "interpretation" marker; (c) merge both into a new ADR.
+- Rec: (a), which is ADR-0037's own sentence.
+
+### R2-02: Must authored view content be styled as authored and mapped to real nodes? — OPEN (vis)
+ADR-0026 says styling is enforced and unmapped elements are rejected (TB-105). ADR-0037 says styling is optional and only references must resolve. ADR-0040 says every element maps to real nodes.
+- Options: (a) the renderer styles by element *kind* (abstraction, example data and excerpts always look authored); a mapping is required only for kinds that stand for code (group, collapse, abstraction, excerpt), and optional for notes and example data; (b) no styling or mapping rules at all; (c) keep ADR-0026 in full.
+- Rec: (a). Styling by kind is trivial rendering and polices no content.
+
+### R2-03: Can the model draw an edge the solver didn't find? What line styles exist? — OPEN (vis)
+ADR-0013/0015/0019 promise an "inferred" tier (LLM additions with receipts). BQ-09 has only exact / possible / unresolved. ADR-0040 and the tool list have no way to add an edge.
+- Options: (a) drop "inferred": the model voices a suspicion in a note or step, or picks one of the solver's `possible` edges; the vocabulary is exact / possible / unresolved, plus "observed" later with probes; (b) add an "authored edge" element, unverified; (c) build the receipt checker.
+- Rec: (a).
+
+### R2-04: How is time shown? — OPEN (vis)
+ADR-0018 promises timing kinds on every edge, visible execution contexts, and a first-class swimlane view. The timing owner differs across ADR-0023 (model) and ADR-0033 (plugin, for async/await). BQ-09 has no timing field, and ADR-0040's nine elements have no timing or lanes.
+- Options: (a) language-level `await`/`async` is an edge fact; the model sets an optional `timing` on edges in `show`; lanes are a layout mode for groups (a vocabulary change, through you); (b) timing only in note and step text, dropping swimlanes; (c) a tenth "sequence" element.
+- Rec: (a).
+
+### R2-05: "Must build" vs. leftover fallbacks — OPEN (vis)
+ADR-0036 says refuse if the check fails. BQ-07 still says "fall back to no dependencies". ADR-0034 says "missing toolchain → that language absent". Old commits may not build on today's toolchains.
+- Options: (a) refuse on anything: a failed check, a missing toolchain, failed dependencies; (b) refuse on a failed check, and if a whole language's toolchain is missing, skip that language with a clear notice; delete BQ-07's no-dependencies fallback; (c) allow old commits with a "check skipped" stamp.
+- Rec: (b).
+
+### R2-06: Is anything parsed from source besides tags? — OPEN (vis)
+ADR-0005/0009 and Q-15 describe annotations as "claims + prose, checked by the compiler". ADR-0024 deprioritized the compiler, ADR-0032 made tags "the compiler", and ADR-0037 says no gating.
+- Options: (a) tags are the only thing Insight parses; ordinary comments are just code the model reads; close Q-15; (b) also parse a free `@insight note:` as unchecked data; (c) keep the claims compiler as a post-MVP plan.
+- Rec: (a).
+
+### R2-07: Where does "tell" live, and must sentences link? — OPEN (vis)
+ADR-0010 says every sentence links, and an unlinked one is a smell (TB-066). ADR-0025 says the answer is plain terminal text, and BQ-40 says links only in window notes and steps.
+- Options: (a) prose lives in the terminal, plain; links are available in window notes and steps, never required or flagged; (b) mirror all narration into the window with links required; (c) a `say(text, refs)` tool.
+- Rec: (a).
+
+### R2-08: The knowledge profile and the wish list: inside Insight or outside? — OPEN (vis)
+ADR-0004 says Insight stores a knowledge profile, but Insight calls no model (ADR-0025). ADR-0039's wishes are lost when a session ends.
+- Options: (a) both live outside Insight: the profile is your agent's memory or CLAUDE.md, and the MCP instructions tell Claude to append wishes to a `WISHLIST.md` in the Insight repo; (b) Insight stores the profile (returned by `status`) and adds a `wish` tool; (c) chat only.
+- Rec: (a).
+
+### R2-09: Is ADR-0021 (home screen) still a decision? — OPEN (vis)
+The UI is deferred (ADR-0027) and the "question box" is the terminal (ADR-0025).
+- Options: (a) mark it deferred, keeping only "no curated landing page"; (b) keep it: the window opens on a top-level overview; (c) the window is blank until Claude calls `show`.
+- Rec: (a).
+
+### R2-10: Live mode: build on save, on request, or never? — OPEN (vis)
+VISION says "shows structure instantly as you work". BQ-07 says builds are on demand only. ADR-0036 makes builds non-instant (`cargo check`).
+- Options: (a) on request only, and "re-run on every change" becomes "on each new snapshot"; (b) opt-in auto-build of the working copy on save; (c) on every commit.
+- Rec: (a), with (b) via the wish rule if real use wants it.
+
+### R2-11: Is "+N hidden" automatic? — OPEN (vis)
+ADR-0013/0021/0022 say omissions always show "+N hidden". ADR-0040 allows any subset of nodes, with the count only in the Collapse element.
+- Options: (a) the renderer always shows, per visible container, how many real children aren't in the view; (b) only when the model uses Collapse; (c) a per-view option.
+- Rec: (a). Counting is trivial, so it's the tool's job.
+
+### R2-12: Paths and diffs: built-in operations or SQL? — OPEN (vis)
+M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The tool list (ADR-0039) has no `path`/`diff`. A naive recursive CTE over a cyclic graph may not terminate (dry run). The M1 gate as written can't pass: drag steps 1, 2 and 4 happen *before* `nodeUp`.
+- Options: (a) add a `path(from, to, via?)` tool, deterministic BFS, CLI and MCP alike, printing the reachable subgraph once per node with receipts; diff stays SQL; restate the M1 gate as steps 3 and 5–11 from `nodeUp` plus a second check from `nodeDown`; state hops are opt-in (`--via-state`); (b) both in SQL only, with depth-bounded CTEs; (c) `path` on the CLI only.
+- Rec: (a). It's a trivial algorithm, and it makes M2 literally M1. It changes the fixed tool list, so it needs your OK.
+
+## R2-B: Before M0 (user-visible)
+
+### R2-13: What gets installed, and what you double-click — OPEN (vis)
+`Insight.exe` (app) and `insight` (CLI and bridge) can't share a folder on Windows (case-insensitive). A GUI exe prints nothing in a terminal, and a console exe flashes a window when double-clicked.
+- Options: (a) two binaries in `%LOCALAPPDATA%\Insight\bin`: console `insight.exe` (CLI, bridge, headless) and GUI `insight-app.exe`; (b) one console binary that hides its console on double-click; (c) one GUI binary that attaches to the parent console.
+- Rec: (a).
+
+### R2-14: Registering with Claude Code — OPEN (vis)
+`claude mcp add` defaults to *local* scope, which only works in that one folder.
+- Options: (a) `insight init` runs `claude mcp add -s user insight -- <absolute path>\insight.exe mcp`, so it works in every repo, with no PATH guessing; (b) a per-repo `.mcp.json`; (c) user scope relying on PATH.
+- Rec: (a).
+
+### R2-15: Node and TypeScript for the TS extractor — OPEN (vis)
+- Options: (a) your Node on PATH (probed) and the repo's own `node_modules/typescript`, so facts come from the same compiler as the build check; (b) a self-contained extractor exe with a bundled TypeScript, with no Node needed but a different TS version than the repo's; (c) the repo's own TS, run by a bundled Node.
+- Rec: the agents split: dry run (b), workflow (a). My pick is (c): no PATH dependency, *and* the same compiler as your build.
+
+### R2-16: Where per-repo build settings live, and does Insight write into your repo? — OPEN (vis)
+Fletcher at the pinned commit likely fails a plain `cargo check`: Tauri's `generate_context!()` needs the frontend built first (`npm run build`), and that commit has no `.insight/` folder. Choosing among several tsconfigs is judgment.
+- Options: (a) settings in app data (`%APPDATA%\Insight\repos.toml`, per repo), e.g. `check = ["npm ci", "npm run build", "cargo check --workspace"]`, used for any commit; Insight never writes into your repo; obvious cases need no settings, and ambiguous ones return "needs config" for Claude to fill in; (b) `.insight/config.toml` in the repo, which old commits won't have; (c) Insight auto-writes detected defaults into your repo.
+- Rec: (a). It works for old commits and keeps proprietary repo settings out of repos. Note: it runs the repo's own npm scripts.
+
+### R2-17: Default snapshot and new files — OPEN (vis)
+- Options: (a) `insight build <repo>` defaults to the working copy if dirty and HEAD if clean; a working copy includes **untracked, not-ignored** files (agents add new files), and a build is discarded with "files changed during build, retry" if anything changes mid-build; (b) default HEAD, working copy opt-in; (c) tracked files only.
+- Rec: (a), amending BQ-20's "git-tracked only" for working copies.
+
+### R2-18: How Rust names are typed — OPEN (vis)
+- Options: (a) node paths are crate › module › item, and typing `fsx::write_atomic` or `a.b` is normalized, so you type names the way Rust and TS write them; (b) file-path based (`crates/fletcher-core/src/fsx.rs › write_atomic`); (c) both stored.
+- Rec: (a).
+
+### R2-19: When Insight asks before a big build — OPEN (vis)
+Predicting a build's time or size isn't trivial.
+- Options: (a) ask whenever a dependency set (lockfile) has never been built before, showing the exact count of crates/packages to fetch and their download size; warm builds never ask; (b) start, and pause to ask after 3 minutes; (c) never ask, only show an ETA.
+- Rec: (a). It's exact, not a guess.
+
+### R2-20: What M0 prints, and when it passes — OPEN (vis)
+- Options: (a) per language: files, nodes by kind, edges by kind and resolution, the unresolved rate, and time (check / extract / link). Pass = both extractors run *and* the function count matches an independent count exactly, which catches silently dropped anonymous functions; (b) it runs without error; (c) it matches a hand count for one file.
+- Rec: (a).
+
+### R2-21: You clicking while Claude updates the view — OPEN (vis)
+- Options: (a) the view document (Claude's) and your interaction state (step, expansions, selection) are separate, so Claude's patches keep your place, and `selection` tells Claude where you are; (b) your clicks make new versions, and Claude's stale patches are rejected; (c) Claude's patch resets you.
+- Rec: (a).
+
+### R2-22: What comes back the next day — OPEN (vis)
+- Options: (a) restore the loaded snapshots plus the last view and its step, and `status` lists the last few views (title, when, which session) so a new Claude conversation can say "continue where we left off"; (b) nothing persists; (c) full per-repo view history.
+- Rec: (a).
+
+### R2-23: Two Claude sessions on one window — OPEN (vis)
+- Options: (a) the last `show` wins the screen, but every view is labeled with its session and kept in a short history (one click back), and `unload` doesn't pull a snapshot another session is using; (b) last write wins on everything; (c) a tab per session.
+- Rec: (a).
+
+### R2-24: Updating Insight while it's running — OPEN (vis, soon after)
+Windows locks a running exe, and open Claude sessions keep their old bridge (and old schema docs).
+- Options: (a) `insight install` asks the app to exit, copies, and relaunches; bridge and app exchange version numbers, and on mismatch the bridge returns "Insight was updated, reconnect with /mcp"; (b) manual quit-copy-restart; (c) the bridge restarts itself transparently.
+- Rec: (a).
+
+## R2-C: Before M0 (internal, delegable)
+
+- **R2-25:** how a commit's files are materialized (export from git with exact bytes, plus a private cargo target dir per lockfile so your own builds never block or thrash).
+- **R2-26:** how projects are discovered inside a repo (Cargo workspace roots; tsconfig roots with project references; each file owned by exactly one project).
+- **R2-27:** how Rust is analyzed concretely (a separate `insight-extract-rust.exe` with pinned rust-analyzer crates, using your toolchain's proc-macro server).
+- **R2-28:** the extractor protocol (arguments, header and end records, diagnostics on stderr) and cache keys (fact schema version + each extractor's build hash, not "Insight version", so UI-only updates don't wipe the cache).
+- **R2-29:** where config and tags are read from for old commits (tags from the snapshot; build settings from today).
+- **R2-30:** concrete SQLite tables (integer IDs plus path text, one receipt per edge, the "absent" candidate as a null target, same-literal links via one node per literal).
+- **R2-31:** how the cross-language Tauri link is stored (from the function containing `invoke` to the command fn, with receipts on both sides).
+- **R2-32:** naming loaded snapshots inside `sql` (aliases from `status`, one active snapshot unqualified, so before/after diffs are one query).
+- **R2-33:** dev and installed builds side by side (a separate pipe name and folders per channel), plus the pipe-name / handshake / auto-exit details.
+
+## R2-D: Later (record now, decide when needed)
+
+- **R2-34:** the baseline for "what did this prompt change". Rec: a Claude Code hook records the working tree as a git tree object when you submit a prompt, and it's built only if you ask for a diff. *(vis, oversight)*
+- **R2-35:** can one view show two snapshots (added/removed styling for a system diff)? Rec: yes, with styling computed by Insight. A vocabulary change, through you. *(vis, oversight)*
+- **R2-36:** named workspaces (e.g. "sensor-system" = firmware + app), with link passes only within one. *(vis, multi-repo)*
+- **R2-37:** what "must build" means for firmware: an explicit build command and environment (PlatformIO env, ESP-IDF, maybe WSL), with the environment and Rust features as part of the snapshot key. *(vis, before TB-101)*
+- **R2-38:** cross-repo wire links: exact same-literal facts, plus model-declared "same message" pairs citing them. Runtime evidence (serial logs) is read by Claude first, with an ingest tool only if a wish asks. *(internal)*
