@@ -194,11 +194,26 @@ pub fn build(project: &str, opts: &BuildOptions, log: &mut Log) -> Result<Vec<Bu
     let Some(rev) = &opts.commit else {
         bail!("M0 builds commits only: pass --commit <rev> (working-copy snapshots come later)");
     };
+    // Every repo is built; one that fails keeps its last good snapshot (R3-20) and the
+    // build reports its refusal after the others are done.
     let mut out = Vec::new();
+    let mut failed: Option<anyhow::Error> = None;
     for (name, repo) in &s.repo {
-        out.push(build_repo(project, name, repo, rev, log)?);
+        match build_repo(project, name, repo, rev, log) {
+            Ok(b) => out.push(b),
+            Err(e) => {
+                log.line(format!("== repo `{name}` FAILED: {e:#}"));
+                failed.get_or_insert(e);
+            }
+        }
     }
-    Ok(out)
+    for b in &out {
+        log.line(format!("built {}: {} functions -> {}", b.repo, b.functions, b.snapshot.display()));
+    }
+    match failed {
+        Some(e) => Err(e),
+        None => Ok(out),
+    }
 }
 
 fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &str, log: &mut Log) -> Result<Built> {
@@ -211,6 +226,9 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     let tree = paths::tree_dir(&commit)?;
     let exported = export::export(&live, &commit, &tree)?;
     log.line(format!("exported {} files to {}", exported.files.len(), tree.display()));
+    for (path, c) in &exported.submodules {
+        log.line(format!("  submodule {path} at {c}"));
+    }
     for s in &exported.skipped {
         log.line(format!("  not exported: {s}"));
     }
@@ -546,6 +564,39 @@ fn receipt_at(text: &str, file: &str, s: u64, e: u64, role: &str, container: Opt
     };
     let ((line, col), (end_line, end_col)) = (lc(s), lc(e));
     insight_model::Receipt { role: role.into(), file: file.into(), byte_start: s, byte_end: e, line, col, end_line, end_col, container }
+}
+
+/// The newest complete snapshot of each repo of a project, sorted by repo name.
+pub fn latest_per_repo(project: &str) -> Result<Vec<(String, PathBuf)>> {
+    let dir = paths::snapshots_dir(project)?;
+    let mut best: BTreeMap<String, (std::time::SystemTime, PathBuf)> = BTreeMap::new();
+    for e in std::fs::read_dir(&dir).with_context(|| format!("no snapshots for `{project}`: run `insight build` first"))? {
+        let p = e?.path();
+        if p.extension().is_none_or(|x| x != "sqlite") {
+            continue;
+        }
+        let Ok(conn) = insight_engine::open_snapshot(&p) else { continue };
+        let repo: String = conn.query_row("SELECT value FROM meta WHERE key = 'repo'", [], |r| r.get(0))?;
+        let t = std::fs::metadata(&p)?.modified()?;
+        if best.get(&repo).is_none_or(|(bt, _)| t > *bt) {
+            best.insert(repo, (t, p));
+        }
+    }
+    anyhow::ensure!(!best.is_empty(), "no snapshots for `{project}`: run `insight build` first");
+    Ok(best.into_iter().map(|(r, (_, p))| (r, p)).collect())
+}
+
+/// A repo's SQL schema name when several repos are loaded together: lowercase letters,
+/// digits and `_`, starting with a letter.
+pub fn schema_alias(repo: &str) -> String {
+    let mut a: String = repo.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
+    if !a.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        a.insert(0, 'r');
+    }
+    if a == "main" || a == "temp" {
+        a.push('_');
+    }
+    a
 }
 
 /// The newest complete snapshot of a project (any repo), unless one is named.

@@ -879,7 +879,7 @@ An agent working in a worktree builds and fires the hook.
 8. **Receipts store spans only;** a `files` table holds the bytes, and text is computed. This avoids GB-sized DBs from huge JSX statements.
 9. **Atomic cache writes:** temp file, then a `meta.complete` flag, then rename; a single-writer lock; eviction skips attached files.
 10. **Cache key additions:** resolved toolchain versions, target triple, features/cfg, hashes of the check commands and settings.
-11. **Submodules and symlinks:** nothing outside the repo root is followed; a submodule is analyzed only if added as its own repo.
+11. **Submodules and symlinks:** nothing outside the repo root is followed; a submodule is analyzed only if added as its own repo. *(Amendment proposed 2026-10-10, awaiting the user: a repo's submodules are exported at their pinned commits from local git data, because the build needs them. The C/C++ extractor then analyzes what that build compiles, submodule code included, since that is the program at the pinned version and configuration. Alternative: export them for the build but analyze only as their own repos, joined by cross-repo links.)*
 12. **Unknown `@insight` keywords** become a diagnostic for Claude; never fail the build.
 13. **Rust `&self` mutation:** `access` when the receiver type contains `UnsafeCell` (computed); otherwise conservative.
 14. **The self-pair race query** (see R3-14).

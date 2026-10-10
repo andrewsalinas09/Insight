@@ -212,8 +212,11 @@ impl Session {
                 }
                 paths::snapshots_dir(project)?.join(name)
             }
-            None => insight_solver::latest_snapshot(project)?,
+            None => insight_solver::latest_per_repo(project)?.remove(0).1,
         };
+        // A project of several repos: with no snapshot named, every repo's newest is loaded,
+        // the first as `main` and the others attached under their repo's name.
+        let others: Vec<(String, PathBuf)> = if snapshot.is_none() && alias.is_none() { insight_solver::latest_per_repo(project)?.into_iter().skip(1).collect() } else { Vec::new() };
         if let Some(alias) = alias {
             let l = self.loaded.as_mut().context("load a main snapshot (no alias) first")?;
             if alias.eq_ignore_ascii_case("main") || alias.eq_ignore_ascii_case("temp") || l.attached.iter().any(|(a, _)| a == alias) {
@@ -243,7 +246,18 @@ impl Session {
             frozen.display(),
             if denied.is_empty() { String::new() } else { format!("\n{} file(s) hidden by the agent's deny rules", denied.len()) }
         );
-        self.loaded = Some(Loaded { project: project.to_string(), main: file, attached: Vec::new(), db, repo_root, deny, denied, frozen });
+        let mut summary = summary;
+        let mut attached = Vec::new();
+        for (repo, p) in others {
+            let a = insight_solver::schema_alias(&repo);
+            db.attach(&a, &p)?;
+            summary.push_str(&format!("\nattached repo `{repo}` ({}) as `{a}`", file_name(&p)));
+            attached.push((a, p));
+        }
+        if !attached.is_empty() {
+            summary.push_str("\n`path` searches every loaded repo; nodes show as `<schema>:<path>`; `same` follows identical source across repos.");
+        }
+        self.loaded = Some(Loaded { project: project.to_string(), main: file, attached, db, repo_root, deny, denied, frozen });
         Ok(summary)
     }
 
@@ -256,6 +270,7 @@ impl Session {
             follow,
             max_occurrences: a.get("max_occurrences").and_then(Value::as_u64).map(|v| v as usize),
             max_depth: a.get("max_depth").and_then(Value::as_u64).map(|v| v as usize),
+            schemas: std::iter::once("main".to_string()).chain(l.attached.iter().map(|(a, _)| a.clone())).collect(),
         };
         let receipts = match a.get("receipts").and_then(Value::as_str).unwrap_or("expr") {
             "expr" => true,
@@ -493,7 +508,7 @@ fn tools() -> Value {
             "inputSchema": {"type": "object", "properties": {
                 "from": {"type": "array", "items": {"type": "string"}},
                 "to": {"type": "array", "items": {"type": "string"}},
-                "follow": {"type": "array", "items": {"type": "string", "enum": ["call", "handoff", "literal", "names", "data", "read", "write", "access"]}, "minItems": 1},
+                "follow": {"type": "array", "items": {"type": "string", "enum": ["call", "handoff", "literal", "names", "data", "read", "write", "access", "same"]}, "minItems": 1},
                 "max_occurrences": {"type": "integer", "minimum": 1, "description": "Skip literals that occur more often than this."},
                 "max_depth": {"type": "integer", "minimum": 1, "description": "Keep only routes of at most this many hops."},
                 "receipts": {"type": "string", "enum": ["expr", "none"], "description": "Source lines per hop (expr) or none."}

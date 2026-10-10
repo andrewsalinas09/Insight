@@ -204,6 +204,17 @@ Over MCP: `path(from?, to?, follow, max_occurrences?, max_depth?, receipts=expr|
 - `names`: function →`link/literal`→ literal node →`link/names`→ the declaration.
 - `data`: `value-flow` `assign` / `result` / `return` and `binds` (labeled `possible` for virtual-dispatch bindings). Data reaching a function arrives at its parameter, so a data route usually ends at a parameter or an external leaf.
 - `write` / `access`: function → state. `read`: state → the function reading it (the read edge walked toward the reader). With both `read` and `write`, a function joins every state it reads to every state it writes; that is coarser than `data`, and the choice is the caller's.
+- `same` (several repos): a node ↔ the node with the same in-file path in another repo's snapshot, where the two files have identical content (SHA-256). It's labeled `same code`.
+
+**Several repos** (a project of several repos, ADR-0038). `path` searches every loaded repo snapshot as one graph:
+- **Display:** nodes are shown as `<schema>:<path>`, where the schema is the repo's name in lowercase, and `main` for the first.
+- **Narrowing an end:** a `schema:` prefix restricts it to one repo.
+- **Links across repos** are computed at query time from each snapshot's facts, all by exact equality:
+  - equal literals are one node;
+  - `names` matches a string in one repo to a declared name in another;
+  - `same` matches identical source files.
+
+Whether a link is a real connection (a shared header compiled into both programs, a topic name on both ends) is the caller's judgment.
 
 **Ends:**
 - **Resolution:** an exact id, or a unique suffix starting at a ` › `, `/` or `:` boundary. An ambiguous suffix returns the candidates.

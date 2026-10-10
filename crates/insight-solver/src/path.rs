@@ -9,7 +9,15 @@
 //! - `data`: value moving between states and functions: `value-flow` `assign`, `result`,
 //!   `return` and `binds` (argument → parameter or external callee);
 //! - `write` / `access`: function → the state it writes / may write;
-//! - `read`: state → each function that reads it (read edges walked toward the reader).
+//! - `read`: state → each function that reads it (read edges walked toward the reader);
+//! - `same` (several repos): a declaration ↔ the same declaration in another repo's
+//!   snapshot, where the two files have identical content (shared source compiled in both).
+//!
+//! **Several repos** (`Options::schemas`, one SQLite schema per repo snapshot): nodes are
+//! shown as `<schema>:<path>`; equal literals are one node across repos, and `names`
+//! also matches a string in one repo to a declaration in another. These cross-repo links
+//! are computed from each snapshot's facts at query time (exact equality of content,
+//! value or name); what they mean is the caller's judgment.
 //!
 //! The start may be a function that returns function literals: those are starts too
 //! (R3-G #5, from `value-flow/returns` edges). Loops and recursion are never followed
@@ -30,9 +38,10 @@ pub enum Follow {
     Read,
     Write,
     Access,
+    Same,
 }
 
-const TOKENS: &str = "call, handoff, literal, names, data, read, write, access";
+const TOKENS: &str = "call, handoff, literal, names, data, read, write, access, same";
 
 impl Follow {
     pub fn parse_list(s: &str) -> Result<Vec<Follow>> {
@@ -47,6 +56,7 @@ impl Follow {
                 "read" => Follow::Read,
                 "write" => Follow::Write,
                 "access" => Follow::Access,
+                "same" => Follow::Same,
                 other => bail!("unknown follow token `{other}`; valid: {TOKENS}"),
             });
         }
@@ -65,6 +75,20 @@ pub struct Options {
     pub max_occurrences: Option<usize>,
     /// Keep only routes of at most this many hops (R4-B follow constraint). Needs a target.
     pub max_depth: Option<usize>,
+    /// The repo snapshots to search, as SQLite schema names (empty: `main` only).
+    pub schemas: Vec<String>,
+}
+
+/// Node and edge ids across schemas: `schema index << 40 | rowid`.
+const SHIFT: u32 = 40;
+fn gid(schema: usize, id: i64) -> i64 {
+    ((schema as i64) << SHIFT) | id
+}
+fn split(g: i64) -> (usize, i64) {
+    ((g >> SHIFT) as usize, g & ((1i64 << SHIFT) - 1))
+}
+fn schema_list(opts: &Options) -> Vec<String> {
+    if opts.schemas.is_empty() { vec!["main".to_string()] } else { opts.schemas.clone() }
 }
 
 /// One hop: possibly several edges (call sites) between the same two nodes.
@@ -88,6 +112,8 @@ pub struct PathResult {
     pub cycles: Vec<Vec<i64>>,
     /// Breadth-first distance from the starts, for display order.
     pub depth: HashMap<i64, usize>,
+    /// The schemas searched (for receipts).
+    pub schemas: Vec<String>,
 }
 
 impl PathResult {
@@ -103,11 +129,25 @@ fn ends(path: &str, suffix: &str) -> bool {
 
 /// Resolves a node by exact path or a unique suffix starting at a ` › ` or `/` boundary (BQ-10).
 pub fn resolve(conn: &Connection, spec: &str) -> Result<i64> {
-    let mut stmt = conn.prepare("SELECT nid, path FROM nodes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\' OR path LIKE ?3 ESCAPE '\\' OR path LIKE ?4 ESCAPE '\\'")?;
+    resolve_in(conn, &["main".to_string()], spec)
+}
+
+/// Like [`resolve`], across schemas (returns a global id). `schema:` before the spec
+/// narrows it to one repo's snapshot.
+pub fn resolve_in(conn: &Connection, schemas: &[String], spec: &str) -> Result<i64> {
+    let (only, spec) = match spec.split_once(':') {
+        Some((s, rest)) if schemas.len() > 1 && schemas.iter().any(|x| x == s) => (Some(s), rest),
+        _ => (None, spec),
+    };
     let esc = spec.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
-    let rows: Vec<(i64, String)> = stmt
-        .query_map(params![spec, format!("% › {esc}"), format!("ext:%:{esc}"), format!("%/{esc}")], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<_, _>>()?;
+    let mut rows: Vec<(i64, String)> = Vec::new();
+    for (i, s) in schemas.iter().enumerate().filter(|(_, s)| only.is_none_or(|o| o == s.as_str())) {
+        let mut stmt = conn.prepare(&format!("SELECT nid, path FROM {s}.nodes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\' OR path LIKE ?3 ESCAPE '\\' OR path LIKE ?4 ESCAPE '\\'"))?;
+        let found: Vec<(i64, String)> = stmt
+            .query_map(params![spec, format!("% › {esc}"), format!("ext:%:{esc}"), format!("%/{esc}")], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        rows.extend(found.into_iter().map(|(n, p)| (gid(i, n), if schemas.len() > 1 { format!("{s}:{p}") } else { p })));
+    }
     match rows.len() {
         1 => Ok(rows[0].0),
         0 => bail!("no node matches `{spec}`"),
@@ -126,16 +166,57 @@ struct Graph {
 
 fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
     let mut g = Graph { out: HashMap::new(), rev: HashMap::new() };
+    let schemas = schema_list(opts);
+    // One literal node per value across repos: every schema's `lit:…` maps to the first one's.
+    let mut lit_canon: HashMap<i64, i64> = HashMap::new();
+    if schemas.len() > 1 {
+        let mut first: HashMap<String, i64> = HashMap::new();
+        for (i, s) in schemas.iter().enumerate() {
+            let mut stmt = conn.prepare(&format!("SELECT nid, path FROM {s}.nodes WHERE kind = 'literal'"))?;
+            let rows: Vec<(i64, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+            for (nid, p) in rows {
+                let gl = gid(i, nid);
+                let c = *first.entry(p).or_insert(gl);
+                lit_canon.insert(gl, c);
+            }
+        }
+    }
+    let canon = |n: i64| lit_canon.get(&n).copied().unwrap_or(n);
     let mut add = |from: i64, to: i64, label: &'static str, eid: i64| {
         g.out.entry(from).or_default().push((to, label, eid));
         g.rev.entry(to).or_default().push((from, label, eid));
     };
     let f = |x| opts.follow.contains(&x);
+    // Every schema's rows of one query (written for `edges`), as global ids.
     let edges = |sql: &str| -> Result<Vec<(i64, i64, i64, String)>> {
-        let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
-        Ok(rows.collect::<Result<_, _>>()?)
+        let mut all = Vec::new();
+        for (i, s) in schemas.iter().enumerate() {
+            let mut stmt = conn.prepare(&sql.replace("FROM edges", &format!("FROM {s}.edges")))?;
+            let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?)))?;
+            for row in rows {
+                let (eid, a, b, x) = row?;
+                all.push((gid(i, eid), canon(gid(i, a)), canon(gid(i, b)), x));
+            }
+        }
+        Ok(all)
     };
+    if f(Follow::Same) && schemas.len() > 1 {
+        for (i, a) in schemas.iter().enumerate() {
+            for (j, b) in schemas.iter().enumerate().skip(i + 1) {
+                let sql = format!(
+                    "WITH pairs AS (SELECT fa.path AS pa, fb.path AS pb FROM {a}.files fa JOIN {b}.files fb ON fa.sha256 = fb.sha256)
+                     SELECT na.nid, nb.nid FROM pairs JOIN {a}.nodes na ON na.file = pairs.pa
+                     JOIN {b}.nodes nb ON nb.file = pairs.pb AND nb.kind = na.kind AND substr(nb.path, length(pairs.pb) + 1) = substr(na.path, length(pairs.pa) + 1)"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let rows: Vec<(i64, i64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+                for (x, y) in rows {
+                    add(gid(i, x), gid(j, y), "same code", -1);
+                    add(gid(j, y), gid(i, x), "same code", -1);
+                }
+            }
+        }
+    }
     if f(Follow::Call) {
         for (eid, from, to, res) in edges("SELECT eid, from_nid, to_nid, resolution FROM edges WHERE kind = 'call' AND to_nid IS NOT NULL")? {
             add(from, to, if res == "possible" { "call (possible)" } else { "call" }, eid);
@@ -199,6 +280,23 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
                     add(lit, decl, "names", eid);
                 }
             }
+            // Across repos: a string in one repo equal to a declared name in another.
+            for (i, a) in schemas.iter().enumerate() {
+                for (j, b) in schemas.iter().enumerate().filter(|(j, _)| *j != i) {
+                    let sql = format!(
+                        "SELECT l.nid, d.nid FROM {a}.nodes l JOIN {b}.nodes d ON (d.name = l.name OR d.name LIKE l.name || '#%')
+                         WHERE l.kind = 'literal' AND l.path LIKE 'lit:\"%' AND d.kind = 'container' AND d.subkind IN ('function', 'type', 'module') AND d.anonymous = 0"
+                    );
+                    let mut stmt = conn.prepare(&sql)?;
+                    let rows: Vec<(i64, i64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+                    for (l, d) in rows {
+                        let lit = canon(gid(i, l));
+                        if count.contains_key(&lit) && allowed(&lit) {
+                            add(lit, gid(j, d), "names", -1);
+                        }
+                    }
+                }
+            }
         }
     }
     Ok(g)
@@ -237,18 +335,20 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     if from.is_empty() && to.is_empty() {
         bail!("give a start (`from`), a target (`to`), or both");
     }
+    let schemas = schema_list(opts);
     let mut starts = Vec::new();
-    let mut stmt = conn.prepare("SELECT to_nid FROM edges WHERE from_nid = ?1 AND kind = 'value-flow' AND subkind = 'returns'")?;
     for f in from {
-        let s = resolve(conn, f)?;
+        let s = resolve_in(conn, &schemas, f)?;
         starts.push(s);
-        for r in stmt.query_map([s], |r| r.get::<_, i64>(0))? {
-            starts.push(r?);
+        let (i, nid) = split(s);
+        let mut stmt = conn.prepare(&format!("SELECT to_nid FROM {}.edges WHERE from_nid = ?1 AND kind = 'value-flow' AND subkind = 'returns'", schemas[i]))?;
+        for r in stmt.query_map([nid], |r| r.get::<_, i64>(0))? {
+            starts.push(gid(i, r?));
         }
     }
     starts.sort();
     starts.dedup();
-    let mut targets: Vec<i64> = to.iter().map(|t| resolve(conn, t)).collect::<Result<_>>()?;
+    let mut targets: Vec<i64> = to.iter().map(|t| resolve_in(conn, &schemas, t)).collect::<Result<_>>()?;
     targets.sort();
     targets.dedup();
     let g = load(conn, opts)?;
@@ -258,11 +358,13 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     // Forward from the starts (a route ends at its target, never continues through it); backward from the targets.
     // An external leaf is one node for every call site of a symbol: a route may start or
     // end there, but never passes through it (that would join unrelated call sites).
-    let externals: BTreeSet<i64> = {
-        let mut stmt = conn.prepare("SELECT nid FROM nodes WHERE kind = 'external'")?;
-        let rows = stmt.query_map([], |r| r.get::<_, i64>(0))?;
-        rows.collect::<Result<_, _>>()?
-    };
+    let mut externals: BTreeSet<i64> = BTreeSet::new();
+    for (i, s) in schemas.iter().enumerate() {
+        let mut stmt = conn.prepare(&format!("SELECT nid FROM {s}.nodes WHERE kind = 'external'"))?;
+        for r in stmt.query_map([], |r| r.get::<_, i64>(0))? {
+            externals.insert(gid(i, r?));
+        }
+    }
     // Hops out of an external leaf only where a route can begin there: it is a start, or
     // (reverse reachability) the open end the search reached.
     let pass_through = |n: &i64| !externals.contains(n) || starts.contains(n) || !fwd;
@@ -307,9 +409,10 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     let keep: BTreeSet<i64> = hops.iter().flat_map(|h| [h.from, h.to]).chain(starts.iter().copied()).chain(targets.iter().copied()).collect();
 
     let mut nodes = BTreeMap::new();
-    let mut stmt = conn.prepare("SELECT path FROM nodes WHERE nid = ?1")?;
     for n in &keep {
-        nodes.insert(*n, stmt.query_row([n], |r| r.get::<_, String>(0))?);
+        let (i, nid) = split(*n);
+        let p: String = conn.query_row(&format!("SELECT path FROM {}.nodes WHERE nid = ?1", schemas[i]), [nid], |r| r.get(0))?;
+        nodes.insert(*n, if schemas.len() > 1 { format!("{}:{p}", schemas[i]) } else { p });
     }
     let cycles = cycles(&keep, &hops);
     // Display order: distance from the starts, or (reverse only) from the open end toward the targets.
@@ -319,7 +422,7 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
         let max = keep.iter().filter_map(|n| to_target.get(n)).max().copied().unwrap_or(0);
         keep.iter().filter_map(|n| to_target.get(n).map(|d| (*n, max - d))).collect()
     };
-    Ok(PathResult { starts, targets, nodes, hops, cycles, depth })
+    Ok(PathResult { starts, targets, nodes, hops, cycles, depth, schemas })
 }
 
 /// Removes hops that are not on any real route, to a fixpoint:
@@ -439,8 +542,7 @@ pub fn render(conn: &Connection, r: &PathResult, receipts: bool) -> Result<Strin
     for h in &r.hops {
         by_from.entry(h.from).or_default().push(h);
     }
-    let mut files: HashMap<String, Vec<u8>> = HashMap::new();
-    let mut rstmt = conn.prepare("SELECT role, file, byte_start, byte_end, line, col FROM receipts WHERE eid = ?1 ORDER BY rowid")?;
+    let mut files: HashMap<(usize, String), Vec<u8>> = HashMap::new();
     for n in order {
         out.push_str(&format!("\n{}\n", name(&n)));
         for h in by_from.get(&n).into_iter().flatten() {
@@ -448,15 +550,20 @@ pub fn render(conn: &Connection, r: &PathResult, receipts: bool) -> Result<Strin
             if !receipts {
                 continue;
             }
-            for eid in &h.eids {
+            for eid in h.eids.iter().filter(|e| **e >= 0) {
+                let (i, eid) = split(*eid);
+                let schema = &r.schemas[i];
+                let mut rstmt = conn.prepare(&format!("SELECT role, file, byte_start, byte_end, line, col FROM {schema}.receipts WHERE eid = ?1 ORDER BY rowid"))?;
                 let rows: Vec<(String, String, i64, i64, i64, i64)> =
                     rstmt.query_map([eid], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?, x.get(4)?, x.get(5)?)))?.collect::<Result<_, _>>()?;
                 for (role, file, s, e, line, col) in rows {
-                    if !files.contains_key(&file) {
-                        let content: Vec<u8> = conn.query_row("SELECT content FROM files WHERE path = ?1", [&file], |x| x.get(0)).unwrap_or_default();
-                        files.insert(file.clone(), content);
+                    let key = (i, file.clone());
+                    if !files.contains_key(&key) {
+                        let content: Vec<u8> = conn.query_row(&format!("SELECT content FROM {schema}.files WHERE path = ?1"), [&file], |x| x.get(0)).unwrap_or_default();
+                        files.insert(key.clone(), content);
                     }
-                    let bytes = &files[&file];
+                    let bytes = &files[&key];
+                    let file = if r.schemas.len() > 1 { format!("{schema}:{file}") } else { file };
                     let text = String::from_utf8_lossy(bytes.get(s as usize..e as usize).unwrap_or_default());
                     let mut snippet: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
                     if snippet.chars().count() > 90 {

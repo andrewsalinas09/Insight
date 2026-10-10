@@ -12,6 +12,25 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — Multi-repo projects: submodule export, cross-repo `path`
+**Done:**
+- **Export:** each submodule is exported at the commit its parent records, from local git data (`.git/modules/<path>` or a checkout's `.git`). Nothing is fetched. A missing submodule is listed as "not on this machine; run `git submodule update --init --recursive`". This is a proposed amendment to R3-G #11 and awaits the user.
+- **Build:** every repo of a project is built. A failing repo keeps its last good snapshot and the refusal comes at the end (R3-20).
+- **`path` across repos** (`Options::schemas`):
+  - nodes show as `<schema>:<path>`, and a `schema:` prefix narrows an end;
+  - equal literals are one node across repos;
+  - `names` matches a string in one repo to a declared name in another;
+  - new hop kind `same` links identical source files (by SHA-256) node for node.
+
+  All three links are computed at query time from the snapshots' facts, with no link database.
+- **MCP `load(project)`** loads every repo's newest snapshot: the first as `main`, the others attached by repo name. The CLI `path` does the same.
+- **Test** `multi_repo.rs`: two made-up repos sharing a header and a literal. Routes go write → same code → read, and through the shared literal.
+- **Private validation project** (sensor + gateway, newer sensor checkout):
+  - The sensor builds (firmware + PC): 3,647 functions, 0 mismatches.
+  - The gateway configures with ESP-IDF but stops on its five missing submodules, which is reported as such.
+
+**Next:** once the user has run `git submodule update --init --recursive` in the gateway, build the pair and trace a field from the sensor's send to the gateway's receive with `same`.
+
 ## 2026-10-10 (cont.) — Data flow for TypeScript and Rust; external leaves are never passed through
 **Done:**
 - **TS extractor:**

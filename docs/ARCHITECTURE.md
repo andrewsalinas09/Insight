@@ -41,7 +41,7 @@
 project (repos) ─► trigger (after-build hook, Snapshot now, on demand)
    ─► freeze source copy (R3-05) ─► project check in Insight's copy (ADR-0036, R3-04)
    ─► extractors (ADR-0034, NDJSON; files-read hashes) ─► link passes (same-literal BQ-22, names ADR-0048)
-   ─► snapshot: one read-only SQLite file per repo + a link layer (ADR-0038, BQ-24, R2-30)
+   ─► snapshot: one read-only SQLite file per repo; cross-repo links computed at query time (ADR-0038, BQ-24, R2-30)
    ─► agent: sql / path / compare / source ──► show(view) ──► window ──► selection ──► agent
 ```
 

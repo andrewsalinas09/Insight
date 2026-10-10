@@ -144,14 +144,23 @@ fn run_path(
     receipts: bool,
 ) -> anyhow::Result<String> {
     let follow = insight_solver::path::Follow::parse_list(follow)?;
-    let snap = match snapshot {
-        Some(s) => s.to_path_buf(),
-        None => insight_solver::latest_snapshot(project)?,
+    // A named snapshot, or every repo's newest (the first as `main`, the others attached by repo name).
+    let snaps: Vec<(String, std::path::PathBuf)> = match snapshot {
+        Some(s) => vec![(String::new(), s.to_path_buf())],
+        None => insight_solver::latest_per_repo(project)?,
     };
-    let conn = insight_engine::open_snapshot(&snap)?;
-    let opts = insight_solver::path::Options { follow, max_occurrences, max_depth };
+    let conn = insight_engine::open_snapshot(&snaps[0].1)?;
+    let mut schemas = vec!["main".to_string()];
+    for (repo, p) in snaps.iter().skip(1) {
+        insight_engine::open_snapshot(p)?;
+        let a = insight_solver::schema_alias(repo);
+        conn.execute(&format!("ATTACH DATABASE ?1 AS \"{a}\""), [p.to_string_lossy()])?;
+        schemas.push(a);
+    }
+    let opts = insight_solver::path::Options { follow, max_occurrences, max_depth, schemas };
     let r = insight_solver::path::path(&conn, from, to, &opts)?;
-    Ok(format!("snapshot: {}\n{}", snap.display(), insight_solver::path::render(&conn, &r, receipts)?))
+    let names: Vec<String> = snaps.iter().map(|(_, p)| p.display().to_string()).collect();
+    Ok(format!("snapshot: {}\n{}", names.join(", "), insight_solver::path::render(&conn, &r, receipts)?))
 }
 
 fn fatal(e: anyhow::Error) -> ExitCode {

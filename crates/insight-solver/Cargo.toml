@@ -25,3 +25,5 @@ notify = "8.2.0"
 
 [dev-dependencies]
 insight-engine = { path = "../insight-engine" }
+insight-model = { path = "../insight-model" }
+sha2 = "0.11.0"
