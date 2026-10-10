@@ -454,7 +454,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) No steps in the MVP.
 - Rec: (a). It's what both Fletcher answers needed.
 
-### BQ-39: Step-throughs: all at once or one call per step — OPEN
+### BQ-39: Step-throughs: all at once or one call per step — ANSWERED (both, mainly you)
+**Ruling (user):** the whole `steps[]` arrives in one view. By default **you drive** with Next/Back at your own pace. When you don't want to think, say "show me the walkthrough": Claude sends the view in **play mode** and the window auto-advances, each step held long enough to read its note, with pause/back/next always available. Claude can also jump the window to a step ("look at step 7").
+
+*(Original question:)*
 - Options:
   - (a) The whole `steps[]` in one view (each step {focus, highlight[], frame?, values?, text}); the window owns Next/Back, and the agent can jump to a step.
   - (b) One tool call per step, timed to the narration.
