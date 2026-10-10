@@ -21,3 +21,4 @@ It matches how the user works: an instrument that's open on screen, which both t
 - Tauri 2 (Q-08) is the natural shell, but backend crates never depend on it.
 - MCP tool parity with the UI becomes a standing requirement for every feature.
 - **Parity runs both ways (R2-09, user):** everything Claude can do through MCP (load, build, query, compare, show, step, select) you can also do directly in the window. "The terminal is simply a way to get Claude to do it on your behalf (the default way you use this tool)." The question box is the terminal.
+- **Binaries (R2-13):** the window is `insight-app.exe` (Start-menu shortcut "Insight"), and the CLI/bridge is `insight.exe`, both in `%LOCALAPPDATA%\Insight\bin`. Where this ADR says `Insight.exe`, read `insight-app.exe`.
