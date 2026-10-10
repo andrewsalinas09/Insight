@@ -704,7 +704,8 @@ Predicting a build's time or size isn't trivial.
 - Options: (a) the last `show` wins the screen, but every view is labeled with its session and kept in a short history (one click back), and `unload` doesn't pull a snapshot another session is using; (b) last write wins on everything; (c) a tab per session.
 - Rec: (a).
 
-### R2-24: Updating Insight while it's running — OPEN (vis, soon after)
+### R2-24: Updating Insight while it's running — ANSWERED → ADR-0046
+**Ruling (user):** follow the user's proven desktop-app update pattern: signed in-app updates with an idle guard and silent checks; a local install script that builds a separate exe, closes normally, replaces atomically, never force-kills, and verifies after launch; version bumps via one script; no release tags unless the user asks. Plus a bridge↔app version handshake.
 Windows locks a running exe, and open Claude sessions keep their old bridge (and old schema docs).
 - Options: (a) `insight install` asks the app to exit, copies, and relaunches; bridge and app exchange version numbers, and on mismatch the bridge returns "Insight was updated, reconnect with /mcp"; (b) manual quit-copy-restart; (c) the bridge restarts itself transparently.
 - Rec: (a).
