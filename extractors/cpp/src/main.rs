@@ -814,6 +814,18 @@ impl Extractor {
                 self.handoffs.push(PendingHandoff { from: ctx.func.clone(), target, receipt: r });
             }
         }
+        if matches!(name.as_str(), "operator=" | "operator+=" | "operator-=" | "operator|=" | "operator&=") {
+            self.operator_assignment(e, &name, ctx)?;
+        }
+        // Calling a callable object (`std::function`, a functor): the call runs whatever the
+        // variable or field holds, so it is also a call through that state.
+        if name == "operator()" {
+            if let Some(obj) = e.get_children().into_iter().find_map(|c| callable_object(c).filter(|r| matches!(r.get_kind(), K::VarDecl | K::ParmDecl | K::FieldDecl))) {
+                if let Some(via) = self.state_ref(obj)? {
+                    self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via: Some(via), receipt: receipt.clone() });
+                }
+            }
+        }
         self.calls.push(PendingCall { from: ctx.func.clone(), usrs, external, dynamic: e.is_dynamic_call(), implicit, constructor, via: None, receipt });
         Ok(())
     }
@@ -1107,6 +1119,15 @@ fn qualifier(e: Entity) -> String {
     }
     parts.reverse();
     parts.join("::")
+}
+
+/// The variable, parameter or field an expression names (through casts and parentheses).
+fn callable_object(e: Entity) -> Option<Entity> {
+    match e.get_kind() {
+        EntityKind::DeclRefExpr | EntityKind::MemberRefExpr => e.get_reference(),
+        EntityKind::UnexposedExpr | EntityKind::ParenExpr => e.get_children().into_iter().next().and_then(callable_object),
+        _ => None,
+    }
 }
 
 /// The callee's written name, which a lambda argument is named after (`for_each#1`).

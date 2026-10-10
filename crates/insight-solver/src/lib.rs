@@ -244,6 +244,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     h.update(&ts_script);
     h.update(&rust_helper);
     h.update(&cpp_helper);
+    // The solver's own passes (links, indirect calls) shape the facts too: this binary is part of the key.
+    h.update(std::fs::read(std::env::current_exe()?)?);
     h.update(settings::Commands::of(&settings::Settings { tagging: String::new(), repo: [(name.to_string(), repo.clone())].into() }).fingerprint());
     let key: String = h.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect();
     let snap_path = paths::snapshot_path(project, name, &key)?;

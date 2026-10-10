@@ -234,56 +234,18 @@ impl SnapshotWriter {
     /// states it aliases (a `binds` edge in `ref`/`pointer` mode from it to a parameter:
     /// what the callee assigns to the parameter reaches the argument), and through a
     /// `value-flow/result` edge from a function F: F's `returns` targets are candidates
-    /// and the states F `return`s are followed. Returns (calls resolved, candidate edges).
+    /// and the states F `return`s are followed. External leaves are never walked through.
+    /// Returns (calls resolved, candidate edges).
     pub fn resolve_indirect_calls(&mut self, first_group: i64) -> Result<(usize, usize)> {
-        use std::collections::{BTreeSet, HashMap};
-        let rows = |sql: &str| -> Result<Vec<(i64, i64, String)>> {
-            let mut stmt = self.conn.prepare(sql)?;
-            let r = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, Option<String>>(2)?.unwrap_or_default())))?;
-            Ok(r.collect::<Result<_, _>>()?)
+        let walk = IndirectWalk::load(&self.conn)?;
+        let calls: Vec<(i64, i64, i64)> = {
+            let mut stmt = self.conn.prepare("SELECT e.eid, e.from_nid, e.to_nid FROM edges e JOIN nodes n ON n.nid = e.to_nid WHERE e.kind = 'call' AND n.kind = 'state'")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect::<Result<_, _>>()?
         };
-        let is_fn: BTreeSet<i64> = rows("SELECT nid, nid, '' FROM nodes WHERE kind = 'container' AND subkind = 'function'")?.into_iter().map(|r| r.0).collect();
-        let mut into: HashMap<i64, Vec<i64>> = HashMap::new(); // state -> value sources (assign, binds)
-        let mut alias: HashMap<i64, Vec<i64>> = HashMap::new(); // argument state -> ref/pointer parameter
-        let mut result_from: HashMap<i64, Vec<i64>> = HashMap::new(); // state -> functions whose result reaches it
-        let mut returns_fn: HashMap<i64, Vec<i64>> = HashMap::new(); // function -> function values it returns
-        let mut returned: HashMap<i64, Vec<i64>> = HashMap::new(); // function -> states it returns
-        for (from, to, kind) in rows("SELECT from_nid, to_nid, kind || '/' || coalesce(subkind, '') FROM edges WHERE to_nid IS NOT NULL AND (kind IN ('binds', 'value-flow'))")? {
-            match kind.as_str() {
-                "value-flow/assign" | "binds/value" | "binds/ref" | "binds/pointer" => into.entry(to).or_default().push(from),
-                "value-flow/result" => result_from.entry(to).or_default().push(from),
-                "value-flow/returns" => returns_fn.entry(from).or_default().push(to),
-                "value-flow/return" => returned.entry(to).or_default().push(from),
-                _ => {}
-            }
-            if kind == "binds/ref" || kind == "binds/pointer" {
-                alias.entry(from).or_default().push(to);
-            }
-        }
-        let calls = rows("SELECT e.eid, e.from_nid, CAST(e.to_nid AS TEXT) FROM edges e JOIN nodes n ON n.nid = e.to_nid WHERE e.kind = 'call' AND n.kind = 'state'")?;
         let (mut resolved, mut candidates, mut group) = (0, 0, first_group);
         for (eid, caller, state) in calls {
-            let state: i64 = state.parse()?;
-            let mut found: BTreeSet<i64> = BTreeSet::new();
-            let mut seen: BTreeSet<i64> = BTreeSet::new();
-            let mut stack = vec![state];
-            while let Some(x) = stack.pop() {
-                if !seen.insert(x) {
-                    continue;
-                }
-                for s in into.get(&x).into_iter().flatten() {
-                    if is_fn.contains(s) {
-                        found.insert(*s);
-                    } else {
-                        stack.push(*s);
-                    }
-                }
-                stack.extend(alias.get(&x).into_iter().flatten());
-                for f in result_from.get(&x).into_iter().flatten() {
-                    found.extend(returns_fn.get(f).into_iter().flatten());
-                    stack.extend(returned.get(f).into_iter().flatten());
-                }
-            }
+            let found = walk.candidates(state).0;
             if found.is_empty() {
                 continue;
             }
@@ -301,7 +263,6 @@ impl SnapshotWriter {
         }
         Ok((resolved, candidates))
     }
-
     pub fn receipt(&self, eid: i64, r: &Receipt) -> Result<()> {
         let container = r.container.as_deref().and_then(|c| self.ids.get(c).copied());
         self.conn.execute(
@@ -423,5 +384,106 @@ mod tests {
         assert!(w.node(&file, "ts", Some("x")).is_err());
         drop(w);
         std::fs::remove_dir_all(dir).ok();
+    }
+}
+
+
+/// The value graph the indirect-call pass walks (see [`SnapshotWriter::resolve_indirect_calls`]):
+/// backward from a called state to the function values that can reach it.
+pub struct IndirectWalk {
+    is_fn: std::collections::BTreeSet<i64>,
+    external: std::collections::BTreeSet<i64>,
+    /// state -> value sources (assign, binds)
+    into: std::collections::HashMap<i64, Vec<i64>>,
+    /// state -> sources of assignments only (what a callee writes to a reference parameter)
+    assigned: std::collections::HashMap<i64, Vec<i64>>,
+    /// argument state -> ref/pointer parameter
+    alias: std::collections::HashMap<i64, Vec<i64>>,
+    /// state -> functions whose result reaches it
+    result_from: std::collections::HashMap<i64, Vec<i64>>,
+    /// function -> function values it returns
+    returns_fn: std::collections::HashMap<i64, Vec<i64>>,
+    /// function -> states it returns
+    returned: std::collections::HashMap<i64, Vec<i64>>,
+}
+
+impl IndirectWalk {
+    pub fn load(conn: &Connection) -> Result<Self> {
+        let ids = |sql: &str| -> Result<std::collections::BTreeSet<i64>> {
+            let mut stmt = conn.prepare(sql)?;
+            let r = stmt.query_map([], |r| r.get(0))?;
+            Ok(r.collect::<Result<_, _>>()?)
+        };
+        let mut w = IndirectWalk {
+            is_fn: ids("SELECT nid FROM nodes WHERE kind = 'container' AND subkind = 'function'")?,
+            // External leaves stand for every call site of a symbol: never walked through.
+            external: ids("SELECT nid FROM nodes WHERE kind = 'external'")?,
+            into: Default::default(),
+            assigned: Default::default(),
+            alias: Default::default(),
+            result_from: Default::default(),
+            returns_fn: Default::default(),
+            returned: Default::default(),
+        };
+        let mut stmt = conn.prepare("SELECT from_nid, to_nid, kind || '/' || coalesce(subkind, '') FROM edges WHERE to_nid IS NOT NULL AND kind IN ('binds', 'value-flow')")?;
+        for r in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?)))? {
+            let (from, to, kind) = r?;
+            match kind.as_str() {
+                "value-flow/assign" => {
+                    w.into.entry(to).or_default().push(from);
+                    w.assigned.entry(to).or_default().push(from);
+                }
+                "binds/value" | "binds/ref" | "binds/pointer" => w.into.entry(to).or_default().push(from),
+                "value-flow/result" => w.result_from.entry(to).or_default().push(from),
+                "value-flow/returns" => w.returns_fn.entry(from).or_default().push(to),
+                "value-flow/return" => w.returned.entry(to).or_default().push(from),
+                _ => {}
+            }
+            if kind == "binds/ref" || kind == "binds/pointer" {
+                w.alias.entry(from).or_default().push(to);
+            }
+        }
+        Ok(w)
+    }
+
+    /// The function values that can reach `state`, and for each node reached, the node it
+    /// was reached from with how (for explaining a candidate).
+    pub fn candidates(&self, state: i64) -> (std::collections::BTreeSet<i64>, std::collections::HashMap<i64, (i64, &'static str)>) {
+        let mut found = std::collections::BTreeSet::new();
+        let mut parent: std::collections::HashMap<i64, (i64, &'static str)> = std::collections::HashMap::new();
+        let mut seen = std::collections::BTreeSet::new();
+        // (state, reached through a reference parameter): through one, only what the callee
+        // assigns to it comes back to the argument, not what other callers bind to it.
+        let mut stack = vec![(state, false)];
+        while let Some((x, aliased)) = stack.pop() {
+            if !seen.insert((x, aliased)) || self.external.contains(&x) {
+                continue;
+            }
+            let sources = if aliased { self.assigned.get(&x) } else { self.into.get(&x) };
+            for s in sources.into_iter().flatten() {
+                parent.entry(*s).or_insert((x, "value from"));
+                if self.is_fn.contains(s) {
+                    found.insert(*s);
+                } else {
+                    stack.push((*s, false));
+                }
+            }
+            for p in self.alias.get(&x).into_iter().flatten() {
+                parent.entry(*p).or_insert((x, "reference parameter of"));
+                stack.push((*p, true));
+            }
+            for f in self.result_from.get(&x).into_iter().flatten() {
+                for v in self.returns_fn.get(f).into_iter().flatten() {
+                    parent.entry(*v).or_insert((*f, "returned by"));
+                    found.insert(*v);
+                }
+                for s in self.returned.get(f).into_iter().flatten() {
+                    parent.entry(*s).or_insert((*f, "returned by"));
+                    stack.push((*s, false));
+                }
+                parent.entry(*f).or_insert((x, "result of"));
+            }
+        }
+        (found, parent)
     }
 }

@@ -12,3 +12,6 @@ workspace = true
 anyhow = "1.0.104"
 insight-model.workspace = true
 rusqlite = { version = "0.40.2", features = ["bundled", "hooks", "limits"] }
+
+[dev-dependencies]
+anyhow = "1.0.104"

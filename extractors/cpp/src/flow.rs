@@ -136,7 +136,17 @@ impl Extractor {
                         self.sources(a, out)?;
                     }
                 }
-                Some(r) if is_fn(r.get_kind()) => out.push(Src::Result(self.fn_ref(r)?)),
+                Some(r) if is_fn(r.get_kind()) => {
+                    out.push(Src::Result(self.fn_ref(r)?));
+                    // A one-argument function returning a reference (`std::move`, `std::forward`,
+                    // identity helpers) hands back a reference, by its type to its argument:
+                    // the argument's value passes through.
+                    let args = e.get_arguments().unwrap_or_default();
+                    let returns_ref = r.get_result_type().is_some_and(|t| matches!(t.get_kind(), TypeKind::LValueReference | TypeKind::RValueReference));
+                    if returns_ref && args.len() == 1 {
+                        self.sources(args[0], out)?;
+                    }
+                }
                 _ => {}
             },
             K::ArraySubscriptExpr => {
@@ -238,6 +248,26 @@ impl Extractor {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// `a = b` on a class type is a call to `operator=` (and `a += b` to `operator+=`): the
+    /// same write and value edges as a built-in assignment.
+    pub(crate) fn operator_assignment(&mut self, e: Entity, op: &str, ctx: &Ctx) -> Result<()> {
+        let args = e.get_arguments().unwrap_or_default();
+        let (Some(lhs), Some(rhs)) = (args.first().copied(), args.get(1).copied()) else { return Ok(()) };
+        let Some((target, sub, at)) = self.write_target(lhs)? else { return Ok(()) };
+        let Some(receipt) = self.receipt_of(e, "write", ctx)? else { return Ok(()) };
+        let p = self.pos(at)?;
+        self.skip_read.insert(p);
+        let from = Ref::Node(ctx.func.clone());
+        self.data(EdgeKind::Write, sub, from.clone(), target.clone(), receipt.clone());
+        if op != "operator=" {
+            self.data(EdgeKind::Read, None, from, target.clone(), receipt.clone());
+        }
+        let mut srcs = Vec::new();
+        self.sources(rhs, &mut srcs)?;
+        self.flow_into(srcs, target, false, &receipt);
         Ok(())
     }
 
