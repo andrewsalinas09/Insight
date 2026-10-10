@@ -399,6 +399,17 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 6: Views and the backend↔window contract
 
+**Internal plumbing DECIDED BY CLAUDE (user explicitly delegated: "you can decide").** The individual questions below are kept for history.
+
+| BQ | Ruling |
+|---|---|
+| 33 | Each `show` sends a **complete view** with an id. For small follow-ups, Claude may send `base: <view id>` plus a short patch (add/remove elements, change highlight, go to step). The app owns the current view state; the window just renders it, which keeps views replayable and testable. |
+| 35 | A reference is a node ID (or a unique suffix, BQ-10), optionally narrowed to `lines` within it. Abstraction pseudocode and code excerpts can map **each line** to its real lines, so "expand to real code" lands on the exact spot. |
+| 37 | Example data is either `{table: columns, rows}` or `{diagram: objects[{id, label, fields{name: value or ->objectId}}]}`, each linked to the real fields it illustrates. Before/after is a list of frames; the window shows what changed. Values are free (ADR-0037). |
+| 42/43 | One app (ADR-0031). The `insight mcp` bridge talks to the running app over a **local named pipe** (Windows-native, no network port, no firewall prompt), speaking JSON-RPC. If the pipe isn't there, the bridge launches `Insight.exe` and waits for it. Inside the app, the core pushes view updates to the window with Tauri events. A headless mode (`insight serve --headless`) runs the same core with no window, for tests. |
+| 44 | Shared types are defined once in Rust (serde). TypeScript types for the window are **generated** (`ts-rs`, committed, CI fails if stale), and JSON Schema for extractors is generated (`schemars`, ADR-0034). That avoids the Fletcher `HistNode`/`HistTreeNode` copy bug (TB-082). |
+| 46 | Three test layers: (1) a **conformance suite**, small fixtures per rule that every language extractor must pass the same way; (2) **targeted Fletcher assertions** taken from the hand-traced keys (e.g. `graftNode` writes `children/nodes/current/next`; `invoke("history_save")` ↔ `fn history_save`); (3) an **oracle report** comparing against each toolchain's own "find all references", which prints the static resolution rate (TB-097). It's informative and doesn't block. No whole-graph golden files (too brittle). |
+
 ### BQ-33: Views: whole documents or edits to a live view — OPEN
 - Options:
   - (a) A complete view document every call.
