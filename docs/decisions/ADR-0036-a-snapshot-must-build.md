@@ -23,3 +23,4 @@ Insight is for learning code and checking it matches what you wanted. Code that 
 - **TB-029 and TB-071** (code that doesn't compile) move out of scope.
 - `unresolved` stays only for things that really can't be resolved in valid code (e.g. a missing toolchain for one language, or dynamic dispatch with no candidates), never for errors.
 - Running the build check is trivial and deterministic (ADR-0035), and it doubles as the dependency-materialization step (BQ-07).
+- **A snapshot can span multiple codebases** (user, BQ-24; ADR-0014): a set of (repo, commit or working copy) pairs. Each member must build, each is cached separately, and the cross-repo links are a thin layer on top.

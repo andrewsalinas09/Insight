@@ -306,7 +306,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Refuse until you commit.
 - Rec: (a) for the first milestone, then (b). The key format allows a dirty suffix from day one.
 
-### BQ-24: Snapshot storage and cache key — OPEN
+### BQ-24: Snapshot storage and cache key — ANSWERED (a)
+**Ruling:** built graphs are kept on disk under `%LOCALAPPDATA%\Insight\snapshots\`, loaded into memory when used, and evicted by LRU under the shared cache cap (BQ-07). **User note: an Insight snapshot can span multiple codebases** (ADR-0014). So: each codebase's graph is cached separately, keyed by (repo, commit or working-copy hash, Insight version), and the cross-repo link layer (wire links) is a small separate file keyed by the combination of its member keys. Changing one repo rebuilds only that repo plus the link layer. Including the Insight version in every key means a bug fix never serves a stale graph.
+
+*(Original question:)*
 - Options:
   - (a) In-memory graph, persisted as one immutable binary file per key under `%LOCALAPPDATA%\Insight\snapshots\…`, keyed by (commit, dirty hash, solver version, plugin versions).
   - (b) SQLite as storage and query engine.
