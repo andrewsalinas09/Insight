@@ -6,7 +6,27 @@ Statuses: **Solved (design)** means a documented mechanism handles it (cite the 
 
 These are design-time tests today. Once code exists, each becomes an executable fixture: a small real codebase plus the expected graph.
 
-## Status update after the R3 round (authoritative, 2026-10-09)
+## Status update after the R4 round (authoritative, 2026-10-09)
+
+Applies R4: concept coverage (P1–P11), the runtime-Claude tool and schema items, ADR-0049 (lean by default, pedantic on request) and R4-01 (built-ins are external leaves with `origin=stdlib`). **This table wins over the R3 and R2 tables below.**
+
+| TB | Status now |
+|---|---|
+| 007 / 081 / 100 / 125 | JSX is a handoff to the external JSX factory **plus** prop→field `binds` from TS contextual typing, so `onGraft?.()` keeps its `graftNode` candidate and the M1 hop `onGraft → graftNode` holds. There's no `render` call (R4-B) |
+| 010 | Partial: spawned closures are handoffs; library channels are cells; capture modes are recorded (R4 P6). Language-level concurrency syntax (Go `go`/channels/`select`, `synchronized`, actors) is later (R4 P12) |
+| 014 | Solved (design): `exit` kinds and targets, catch blocks carry their caught types, and functions carry `throws`/`nothrow`/`diverges` (R4 P5). "Which catch receives this" across functions stays a query |
+| 016 | Solved (design): `break`/`continue` are `exit` kinds with loop targets (R4 P5) |
+| 041 / 042 | Strengthened: `base_nid` keeps `ref.current`-style accesses per root binding, and `via_eid` names the method behind every `access` (R4-B) |
+| 095 | OPEN, later: embedded SQL is attached only when a literal parses fully and matches the project's schema; ask the user when SQL is built (R4 P13, Q-38) |
+| 099 | Solved (design): `await`/suspension, handoffs, `names` hops and un-awaited async calls are order-unknown; the `timing` column states deferred moments (lazy futures, scope exit, load time, unsequenced operands) (ADR-0042, R4 P1). Handoffs to the standard library are pedantic, off by default (ADR-0049) |
+| 147 / 149 | Solved (design): `follow` constraints (`max_occurrences`, `target_kind`, `avoid`, `max_depth`) and Claude-set limits with "N total"; no fixed caps (ADR-0047, R4-B) |
+| 152 (new) | **Builtin callbacks** (`arr.map(x => total += x)`): the callback is a handoff to a stdlib leaf. It's off by default in order breaks and race candidates and on with the pedantic switch (ADR-0049, R4-01). Solved (design) |
+| 153 (new) | **Accessor read** (`cart.total` with `get total()`): recorded as an implicit `call` (`via=accessor`), not a field read (R4 P3). Solved (design) |
+| 154 (new) | **Lazy future** (`let f = save(); log(); f.await;`): `save`'s body is `timing=deferred-create` and runs at the await (R4 P1). Solved (design) |
+| 155 (new) | **Scope-exit code** (Rust Drop at `}`, Go `defer`, `finally`): `timing=scope-exit` with `order_at` (R4 P1). Solved (design) |
+| 156 (new) | **Generator consumed by a loop**: a `resume` edge from the iteration site to the generator body (R4 P2). Solved (design) |
+
+## Status update after the R3 round (2026-10-09; overridden by the R4 table above where they differ)
 
 Applies the Round 3 TESTBED sweep, the R3 rulings, ADR-0047 (parameters, not defaults; every fact kept, so the literal cutoff is gone) and ADR-0048 (programming concepts only; the generic `names` link replaces the Tauri link; JSX is a handoff). **This table wins over the R2 table below and over per-entry status lines.** New cases TB-107…TB-151 are in sections U–Z at the end.
 
@@ -741,8 +761,8 @@ Insight analyzing itself, whose fixtures and docs are full of the syntax.
 ### TB-148: A path into `source.fill(&mut fbuf)`'s three impls
 **Answer:** `follow=[dispatch]` expands the `implements` edges (BQ-19, ADR-0047). **Status:** Solved (design).
 
-### TB-149: `--via-state` through a widely read `[state, setState]` cell explodes
-**Answer:** `path` output is capped like `sql` ("truncated, N nodes"), and Claude narrows. **Status:** Solved (design).
+### TB-149: `follow=[state]` through a widely read `[state, setState]` cell explodes
+**Answer:** Claude sets a limit (or `follow` constraints) and every result reports "N total", so Claude narrows. There's no fixed cap (ADR-0047, R4-B). **Status:** Solved (design).
 
 ### TB-150: The "absent" candidate
 `onGraft?.(id, target)` where one mount passes no `onGraft`.

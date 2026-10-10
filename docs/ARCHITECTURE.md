@@ -54,19 +54,31 @@ project (repos) ─► trigger (after-build hook, Snapshot now, on demand)
    - Receipts store spans; the bytes live in a `files` table (R3-G #8).
    - There's one private Rust target per (project, toolchain), and the last N working-copy snapshots are kept (R3-16).
    - A schema mismatch after an update refuses until rebuilt (R3-19).
-6. **Agent tools (ADR-0039 + amendments):**
-   - `status`;
-   - `load`/`unload`;
-   - `build`;
-   - `sql` (read-only, 200-row cap);
-   - `path(from, to, follow=[…])`: algorithmic search; **Claude chooses the hop kinds** (calls, possible, dispatch, names, literal, handoff, state…); hops are labeled, cycles and recursion reported, both routes into a visited node shown, "may call nothing" for absent props (R2-12, R3-13, ADR-0047);
-   - `compare`: exact diff that normalizes line endings and reports EOL-only changes separately (ADR-0041, R3-18);
-   - `source`;
-   - `show`;
-   - `selection`;
-   - `tag_coverage`.
+6. **Agent tools (ADR-0039 + amendments, R4-B).** Parameters, never relevance defaults (ADR-0047). Output is lean by default, and pedantic detail is one switch away (ADR-0049).
+   - **`status`:**
+     - the loaded snapshots and their SQL aliases;
+     - the schema DDL, and enum values with counts;
+     - the exact definition of every `follow` token as a SQL predicate;
+     - the shipped views (`callers`, `writers`, `receipt_text`, `race_candidates`);
+     - the frozen-source folder path;
+     - the list of pedantic switches.
+   - `load`/`unload`, `build`.
+   - **`sql(query, max_rows, timeout_ms)`:** Claude sets the limits under hard ceilings, and every result reports totals.
+     - The table functions `reach(from, follow, dir, max_depth)` and `nid(name)` are registered in-process (not loadable extensions).
+     - Hardening is per R3-G #7.
+   - **`path(from?, to?, follow=[…], …)`:** deterministic search. **Claude chooses every hop kind**; there is no implicit set.
+     - Either end may be open (forward or reverse reachability, with frontier external leaves) or a set.
+     - `follow` entries take constraints (`max_occurrences`, `target_kind`, `avoid`, `max_depth`), plus an `edges_sql` escape hatch.
+     - The result is a compact DAG of nodes and labeled hops with ids, and `receipts="expr|statement|none"`.
+     - Cycles, recursion, `possible` candidates and "may call nothing" (absent optional function values) are reported.
+     - Both routes into a visited node are kept (R2-12, R3-13, ADR-0047).
+   - **`compare`:** an exact diff that normalizes line endings and reports EOL-only changes separately (ADR-0041, R3-18).
+   - **`source(refs=[…])`:** batched reads from the frozen snapshot. A read-only, path-shaped **frozen-source folder** also lets the agent's own Grep and Read hit exactly the snapshot bytes.
+   - **`show(view)`:** a view element can embed a `path` spec instead of listing ids.
+   - `selection`.
+   - **`tag_coverage(scope, kinds)`:** untagged symbols in a scope, with counts. Claude picks.
 
-   Insight quietly reminds Claude when it references code it hasn't fully read (ADR-0041). The snapshot a session queries is **pinned** until Claude switches explicitly (R3-17).
+   Insight quietly reminds Claude when it references code it hasn't fully read (ADR-0041). The snapshot a session queries is **pinned** until Claude switches explicitly (R3-17). The up-front instructions are drafted in `docs/MCP-INSTRUCTIONS.md`.
 7. **Views (ADR-0040).** Nine elements: nodes/edges, groups, collapse, highlight/focus, notes, steps, code excerpts, abstraction nodes, example data.
    - The window styles them by kind (real vs. Claude's interpretation).
    - Only elements that stand in for code must resolve to real code (R2-02).
@@ -76,37 +88,59 @@ project (repos) ─► trigger (after-build hook, Snapshot now, on demand)
 
 | Insight (deterministic) | The model |
 |---|---|
-| Language semantics via each toolchain, translated into **programming concepts**: types, resolution, mutability, `await`, closures, handoffs (JSX included) | Library and domain meaning: "writes a file", "a 400 ms debounce", "the logger". **No framework knowledge in Insight** |
+| Language semantics via each toolchain, translated into **programming concepts**: types, resolution, mutability, `await`, closures, handoffs | Library and domain meaning: "writes a file", "a 400 ms debounce", "the logger". **No framework or library knowledge in Insight's analysis** (Insight's own Tauri shell is unaffected) |
 | Connecting every call and every read/write of every piece of state; every literal; every `names` match | Which connections matter; which hop kinds to follow; grouping; explaining |
 | Parsing `@insight <keyword>: <value>` (tags first; unknown keywords → diagnostics) | Reading free-text comments and docs |
 | Pathfinding, counting, diffing, reference resolution, fingerprints | Choosing the question and its parameters; judging race candidates and `names` matches; reconciling renames (ADR-0028) |
 
-Tests: *if a compiler could do it, it's allowed in the tool* (ADR-0043). *If it's cheap and makes it more correct, do it* (ADR-0035). *Relevance is a parameter, never a default* (ADR-0047).
+Tests: *if a compiler could do it, it's allowed in the tool* (ADR-0043). *If it's cheap and makes it more correct, do it* (ADR-0035). *Relevance is a parameter, never a default* (ADR-0047). *Lean by default, pedantic on request* (ADR-0049).
 
 ## Graph model (BQ-09…BQ-22, R2-30, R3-G, ADR-0048)
 
-- **The vocabulary is programming concepts**, not any language or framework: module, type, interface/implementation, function, closure, call, handoff, await, state, read/write/access, binding, branch, loop, exit, literal… Language knowledge lives only in extractors (ADR-0048).
+- **The vocabulary is programming concepts**, not any language or framework: module, type, interface/implementation, function, closure, call, handoff, await/suspend, state, read/write/access, binding, branch, loop, exit, literal, import… If any supported language has a concept, the vocabulary covers it. Language knowledge lives only in extractors (ADR-0048). Anything with its own compiler (Vue, Svelte, `.ino`) is a language (R4-02).
 - **Nodes:**
-  - `container{file|module|type|function|block}`: every function, anonymous ones too (ADR-0022); locals and parameters are state (R3-G #3);
+  - `container{file|module|type|function|block|macro|init}`: every function, anonymous ones too (ADR-0022); compiler-synthesized members have receipt role `synthesized`; locals and parameters are state (R3-G #3);
   - `state{var|field|element|static|cell}`;
   - `literal`;
-  - `external`: one leaf per referenced dependency symbol (BQ-20);
+  - `external`: one leaf per referenced dependency or standard-library symbol, carrying `package`, `module`, `version` and **`origin = project|dependency|stdlib`** (BQ-20, ADR-0049); built-ins stay external leaves (R4-01, strict);
   - `unresolved`.
-- **Edges:** `contains`, `call` (subkind `render` etc.), `read`, `write`, `access` (may write), `binds`, `value-flow`/handoff, `implements`, `exit`, plus literal links:
-  - **same-literal:** every literal linked, no cutoff, with occurrence counts as facts (BQ-22, ADR-0047);
-  - **`names`:** a literal exactly equals a symbol's name, e.g. `invoke("set_fletcher_chain")` → `fn set_fletcher_chain`. This replaces the Tauri link (ADR-0048).
+- **Edges:**
+  - `contains`;
+  - `call` (exact/possible), with subkind `implicit` plus a `via` value for compiler-inserted calls: operator, accessor, conversion, deref, index, iteration, destructure, compare, destructor, implicit constructor (P3);
+  - `expand`, from a macro use to a project macro (P9);
+  - `read`, `write`, and `access` (may write), with `via_eid` pointing at the method call that caused it;
+  - `binds`: every argument→parameter, with a `mode` of value/copy/move/ref/mut-ref/out/inout/pointer, plus closure `captures` (P6). JSX props bind to the props type's fields via the TS checker's contextual typing;
+  - `value-flow`/**handoff**: a function or value given to external code (JSX is a handoff to the external JSX factory; there is no `render` call);
+  - `implements`, with subkinds extends / implements / conforms (structural) / embeds / overrides / provides-default, and an open-world candidate (P7);
+  - `instantiates` (type parameter → concrete type) at generic call sites, and `static-bound` dispatch (P8);
+  - `annotates` (metadata → target), with executing decorators as calls with timing `load` (P10);
+  - `imports` (static/dynamic/type-only/include), with `init-order` where the language defines it (P11);
+  - `has-type` (state or return → type, including type arguments; inline types get `<type>#n` ids);
+  - `exit` with subkinds return/propagate/throw/break/continue/goto/diverge and a `to` target, with catch blocks carrying their caught types. Functions carry `throws`, `nothrow` and `diverges` (P5);
+  - suspension rows `suspend{await|yield|delegate}` plus `resume` edges for generators and coroutines (P2).
+- **Literal links:**
+  - **same-literal:** every literal occurrence is linked whatever its position, and position and occurrence counts are facts (BQ-22, ADR-0047);
+  - **`names`:** a literal exactly equals a declared name, e.g. `invoke("set_fletcher_chain")` → `fn set_fletcher_chain`. It targets every named declaration, with the target kind and match count as facts, and qualified names and module paths also match. This replaces the Tauri link (ADR-0048).
+- **Edge columns:**
+  - `call_eid` and `arg_index` on edges inside a call's argument list;
+  - `base_nid` on state accesses (the root binding they go through), so that `dragStart.current` and `hist.current` stay distinct;
+  - `generated=1` for macro-expanded facts;
+  - `timing` = inline / eager-start / deferred-create / concurrent / scope-exit (with `order_at`) / load / build / unsequenced group (P1).
+- **Inactive code:** inactive `cfg`/`#if` regions are `block{inactive}`, with the active configuration in `meta` (P9).
+- **Build-time tables:** `entries` (functions entered across an order break) and `order_breaks`, plus the shipped `race_candidates` view.
+- **Follow tokens:** each one is an exact SQL predicate over `edges`, listed by `status` (e.g. `names` = function → literal → declaration).
+- **Later:** P12 (concurrency syntax: Go channels/`select`, `synchronized`, actors, atomics), P13 (SQL tables, and embedded SQL; ask the user when SQL is built), P14 (linkage/FFI, entry points, memory-mapped registers, unions).
 - **Resolution:** `exact` / `possible` / `unresolved`, with *observed* added later from runs. There's no model-added "inferred" tier (R2-03).
 - **Branches** are `block` containers with their condition text; `return` / `?` / `throw` are `exit` edges (BQ-18).
 - **IDs** are location paths plus a `body_hash` per node. Any reasonable name form resolves, and ambiguity returns candidates (BQ-10, R2-18, R3-17).
 - **Receipts** are exact spans into the frozen snapshot. Macro-generated facts point at the macro call site (BQ-12, R3-05, R3-G #4).
-- **Causal order (ADR-0042, R3-14):** code within a function is ordered by position. These are **order-unknown** ("may interleave"):
-  - `await`;
+- **Causal order (ADR-0042, R3-14, P1):** code is ordered by position, and where the real moment differs from the position, the `timing` column states it (lazy futures, scope-exit and Drop/`defer`/`finally`, load-time code, unsequenced operands). These are **order-unknown** ("may interleave"):
+  - `await`/suspension;
   - handoffs to external code;
   - `names` hops;
-  - un-awaited async calls;
-  - JSX handoffs.
+  - un-awaited async calls.
 
-  Race candidates are a SQL query that also pairs a region with itself.
+  Race candidates are the `race_candidates` view, which also pairs a region with itself. Handoffs to the **standard library** (`map`, `then`…) are pedantic detail, off by default (ADR-0049).
 
 ## Snapshots and comparison (ADR-0029, ADR-0036, ADR-0028, R3-21)
 
@@ -127,7 +161,15 @@ Tests: *if a compiler could do it, it's allowed in the tool* (ADR-0043). *If it'
 
 ## Stack (decided)
 
-- Cargo workspace crates (BQ-03).
+- Cargo workspace crates (BQ-03, as amended by R4-C):
+  - `insight-model`;
+  - `insight-solver` (pipeline plus the generic link passes: same-literal and `names`);
+  - `insight-lang-*` (thin extractor launchers);
+  - `insight-engine`;
+  - `insight-mcp`;
+  - `insight-cli`.
+
+  No framework link crates.
 - Extractors built on each toolchain (ADR-0034).
 - SQLite per codebase snapshot (ADR-0038).
 - MCP via the `insight mcp` stdio bridge over a hardened local named pipe (ADR-0031, BQ-42/43, R2-33, R3-G #6).

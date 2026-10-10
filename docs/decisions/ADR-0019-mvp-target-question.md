@@ -1,6 +1,6 @@
 # ADR-0019: The MVP is defined by one question: "how does this algorithm work, and how do we know it's right?"
 
-- **Status:** Accepted; amended by ADR-0040 (all nine view elements, including steps, in the MVP), ADR-0024 (no verification tiers in the MVP) and ADR-0025 (no in-app chat); acceptance test = Fletcher drag-and-drop (TB-100), gate restated in R2-12
+- **Status:** Accepted; amended by ADR-0040 (all nine view elements, including steps, in the MVP), ADR-0024 (no verification tiers in the MVP) and ADR-0025 (no in-app chat); acceptance test = Fletcher drag-and-drop (TB-100), gate restated in R2-12; also amended by ADR-0023 (effects are model output), ADR-0042 (causal order, not timing kinds), R2-03 (no inferred tier), ADR-0048 (the Tauri hop is a generic `names` hop)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("My goal is this: load the software, ask a question about an algo and how it works, the data structures it uses and where they're stored etc. 'How do we know that the frequency is correct?'")
 

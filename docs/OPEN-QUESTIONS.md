@@ -4,7 +4,7 @@ Unresolved design debates. Each gets an ID; when settled, mark `Resolved → ADR
 
 Source: the original pitch (`docs/archive/2026-10-09-original-pitch.md`) and the kickoff session.
 
-## Current status of every question (authoritative; updated after the R2 round, 2026-10-09)
+## Current status of every question (authoritative; updated after the R4 round, 2026-10-09; see ADR-0047/0048/0049)
 
 The entries below keep their discussion history. **Where a "Status:" line inside an entry disagrees with this table, this table wins.**
 
@@ -16,34 +16,36 @@ The entries below keep their discussion history. **Where a "Status:" line inside
 | Q-04 | Largely resolved by BQ-09/BQ-18 and R2-30. Remaining: how bubble inputs/outputs are drawn (frontend session) |
 | Q-05 | Partly resolved: mapping a prompt to entry points is the model's job via SQL (ADR-0035, ADR-0038). Open: pointing at an element in the running app (post-MVP) |
 | Q-06 | Closed by ADR-0025 |
-| Q-07 | Open, reduced by ADR-0025. Known so far: the build check runs build scripts and proc macros (ADR-0036, BQ-06); npm uses `--ignore-scripts` for installs (BQ-07); the MCP surface is a local named pipe (BQ-42/43); the signing key never leaves its store (ADR-0046) |
+| Q-07 | Open, reduced by ADR-0025. Known so far: the build check runs build scripts and proc macros (ADR-0036, BQ-06); builds run only on Insight's frozen copy with approval fingerprints, declared install/check kinds and a tripwire (R3-01, R3-02); secrets: input-set-only `source`, mirrored deny rules, `insight purge` (R3-03); the MCP surface is a local named pipe (BQ-42/43); the signing key never leaves its store (ADR-0046) |
 | Q-08 | Partly resolved: analysis engines (ADR-0034); app shell = standalone app on Tauri 2 (ADR-0031, R2-13). Open: rendering and layout library (frontend session) |
 | Q-09 | Closed by ADR-0029 |
 | Q-10 | Resolved → ADR-0017 + ADR-0025: Insight never edits code (the agent does); it is the instrument beside the editor |
 | Q-11 | Resolved → ADR-0012 + ADR-0025 |
-| Q-12 | Model cost closed by ADR-0025 (Insight calls no model). Open: build and query latency targets (BQ-25, R2-19) |
+| Q-12 | Model cost closed by ADR-0025 (Insight calls no model). Open: build and query latency targets (BQ-25, R2-19). There's no deterministic "assurance inventory" (ADR-0023) |
 | Q-13 | Resolved: teaching moves are the model's (ADR-0035); Insight provides Steps and play mode (ADR-0040, BQ-39) |
 | Q-14 | Closed by ADR-0025 |
 | Q-15 | Resolved → ADR-0043 |
 | Q-16 | Resolved → ADR-0004 (lives in INSIGHT.md, ADR-0044) |
 | Q-17 | Open, post-MVP; runs are self-check tools for the model (ADR-0015, ADR-0037) |
 | Q-18 | Resolved by R2-10/10b and R2-17: snapshots ride the project's own successful builds (agent-agnostic after-build hook, plus Snapshot now); a working copy is exactly what built |
-| Q-19 | Resolved → ADR-0026 + ADR-0040 (views pinned to their snapshot, ADR-0029; storage in Q-37) |
+| Q-19 | Resolved → ADR-0026 + ADR-0040 (views pinned to their snapshot, ADR-0029; storage in Q-37). A "lens" is a Claude-composed view; Insight supplies facts and counts only, with no relevance classifier (ADR-0047) |
 | Q-20 | Resolved → ADR-0023 + BQ-09/13/14/17 (Round 3) |
 | Q-21 | Resolved → ADR-0013, later amended by ADR-0024/0026/0029/0037 and R2-03 |
 | Q-22 | Open, post-MVP (journal). Entries pinned to their snapshot (ADR-0029); sharing is low priority (ADR-0025) |
 | Q-23 | Resolved: angles are the model's (ADR-0035, ADR-0037); visual angles = ADR-0040 elements |
 | Q-24 | Open, post-MVP; amended by ADR-0037 (self-check tools, not a gate). Non-building code is out of scope (ADR-0036) |
-| Q-25 | Open, post-MVP. Node matching → ADR-0028 (model reconciles); a diff is two snapshots in SQL (R2-32); prompt baseline → R2-34; presentation → frontend session |
+| Q-25 | Open, post-MVP. Node matching → ADR-0028 (model reconciles); a diff is two snapshots in SQL (R2-32); prompt baseline → R2-34; presentation → frontend session. The diff returns all fact changes; summarizing "no behavioral change" is Claude's job (ADR-0028/0047), and "effects" are the model's reading (ADR-0023) |
 | Q-26 | Open, post-MVP. Query language = SQL (ADR-0038); storage and re-run timing open (with Q-37) |
 | Q-27 | Resolved → ADR-0017 (sub-questions: no hosting, ADR-0025; the agent queries mid-task via `sql`) |
-| Q-28 | Open, later. Exact matching = same-literal links (BQ-22); "same message" pairs are the model's (R2-38) |
-| Q-29 | Open, later. Def-use reach = one-hop value flow + declaration identity (BQ-13/15) |
+| Q-28 | Open, later. Wire links are the generic literal and `names` facts (ADR-0048); there's no per-protocol knowledge. "Same message" is Claude's judgment, shown as a view note or group, never an edge (R2-03, R2-38) |
+| Q-29 | Open, later. Def-use reach = one-hop value flow + declaration identity (BQ-13/15), `binds` with modes (R4 P6), `base_nid`; cross-repo via literal and `names` facts (ADR-0048) |
 | Q-30 | Resolved → ADR-0021, amended by R2-09 (question box = terminal; layout deferred) |
-| Q-31 | Open (MVP output is the model's): the solver returns everything connected; the model sorts it (ADR-0023); fallbacks are a neutral row |
+| Q-31 | Open (MVP output is the model's): only "everything connected" is deterministic; the model sorts it into validation, fallbacks, tests and gaps (ADR-0023) |
 | Q-32 | Open, low priority |
-| Q-33 | Mostly answered by BQ-45/46/47 + ADR-0037: generic CI fixtures, local untracked testbeds, an oracle report, and Claude tests from a dev session |
-| Q-34 | Resolved → ADR-0038 |
+| Q-33 | Mostly answered by BQ-45/46/47 + ADR-0037: generic CI fixtures, local untracked testbeds, an oracle report, and Claude tests from a dev session. There's no "rejected claims" metric (no claim checker, ADR-0024/0037) |
+| Q-34 | Resolved → ADR-0038; extended by R4-B (`reach()`/`nid()` table functions, shipped views). Effects and timing are the model's (ADR-0023/0042) |
+| Q-38 | Open, later: embedded SQL (R4 P13). Insight attaches SQL facts to a string literal only if it parses fully and matches the project's own schema; ask the user when the SQL extractor is built |
+| Q-39 | Open, later: concurrency syntax, linkage/FFI, entry points, memory-mapped registers and unions (R4 P12, P14), for Go, Java, C#, Swift and C/C++ |
 | Q-35 | Resolved → ADR-0028 |
 | Q-36 | Open (frontend session / later) |
 | Q-37 | Open (frontend session). MVP: views aren't saved; the app holds the current view (BQ-33), and the loaded projects are restored on restart (R2-22) |
@@ -141,7 +143,7 @@ User: "you can ask the AI to show this and it can make a custom view with that h
 
 The user marked this as tentative ("not 100% sure, just giving thoughts"). Status: open.
 
-**Lenses** (session 7): "…and focus on the algorithms that do data processing of XYZ." A lens is a focus rule applied to a view. It emphasizes nodes that *transform* the tracked data (math, loops over samples, filters) and collapses plumbing (serialization, transport, UI glue) to "+N hidden" (ADR-0013 rule 2). Deterministic signals can support the classification (touches the tracked field, arithmetic density, loops over buffers). The "algorithm vs. plumbing" label itself is organization (prose).
+**Lenses** (session 7): "…and focus on the algorithms that do data processing of XYZ." A lens is a focus rule applied to a view. It emphasizes nodes that *transform* the tracked data (math, loops over samples, filters) and collapses plumbing (serialization, transport, UI glue) to "+N hidden" (ADR-0013 rule 2). ~~Deterministic signals can support the classification (touches the tracked field, arithmetic density, loops over buffers).~~ *(Superseded by ADR-0047: Insight supplies facts and counts only; deciding what's "algorithm vs. plumbing" is entirely Claude's.)* The "algorithm vs. plumbing" label itself is organization (prose).
 
 ## Q-22: The explanation layer and the learning journal
 User, session 4: "we need lots of annotation and stuff like answering the question of 'what does this do', and then if you still don't get it a different way." Proposed shape:
@@ -190,7 +192,7 @@ For oversight (ADR-0012): compare the fact graph before and after a change (an a
 - new shared state or locks
 - new links across languages
 
-Pure refactors (renames, moves, extractions with the same behavior) should collapse to "no behavioral change" so the signal isn't buried. Open:
+~~Pure refactors (renames, moves, extractions with the same behavior) should collapse to "no behavioral change" so the signal isn't buried.~~ *(Superseded by ADR-0028/0047: the diff returns all fact changes, and Claude reconciles and summarizes.)* Open:
 - How to match nodes across versions (identity through renames).
 - How to tell "same behavior" apart from "different".
 - How to present it on the graph (ADR-0010).
@@ -221,7 +223,7 @@ In the oversight loop, the user spots a problem on the graph and tells the codin
 Status: open.
 
 ## Q-28: Wire-link matching
-ADR-0014 needs protocol plugins that pair *send* with *receive* across codebases. Open:
+*(Amended by ADR-0048: there are no protocol plugins. Wire links are the generic literal and `names` facts; "same message" is Claude's call.)* Originally: ADR-0014 needs protocol plugins that pair *send* with *receive* across codebases. Open:
 - **Matching keys per protocol**: JSON field names, endpoint paths, BLE service/characteristic UUIDs, MQTT topics, binary layouts.
 - **Binary protocols with no names** (packed structs). The link is proven only via a shared header or schema, otherwise inferred from layout (TB-089).
 - **Versioning**: firmware v1.2 vs. app v3. Which pair is "the" link?

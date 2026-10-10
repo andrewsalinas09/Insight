@@ -1,6 +1,6 @@
 # ADR-0048: The solver speaks programming concepts. Language knowledge lives only in extractors; no framework knowledge anywhere
 
-- **Status:** Accepted
+- **Status:** Accepted; scope: the rule covers the analysis (extractors, solver, link passes, query tools), not Insight's own implementation stack (its Tauri shell and updater are fine); refined by ADR-0049 and R4-01 (built-ins are external leaves with origin=stdlib)
 - **Date:** 2026-10-09
 - **Source:** user, approving R3 ("I can't have language-specific things. The solver needs to be able to handle any situation and give Claude what it needs while being useful at what a parser / AST-like thing does. It should handle programming concepts. Programming things. If a language has it, it should cover that concept")
 - **Supersedes:** BQ-21 and R2-31 (the Tauri link plugin); the framework-specific parts of ADR-0014 (protocol plugins) and R3-14

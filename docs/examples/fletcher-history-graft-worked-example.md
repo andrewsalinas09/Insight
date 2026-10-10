@@ -1,5 +1,11 @@
 # Worked example (real code): "How does Fletcher's history graph work, especially drag and drop?"
 
+> **Note (Round 4, 2026-10-09):**
+> - Line numbers are re-anchored to Fletcher commit `cd5d6ff`. The first version was traced on an uncommitted working tree, and in `MainApp` it was about 18 lines off.
+> - This key is **the model's answer over graph facts**. The flow narrative, the "effects" (e.g. "system-wide audio") and the ordering commentary are Claude's interpretation (ADR-0023, ADR-0048).
+> - The deterministic M1 gate is the required-hop list in BUILD-QUESTIONS R3-12, with the Tauri step as a generic `names` hop.
+> - Part 3's "found deterministically" claims about effects predate ADR-0023: Insight supplies the connections, and naming them effects is Claude's job.
+
 The first example on a **real** codebase: the user's open-source (Apache-2.0) Fletcher app, `C:\Users\andre\RustroverProjects\Fletcher`, which is a Tauri 2 + React app. It's a good test subject because it's vibe-coded at scale: `app/src/App.tsx` is ~350 KB (the whole UI in one file) and `app/src-tauri/src/lib.rs` is ~180 KB.
 
 Everything below was traced by hand from the source on 2026-10-09 (Fletcher commit `cd5d6ff`). The quotes are real and act as **receipts** (ADR-0013). Line numbers are given for the reader's convenience; Insight itself would anchor by quote. The ASCII views show what Insight should produce. The tracing is real; the rendering is illustrative.
@@ -16,18 +22,18 @@ Insight's first move is a **custom view** (Q-19) that groups every type and piec
 
 ```
 ┌─ DOMAIN: the undo tree itself (main window only) ─────────────────────────────────────┐
-│  hist : useRef<{ nodes: Map<number, HistNode>; current; next }>        App.tsx:4775   │
+│  hist : useRef<{ nodes: Map<number, HistNode>; current; next }>        App.tsx:4757   │
 │     └─ HistNode { id, parent, children[], snap: ChainSnap, label, ts, note?, pinned? }│
-│  rail : useRef<number[]>   — the fixed undo/redo track through the tree    :4849      │
-│  histVersion : useState(0) — a counter; bumping it is how React learns     :4776      │
+│  rail : useRef<number[]>   — the fixed undo/redo track through the tree    :4831      │
+│  histVersion : useState(0) — a counter; bumping it is how React learns     :4758      │
 │                              the (mutated-in-place) tree changed                      │
 ├─ SOUND: what a node actually *is* ────────────────────────────────────────────────────┤
 │  ChainSnap = { enabled, kind, fcHz, gainDb, q }[]  — a full EQ snapshot     :157      │
 │     every node stores the WHOLE chain, not a delta ("nodes are full snapshots")       │
 ├─ TRANSPORT: copies made for other places ─────────────────────────────────────────────┤
-│  treeData : useMemo<HistTreeData>  — plain copy, field by field            :5174      │
-│     ─► emit("hist-sync")      to the pop-out window                         :5198     │
-│  serializeHistory() ─► JSON   ─► invoke("history_save") ─► disk            :5041/5126 │
+│  treeData : useMemo<HistTreeData>  — plain copy, field by field            :5156      │
+│     ─► emit("hist-sync")      to the pop-out window                         :5180     │
+│  serializeHistory() ─► JSON   ─► invoke("history_save") ─► disk            :5023/5108 │
 │  HistTreeNode / HistTreeData  — the type the canvas receives               :158–168   │
 ├─ UI-ONLY: lives and dies inside the HistoryTree canvas ───────────────────────────────┤
 │  dragStart : useRef<{ id, sx, sy }>     — where the press began             :488      │

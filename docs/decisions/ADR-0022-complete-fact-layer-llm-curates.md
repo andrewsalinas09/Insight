@@ -1,6 +1,6 @@
 # ADR-0022: The fact layer is complete (every function is a bubble); the LLM curates what you see
 
-- **Status:** Accepted
+- **Status:** Accepted; "default views must collapse aggressively" removed by ADR-0047 (no default view policy; Claude chooses collapse per view)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("every function, and it's the LLM's job to figure out what to show you. Remember this is mainly LLM first and we have a really really solid back end")
 

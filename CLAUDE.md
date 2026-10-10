@@ -31,6 +31,7 @@ The graph rendering library is still open (Q-08).
 | `docs/TESTBED.md` | Every known edge case (TB-IDs); the design acceptance suite | Before AND after any design change |
 | `docs/examples/` | Worked examples tracing real code through the design | When applying or testing a pattern |
 | `docs/research/` | Research reports (tooling, LLM providers, rendering) | When a question needs evidence |
+| `docs/MCP-INSTRUCTIONS.md` | Draft of the up-front instructions agents receive | Designing or changing MCP tools |
 | `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-, R2- and R3-IDs), asked one at a time | Before any backend design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |

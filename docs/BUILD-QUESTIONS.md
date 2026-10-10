@@ -53,7 +53,7 @@ User: "My main worry is Claude won't remember to do this. Or it needs to be _ver
 - Options (they can be combined):
   - (a) **Standing instruction:** Insight's MCP server instructions plus a snippet that `insight init` adds to the repo's CLAUDE.md/AGENTS.md: "when you add or change code that touches the outside world or matters for understanding, add `@insight tag:` comments."
   - (b) **One-word command:** a Claude Code skill/slash command `/insight-tag` that tags everything in the current uncommitted diff. Saying "tag it" is all you do.
-  - (c) **A mechanical coverage tool:** `tag_coverage` lists, deterministically, what in the current diff calls into a dependency symbol or is a new function with no tag nearby. These are candidates, not judgments, and Claude decides.
+  - (c) **A mechanical coverage tool:** `tag_coverage` lists, deterministically, what in the current diff calls into a dependency symbol or is a new function with no tag nearby. These are candidates, not judgments, and Claude decides. *(Amended by ADR-0047/R4-B: `tag_coverage(scope, kinds)` returns untagged symbols with counts, and Claude picks; there's no built-in candidate rule. The default `on-request` mode is written explicitly by `insight init` (R4-04).)*
   - (d) **An automatic reminder:** a Claude Code hook that runs `tag_coverage` when Claude finishes a turn that changed code and, if something's untagged, reminds it once.
 - Rec: (a) + (b) + (c) now, and (d) if (a)–(c) still miss things in practice.
 
@@ -78,11 +78,11 @@ What's the first thing that runs, and what's its pass condition?
   - M2: M1 as an MCP tool inside Claude Code, text only.
 - Rec: M0 → M1 (pass: every receipt in steps 1–12 of the drag-graft example is on the path) → M2. UI after that.
 
-### BQ-03: Cargo workspace layout — DECIDED BY CLAUDE (user delegated: "I don't program in Rust. I want you to follow best practices")
+### BQ-03: Cargo workspace layout — DECIDED BY CLAUDE (user delegated: "I don't program in Rust. I want you to follow best practices"); amended by ADR-0034/0048 and R4-C
 **Ruling:** one Cargo workspace (`resolver = "3"`, edition 2024, shared `[workspace.dependencies]` and `[workspace.lints]`), with crates under `crates/`:
 - `insight-model`: the standard representation (nodes, edges, receipts, IDs). No I/O.
-- `insight-solver`: the build pipeline plus the `LanguagePlugin` / `LinkPlugin` traits.
-- `insight-lang-ts`, `insight-lang-rust`, `insight-link-tauri`: one crate per plugin, which is the hard boundary of ADR-0033.
+- `insight-solver`: the build pipeline, plus the **generic link passes** (same-literal, `names`). There are no framework link crates and no `LinkPlugin` trait (ADR-0048).
+- `insight-lang-ts`, `insight-lang-rust`: **thin launchers** for the out-of-process extractors (ADR-0034), each in its own crate so the language boundary stays hard. *(The original plan also listed `insight-link-tauri`; it's superseded by ADR-0048.)*
 - `insight-engine`: snapshot storage plus queries.
 - `insight-mcp`: the MCP tools and the stdio bridge.
 - `insight-cli`: the `insight` binary.
@@ -176,13 +176,13 @@ What's the first thing that runs, and what's its pass condition?
 | 13 | State identity = the declaration symbol the language's checker resolves to (`h.current` ≡ `hist.current.current`). Collection contents are a pseudo-field (`nodes[*]`). Instances of one type merge, marked `possible-instance`. |
 | 14 | Writes come from language semantics: Rust `&mut self` or a mutable deref is a `write`; interior mutability and TS method calls on state (no mutability info in TS types) are `access`. *Visible effect: TS `children.push(…)` reads as "may write".* |
 | 15 | One-hop value flow: an indirect call gets `possible` edges to every function value written to that symbol (assignments, fields, arguments, JSX props), plus an "absent" candidate. Returned function literals are followed one level, which handles curried handlers. *Visible effect: `onGraft?.(…)` shows main / pop-out / none.* |
-| 16 | JSX is language syntax (TSX desugaring), so `<C p={v}/>` is a `render` call to `C` and binds `v` to `p`. Callbacks handed to external code get a `value-flow` into the external leaf. Who calls them later is for the model. |
+| 16 | *(Amended by ADR-0048 and R4-B: JSX is a handoff of `C` and its props to the external JSX factory, plus prop→field `binds` from contextual typing. There's no `render` call.)* Original: JSX is language syntax (TSX desugaring), so `<C p={v}/>` is a `render` call to `C` and binds `v` to `p`. Callbacks handed to external code get a `value-flow` into the external leaf. Who calls them later is for the model. |
 | 17 | Names destructured from one call share one `cell` (`[histVersion, setHistVersion]`, `(tx, rx)`). Calling a function sibling is `access`; reading another sibling is `read`. |
 | 18 | Every `if`/`else`/`switch` case/`match` arm/ternary/`&&` JSX guard/loop/`try`/`catch` is a `block` container with its condition text. `return`/`?`/`throw` are `exit` edges (ADR-0008). |
 | 19 | Dynamic dispatch = one edge to the trait or interface method plus `implements` edges, expanded at query time. Narrowing comes later. |
 | 20 | Analyze all git-tracked source in the TS projects and Cargo members, tests included. One external leaf per referenced symbol; external globals are state. `std` counts as a library (ADR-0033). |
 | 21 | **SUPERSEDED → ADR-0048** (no framework links; the generic `names` link, where a literal exactly equals a symbol's name, covers `invoke("x")` → `fn x`). *Was:* The Tauri link is command level: the `invoke` string = the `#[tauri::command]` fn name, flagged if it's missing from `generate_handler!`. Argument-name mapping (camelCase) is for the model. |
-| 22 | Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* **Corrected:** the cutoff is removed by ADR-0047. Every literal is linked (`"main"` has 22 occurrences in Fletcher and would have linked anyway), and occurrence counts are facts Claude uses to skip noise. |
+| 22 | *(Amended by ADR-0047: every literal occurrence is linked whatever its position; the position is recorded as a fact.)* Original: Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* **Corrected:** the cutoff is removed by ADR-0047. Every literal is linked (`"main"` has 22 occurrences in Fletcher and would have linked anyway), and occurrence counts are facts Claude uses to skip noise. |
 
 ### BQ-09: The closed set of node and edge kinds — DECIDED BY CLAUDE (Round 3 table)
 - Options:
@@ -352,7 +352,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Two tools: `query` + `render`.
 - Rec: (a).
 
-### BQ-28: Result size caps and row format — ANSWERED (ADR-0038/0039): `sql` is capped at 200 rows with "truncated, N total".
+### BQ-28: Result size caps and row format — ANSWERED (ADR-0038/0039), amended by ADR-0047/R4-B: `sql(query, max_rows, timeout_ms)`. Claude sets the limits under hard ceilings, and every result reports "N total". *(The fixed 200-row cap is superseded.)*
 
 *(Original question:)*
 - Case: "everything in `MainApp`" means about 1,100 functions.
@@ -628,7 +628,7 @@ ADR-0013/0021/0022 say omissions always show "+N hidden". ADR-0040 allows any su
 ### R2-12: Paths and diffs: built-in operations or SQL? — ANSWERED (a)
 **Ruling (user):** "pathfinding should be done by algo."
 - Add `path(from, to, options)` to the CLI and the MCP tool list. It's a deterministic search that visits each node once and prints the reachable chain(s) with receipts.
-- **Choosing the question is Claude's:** start, end, and which hop kinds count (calls only, or also `--via-state` through shared state; `possible` edges included and marked).
+- **Choosing the question is Claude's:** start, end, and which hop kinds count (calls only, or also `--via-state` through shared state; `possible` edges included and marked). *(Amended by ADR-0047: `follow=[…]` is always explicit, with no implicit hop set.)*
 - **Loops and recursion are never followed forever and are reported to Claude as facts:** "cycle: A → … → A", "recursive: f calls itself" (or mutual recursion).
 - Diffs stay SQL (two attached snapshots).
 - The M1 gate is restated: steps 3 and 5–11 from `nodeUp`, plus a second check from `nodeDown` for steps 1, 2 and 4.
@@ -817,9 +817,9 @@ Several "receipts" in the walkthrough are a comment, a local or an object field.
 ## R3-D: `path` and causal order (before M1)
 
 ### R3-13: Which edges `path` follows by default — ANSWERED → ADR-0047
-**Ruling:** no defaults. `path(from, to, follow=[…])` with Claude choosing the hop kinds per question; every hop is labeled; both routes into an already-visited node are shown; "may call nothing" is shown for absent props. The BQ-22 literal cutoff is removed (every literal linked; occurrence counts are facts).
+**Ruling:** no defaults. `path(from, to, follow=[…])` with Claude choosing the hop kinds per question; every hop is labeled; both routes into an already-visited node are shown; "may call nothing" is shown for absent optional function values. The BQ-22 literal cutoff is removed (every literal linked; occurrence counts are facts). R4-B extends this with open or set-valued ends, follow constraints, and DAG output.
 The pop-out wiring needs a hop *into* a callback handed to `listen("hist-cmd", …)`, which no edge records. `"main"` (22 occurrences, under the 25 limit) **does** link, contrary to BQ-22's note.
-- Rec:
+- *Original rec (superseded by ADR-0047/0048: no default set, no Tauri link):*
   - Default: calls (exact + possible), the Tauri link, and trait-dispatch expansion.
   - Opt-in, labeled as distinct hop kinds: `--via-literal`, `--via-handoff` (back from a value-flow-into-external to the callback), `--via-state`.
   - Edges into already-visited nodes are still printed, so both routes to `graftNode` show.
@@ -829,6 +829,7 @@ The pop-out wiring needs a hop *into* a callback handed to `listen("hist-cmd", �
 ### R3-14: Three places "a call finishes before the next line" is false — ANSWERED (recommendation accepted; user: "yes these are all good")
 `invoke(...)` returns immediately while Rust runs; an un-awaited async function runs its rest later; JSX hands the component to React.
 - Rec: three more mechanical order breaks: every `link` hop, un-awaited async calls, JSX render edges. Plus: the race-candidate query also pairs a region with itself (rapid repeated grafts).
+- **Amended by ADR-0048 and R4-B:** `names` hops and handoffs (JSX included, as a handoff to the external JSX factory) are order-unknown; there are no `link`/render-specific rules. Deferred code is stated with the `timing` column (P1).
 
 ## R3-E: Scale, cache, robustness
 
@@ -869,7 +870,7 @@ An agent working in a worktree builds and fires the hook.
 
 ## R3-G: Internal — ACCEPTED as written (user: "yes these are all good"), amended by ADR-0048 (no framework-specific kinds: `link/tauri` → the generic `names` link; JSX → handoff via the TS extractor; "`link` hops are order breaks" → "`names` hops are order-unknown")
 1. **Node ID grammar:** repo-relative file › lexical containers; anonymous = `<callee|prop|=>>#<1-based ordinal>`; Rust by file and lexical nesting, with module paths as aliases.
-2. **Schema additions:** `edges.subkind` (`call/render`, `link/tauri`, `link/literal`), a `literal` node kind, and `await` as an `order-break` row.
+2. **Schema additions:** `edges.subkind` (`link/literal`, `link/names`, `value-flow/handoff`, `call/implicit`), a `literal` node kind, and suspension rows (`await`/`yield`) (amended per ADR-0048 and R4-B: no `call/render`, no `link/tauri`).
 3. **Locals and parameters are state nodes.**
 4. **Macro-generated facts get the macro call site as their receipt** (`role='macro'`).
 5. **A curried name as a path start** = the named function plus the functions it returns.

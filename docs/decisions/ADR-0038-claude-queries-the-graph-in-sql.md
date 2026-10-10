@@ -1,6 +1,6 @@
 # ADR-0038: Claude queries the graph in SQL; each codebase's snapshot is a read-only SQLite database
 
-- **Status:** Accepted; hardened by R3-G #7 (authorizer allowlist, immutable read-only, single statement, 5 s deadline, heap cap) and R3-G #8 (receipts store spans; bytes in a `files` table)
+- **Status:** Accepted; hardened by R3-G #7 (authorizer allowlist, immutable read-only, single statement, 5 s deadline, heap cap) and R3-G #8 (receipts store spans; bytes in a `files` table); row caps are Claude's `max_rows` parameter under ceilings (ADR-0047, R4-B); `reach()`/`nid()` table functions and shipped views added (R4-B)
 - **Date:** 2026-10-09
 - **Source:** user, BQ-26 ("I think a query language. Claude writes perfect zero-shot SQL so that's not a problem… I guess I don't actually know how this should be done in practice. I just know what I want")
 

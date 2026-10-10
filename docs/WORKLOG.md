@@ -12,6 +12,29 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Round 4: concept coverage, runtime-Claude simulation, leftovers
+**Done:** Three reviews.
+1. A concept-coverage stress test across TS, Rust, Python, Go, C/C++, Kotlin/Java, Swift, C# and SQL found 14 gaps (P1–P14).
+2. A runtime-Claude simulation answered five Fletcher questions using only the specified tools, and found 17 friction points.
+3. A leftovers audit found framework remnants and built-in defaults.
+
+User rulings:
+- **ADR-0049, lean by default, pedantic on request.** R4-01 is strict: built-ins are external leaves with `origin=stdlib`, and stdlib handoffs are off by default.
+- **R4-02:** no RTOS/SDK conventions; Vue, Svelte and `.ino` count as languages.
+- **R4-03:** a global INSIGHT.md for prose only.
+- **R4-04:** `insight init` writes `tagging = "on-request"`.
+- **R4-B** delegated; **R4-C** approved.
+
+Applied (fork):
+- **ARCHITECTURE and GLOSSARY:** the P1–P11 concepts, which include timing, suspend/resume, implicit calls, exit kinds, `binds` with modes, inheritance and conformance, generics, macros and inactive code, decorators, and imports/init. Also the tool and schema items: follow tokens as SQL predicates, `call_eid`/`arg_index`, `base_nid`, `via_eid`, `has-type`, open-ended `path` with a DAG result, `reach()`/`nid()`, `race_candidates`, the frozen-source folder, external `origin`, `sql(max_rows, timeout_ms)`, and `tag_coverage(scope, kinds)`.
+- **New `docs/MCP-INSTRUCTIONS.md`** (draft).
+- **BQ-03:** no framework link crates. Removed BQ-16 `render` and the 200-row cap; labeled the superseded R3-13/R3-14 recs.
+- **Living docs:** OPEN-QUESTIONS table refreshed plus Q-38/Q-39; VISION gets the third principle; TESTBED R4 table plus TB-152…156.
+- **Drag-graft example:** re-anchored to `cd5d6ff` (it was about 18 lines off), with a note that its effects and timing are the model's answer.
+- **ADR status lines:** 0007, 0018, 0019, 0021, 0022, 0034, 0038, 0039 and 0048. ADR-0048 is scoped to the *analysis*, so Insight's own Tauri shell is fine.
+
+**Learned:** The simulation was the most valuable review yet. Cheap extra columns (`base_nid`, `via_eid`, `call_eid`/`arg_index`) turn whole classes of questions into single joins, and open-ended reachability is the tool that discovers effects without any framework knowledge.
+**Next:** Build M0.
 ## 2026-10-09 (cont.) — Round 3: dry run, red team, TESTBED sweep; ADR-0041…0048
 **Done:**
 - **Three reviews against the cleaned-up docs:**

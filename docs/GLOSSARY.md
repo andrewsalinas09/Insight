@@ -9,7 +9,7 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHE
 - **Block**: a container for one branch arm, loop body, or `try`/`catch`, carrying its condition text (BQ-18).
 - **Bridge (MCP bridge)**: `insight.exe mcp`, the stdio process an agent launches. It forwards calls to the running app over a hardened named pipe and launches the app if needed (ADR-0031, R2-13, R3-G #6).
 - **Bubble**: informal name for a container node drawn in the window.
-- **Causal order**: whether one thing definitely happens before another. Ordered within a function by position. Order-unknown (*may interleave*) at `await`, handoffs, `names` hops, un-awaited async calls and JSX handoffs (ADR-0042, R3-14, ADR-0048).
+- **Causal order**: whether one thing definitely happens before another. Ordered by position, with the `timing` column stating the real moment where it differs (lazy futures, scope exit, load time, unsequenced operands). Order-unknown (*may interleave*) at `await`/suspension, handoffs, `names` hops and un-awaited async calls (ADR-0042, R3-14, ADR-0048, R4 P1).
 - **Cell**: the shared state node for names destructured from one call, e.g. `[histVersion, setHistVersion]` (BQ-17).
 - **Check / install command**: the two declared kinds of build command in project settings. Install-type commands (installs, fetches, codegen, formatters, anything that rewrites) run only where Insight owns the dependencies (R3-02).
 - **Collapse**: a view element: a container folded to "+N hidden", expandable (ADR-0040).
@@ -21,11 +21,14 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHE
 - **Exit edge**: an early exit (`return`, `?`, `throw`) out of a function or block (BQ-18).
 - **Expectation** *(post-MVP)*: a saved SQL query describing required behavior, re-run on each new snapshot (Q-26).
 - **Explanation**: the agent's answer, usually plain text in the terminal (R2-07), pinned to its snapshot (ADR-0029).
-- **External leaf**: one node per dependency or standard-library symbol the project uses; its internals aren't indexed (BQ-20).
+- **External leaf**: one node per dependency or standard-library symbol the project uses, carrying package, module, version and `origin` (project / dependency / stdlib). Its internals aren't indexed, and built-ins are external leaves too (BQ-20, R4-01, ADR-0049).
+- **Follow token**: a hop kind Claude passes to `path` or `reach()` (call, possible, dispatch, names, literal, handoff, state…). Each is an exact SQL predicate over `edges`, listed by `status` (ADR-0047, R4-B).
+- **Frozen-source folder**: a read-only, path-shaped view of a snapshot's frozen files, so the agent's own Grep and Read hit exactly the snapshot bytes (R4-B).
 - **Extractor**: a per-language program built on that language's native toolchain. It translates the language into the concept vocabulary and emits NDJSON, including hashes of the files it read (ADR-0033, ADR-0034, ADR-0048, R2-28, R3-05).
 - **Frozen source store**: the content-addressed copy of a snapshot's source files taken at snapshot time. `source` reads it and Insight's commands run against it (R3-05, R3-02).
-- **Handoff**: a function or value given to other code to run or use later (a callback to `listen`, a JSX element, a spawned closure). It's a `value-flow` into an external leaf, and it breaks causal order (ADR-0042, ADR-0048).
-- **INSIGHT.md**: Insight's equivalent of CLAUDE.md, in the project folder. Prose for Claude (knowledge notes, preferences, wishes) plus all settings as TOML ```` ```insight ```` blocks with per-repo tables (ADR-0044, R3-07).
+- **Handoff**: a function or value given to other code to run or use later (a callback to `listen`, a JSX element given to the JSX factory, a spawned closure). It's a `value-flow` into an external leaf, and it breaks causal order. Handoffs to the standard library are pedantic detail, off by default (ADR-0042, ADR-0048, ADR-0049).
+- **Implicit call**: a call the compiler inserts without call syntax: operators, accessors, conversions, Deref, indexing, iteration, destructuring, destructors, implicit constructors. Recorded as `call` with subkind `implicit` and a `via` value (R4 P3).
+- **INSIGHT.md**: Insight's equivalent of CLAUDE.md. A **global** one in `%APPDATA%\Insight\` holds prose only (knowledge notes, preferences, wishes). Each **project's** one holds that project's prose plus all its settings, as TOML ```` ```insight ```` blocks with per-repo tables; `insight init` writes `tagging = "on-request"` explicitly (ADR-0044, R3-07, R4-03, R4-04).
 - **Intelligence principle**: the tool does what's trivial; the moment there's a question, it's the model's (ADR-0035).
 - **Knowledge profile**: free-form notes on what you already know, kept in `INSIGHT.md` and interpreted by the model (ADR-0004, ADR-0044).
 - **Learning journal** *(post-MVP)*: the personal record of questions and answers, each pinned to its snapshot (Q-22).
@@ -34,8 +37,9 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHE
 - **Observed edge** *(post-MVP)*: an edge seen happening in a recorded run; a self-check tool for the model, kept as an overlay that never mutates a snapshot (ADR-0003, ADR-0037).
 - **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level (ADR-0012).
 - **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
-- **Path tool**: `path(from, to, follow=[…])`, deterministic pathfinding where Claude chooses the hop kinds. Hops are labeled, cycles and recursion reported, and output capped (R2-12, R3-13, ADR-0047).
-- **Possible edge**: one of several candidates static analysis can't narrow down, e.g. each value an optional callback prop might hold, plus "absent" (BQ-15).
+- **Path tool**: `path(from?, to?, follow=[…])`, deterministic pathfinding. Claude chooses every hop kind (there's no implicit set), and either end may be open or a set. It returns a compact DAG of labeled hops with ids; cycles and recursion are reported. Claude sets any limits (R2-12, R3-13, ADR-0047, R4-B).
+- **Pedantic switch**: a tool parameter that turns on detail that's off by default (stdlib handoffs, stdlib implicit calls, macro-generated facts, unsequenced groups, instance-merge detail). `status` lists them all (ADR-0049).
+- **Possible edge**: one of several candidates static analysis can't narrow down, e.g. each value an optional function-valued field or parameter might hold, plus "absent" (BQ-15).
 - **Prime directive**: Insight's own facts may be incomplete, but never wrong (ADR-0002, scoped by ADR-0041).
 - **Probe** *(post-MVP)*: a tagged log statement the model inserts in a scratch copy to observe a run (ADR-0015).
 - **Project**: Insight's unit: a named set of one or more repos, set up with `insight init` and loaded together. Only init'ed projects are built (ADR-0045, R3-01).
@@ -53,5 +57,5 @@ Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHE
 - **Tripwire**: if any file in your repo changes while an Insight command runs, Insight stops and reports which files and which command (R3-02).
 - **Vibe-coded software**: software produced largely by AI with little line-by-line human reading. The primary target.
 - **View element**: one of the nine kinds a view can contain (ADR-0040).
-- **Wire link** *(later)*: a send in one repo matched to a receive in another. Exact literal and `names` facts plus model-declared pairs that cite them (ADR-0014, R2-38, ADR-0048).
+- **Wire link** *(later)*: a send in one repo matched to a receive in another, built only from exact literal and `names` facts. When Claude judges two ends to be "the same message", it shows that as a view note or group, never as a graph edge (ADR-0014, R2-03, R2-38, ADR-0048).
 - **Wish rule**: when Claude wishes Insight could do something, it says so and records it in `INSIGHT.md`; you decide (ADR-0039, ADR-0044).

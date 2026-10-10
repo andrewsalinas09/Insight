@@ -10,6 +10,8 @@ The prime directive (ADR-0002, scoped by ADR-0041): **Insight's own facts may be
 
 The intelligence principle (ADR-0035): **the tool does what's trivial (deterministic, by algorithm), and the second there's a question it defers to the model.** "We don't need to write intelligence when it already exists. Tracing a call stack is not intelligent. Explaining how it works is." Practical test: if a compiler could do it, it's allowed (ADR-0043). Insight is a fancy, visual UI for a frontier model to use when explaining code to you, showing how it architected something, and letting you check it matches what you want, fast enough to keep up.
 
+**The concepts principle (ADR-0048, ADR-0047, ADR-0049):** Insight knows **programming concepts only**: zero framework or library knowledge in its analysis. Language knowledge lives only in each language's extractor. What's relevant is Claude's choice, as tool parameters; output is lean by default and pedantic on request.
+
 **What Insight is (ADR-0024):** the model already understands the code (it wrote it) and explains it well in text. Insight is the *instrument* that lets you see it: a graph of the real code, a UI you can navigate and hold in your head, and tools the model uses to highlight, focus, and step through as it explains, so you can trace and follow what it says.
 
 **The first thing it must do well (ADR-0019):** load the software, ask about an algorithm, and get back how it works, the data structures it uses and where they live, and *how we know it's correct*.
@@ -35,8 +37,8 @@ The intelligence principle (ADR-0035): **the tool does what's trivial (determini
 17. **Review changes as a system diff, not a line diff** *(post-MVP)*. After an AI session, see what changed in *behavior*: new paths, removed error handling, a new network call on the save path. A diff is two snapshots compared in SQL, and the model reconciles renames (ADR-0028, Q-25).
 18. **Say what you want; Insight keeps checking it** *(post-MVP)*. "Saving never touches the network." "Every error reaches the UI." Expectations are saved SQL queries, re-run on each new snapshot (Q-26).
 19. **The oversight loop.** Prompt the agent, then see what it did: "it goes in here, comes out here, the error bubbles up to here… wait, it never reaches the logger." Click in and ask "where else could this happen?" Tell the agent to fix it *by design*, with the graph as context. Watch the system diff confirm the fix, and save the question as an expectation so it never comes back (Q-25, Q-26; `docs/examples/oversight-loop-worked-example.md`).
-20. **Across the wire, across devices** *(later)*. Load the firmware, the radio protocol, and the frontend as one project (ADR-0045). Ask "show me the trace that takes the data from the sensor to my frontend's display, and focus on the algorithms that process it." You get one graph across codebases, following the *value* itself (ADR-0014).
-21. **Causal time you can see.** Ordered code reads as ordered; `await` and functions handed to outside code (callbacks, timers, spawns) are marked *may interleave*. Race candidates are one query away (ADR-0042).
+20. **Across the wire, across devices** *(later)*. Load the firmware, the radio protocol, and the frontend as one project (ADR-0045). Ask "show me the trace that takes the data from the sensor to my frontend's display, and focus on the algorithms that process it." You get one graph across codebases, following the *value* itself through generic literal and `names` facts (ADR-0014, ADR-0048).
+21. **Causal time you can see.** Ordered code reads as ordered; `await`, handoffs to outside code, un-awaited async calls and `names` hops are marked *may interleave*, and deferred code (scope exit, lazy futures) states when it really runs. Race candidates are one query away (ADR-0042). What a timer or spawn *means* is Claude's reading.
 22. **"How do we know it's right?"** For any value or algorithm, the solver returns everything connected to it, and the model sorts it into where it's validated, where it silently falls back to a default, which tests reach it, and what nothing checks (ADR-0019, Q-31).
 23. **Works with your agent, not instead of it.** Claude Code, Codex, or whatever comes next does the coding. Insight is the tool it calls and the window you watch it through (ADR-0017). Anything the agent can do in Insight, you can do in the window directly (R2-09).
 
@@ -49,5 +51,6 @@ Two things changed. First, a lot of software is now vibe coded: people ship syst
 - Not a team or onboarding product. It's a personal tool for one user (ADR-0025).
 - Not a chat client or a model host. Insight calls no model (ADR-0025).
 - Not a coding agent. It reads code; the agent edits it (ADR-0017).
+- Not framework-aware. Insight knows languages, never frameworks or libraries; libraries are leaves Claude interprets (ADR-0048).
 - Not self-modifying. New capabilities go through the user (ADR-0039).
 - Not for code that doesn't build (ADR-0036).
