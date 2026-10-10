@@ -349,45 +349,6 @@ fn severity_str(s: Severity) -> &'static str {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn span() -> Span {
-        Span { byte_start: 0, byte_end: 10, line_start: 1, line_end: 2 }
-    }
-
-    #[test]
-    fn writes_and_reopens_a_complete_snapshot() {
-        let dir = std::env::temp_dir().join(format!("insight-engine-test-{}", std::process::id()));
-        let path = dir.join("snap.sqlite");
-        let _ = std::fs::remove_file(&path);
-        let mut w = SnapshotWriter::create(&path).unwrap();
-        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: Some(span()), anonymous: false, generated: false };
-        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
-        w.node(&file, "ts", Some("a.ts")).unwrap();
-        w.node(&func, "ts", Some("a.ts")).unwrap();
-        let out = w.finish().unwrap();
-        let conn = open_snapshot(&out).unwrap();
-        assert_eq!(function_counts_by_file(&conn).unwrap(), vec![("a.ts".to_string(), 1)]);
-        std::fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn rejects_duplicate_ids_and_unknown_parents() {
-        let dir = std::env::temp_dir().join(format!("insight-engine-dup-{}", std::process::id()));
-        let mut w = SnapshotWriter::create(&dir.join("s.sqlite")).unwrap();
-        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
-        assert!(w.node(&orphan, "ts", Some("x")).is_err());
-        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: Some(span()), anonymous: false, generated: false };
-        w.node(&file, "ts", Some("x")).unwrap();
-        assert!(w.node(&file, "ts", Some("x")).is_err());
-        drop(w);
-        std::fs::remove_dir_all(dir).ok();
-    }
-}
-
-
 /// The value graph the indirect-call pass walks (see [`SnapshotWriter::resolve_indirect_calls`]):
 /// backward from a called state to the function values that can reach it.
 pub struct IndirectWalk {
@@ -485,5 +446,43 @@ impl IndirectWalk {
             }
         }
         (found, parent)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span() -> Span {
+        Span { byte_start: 0, byte_end: 10, line_start: 1, line_end: 2 }
+    }
+
+    #[test]
+    fn writes_and_reopens_a_complete_snapshot() {
+        let dir = std::env::temp_dir().join(format!("insight-engine-test-{}", std::process::id()));
+        let path = dir.join("snap.sqlite");
+        let _ = std::fs::remove_file(&path);
+        let mut w = SnapshotWriter::create(&path).unwrap();
+        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: Some(span()), anonymous: false, generated: false };
+        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
+        w.node(&file, "ts", Some("a.ts")).unwrap();
+        w.node(&func, "ts", Some("a.ts")).unwrap();
+        let out = w.finish().unwrap();
+        let conn = open_snapshot(&out).unwrap();
+        assert_eq!(function_counts_by_file(&conn).unwrap(), vec![("a.ts".to_string(), 1)]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn rejects_duplicate_ids_and_unknown_parents() {
+        let dir = std::env::temp_dir().join(format!("insight-engine-dup-{}", std::process::id()));
+        let mut w = SnapshotWriter::create(&dir.join("s.sqlite")).unwrap();
+        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
+        assert!(w.node(&orphan, "ts", Some("x")).is_err());
+        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: Some(span()), anonymous: false, generated: false };
+        w.node(&file, "ts", Some("x")).unwrap();
+        assert!(w.node(&file, "ts", Some("x")).is_err());
+        drop(w);
+        std::fs::remove_dir_all(dir).ok();
     }
 }
