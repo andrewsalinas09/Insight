@@ -415,7 +415,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Tables only.
 - Rec: (a).
 
-### BQ-38: Example values in steps (conflict between ADRs) — OPEN
+### BQ-38: Example values in steps — ANSWERED → ADR-0037
+**Ruling:** any value is fine. Insight defers to the model and gives it tools to verify itself (e.g. confirm a race actually races before showing it).
+
+*(Original question:)*
 - ADR-0011 says an LLM-predicted value is never displayed; ADR-0019 puts valued step-throughs out of the MVP; ADR-0026 allows *example* values.
 - Case: the graft walk's "`d = 3`, `node.id` e.g. 12, label '3 edits in one'".
 - Options:
@@ -484,7 +487,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (b) plus a differential oracle against tsc/rust-analyzer "find all references", reporting the TB-097 resolution rate each run.
 - Rec: the solver agent says (c); the architecture agent warns whole-graph goldens are brittle (assert targeted facts only). Needs your call.
 
-### BQ-47: Tool-API replay, eval tiers and session logging — OPEN
+### BQ-47: Tool-API replay, eval tiers and session logging — ANSWERED → ADR-0037
+**Ruling:** no `claude -p`. Claude tests Insight from a development session by calling its MCP tools directly, plus deterministic automated tests.
+
+*(Original question:)*
 - Options:
   - (a) A deterministic golden replay (scripted tool calls for the drag-graft and history-tree answers → snapshot-tested responses and scenes) in CI.
   - (b) (a) plus a manual `insight eval` running headless `claude -p` with the MCP attached, scored against the hand key.

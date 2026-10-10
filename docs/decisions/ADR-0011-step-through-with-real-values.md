@@ -1,6 +1,6 @@
 # ADR-0011: The step-through: a debugger-like walkthrough with concrete values, set up and verified by the AI
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0037 (any value may be shown. Execution and verification are tools the model uses to check itself, not a gate on what it may display)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 5 ("step through like a static analysis debugger. The AI can set it up, test it and then give it to you. And you can click next as though it was a debugger with specific values. Useful beyond learning, but learning is the primary purpose")
 
