@@ -625,7 +625,14 @@ ADR-0013/0021/0022 say omissions always show "+N hidden". ADR-0040 allows any su
 - Options: (a) the renderer always shows, per visible container, how many real children aren't in the view; (b) only when the model uses Collapse; (c) a per-view option.
 - Rec: (a). Counting is trivial, so it's the tool's job.
 
-### R2-12: Paths and diffs: built-in operations or SQL? — OPEN (vis)
+### R2-12: Paths and diffs: built-in operations or SQL? — ANSWERED (a)
+**Ruling (user):** "pathfinding should be done by algo."
+- Add `path(from, to, options)` to the CLI and the MCP tool list. It's a deterministic search that visits each node once and prints the reachable chain(s) with receipts.
+- **Choosing the question is Claude's:** start, end, and which hop kinds count (calls only, or also `--via-state` through shared state; `possible` edges included and marked).
+- **Loops and recursion are never followed forever and are reported to Claude as facts:** "cycle: A → … → A", "recursive: f calls itself" (or mutual recursion).
+- Diffs stay SQL (two attached snapshots).
+- The M1 gate is restated: steps 3 and 5–11 from `nodeUp`, plus a second check from `nodeDown` for steps 1, 2 and 4.
+- Tool list (ADR-0039) amended: `+ path`.
 M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The tool list (ADR-0039) has no `path`/`diff`. A naive recursive CTE over a cyclic graph may not terminate (dry run). The M1 gate as written can't pass: drag steps 1, 2 and 4 happen *before* `nodeUp`.
 - Options: (a) add a `path(from, to, via?)` tool, deterministic BFS, CLI and MCP alike, printing the reachable subgraph once per node with receipts; diff stays SQL; restate the M1 gate as steps 3 and 5–11 from `nodeUp` plus a second check from `nodeDown`; state hops are opt-in (`--via-state`); (b) both in SQL only, with depth-bounded CTEs; (c) `path` on the CLI only.
 - Rec: (a). It's a trivial algorithm, and it makes M2 literally M1. It changes the fixed tool list, so it needs your OK.
