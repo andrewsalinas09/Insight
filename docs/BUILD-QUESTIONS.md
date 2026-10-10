@@ -645,7 +645,10 @@ M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The t
 - Options: (a) two binaries in `%LOCALAPPDATA%\Insight\bin`: console `insight.exe` (CLI, bridge, headless) and GUI `insight-app.exe`; (b) one console binary that hides its console on double-click; (c) one GUI binary that attaches to the parent console.
 - Rec: (a).
 
-### R2-14: Registering with Claude Code — OPEN (vis)
+### R2-14: Registering with Claude Code — ANSWERED (a); command split in R2-14b
+**Ruling:** register once at user scope with an absolute path (`claude mcp add -s user insight -- %LOCALAPPDATA%\Insight\bin\insight.exe mcp`), plus other agents found and the after-build hook. User: "insight init yes, like git init".
+
+### R2-14b: `insight setup` (per machine) + `insight init` (per repo, like git), or one command? — OPEN (vis)
 `claude mcp add` defaults to *local* scope, which only works in that one folder.
 - Options: (a) `insight init` runs `claude mcp add -s user insight -- <absolute path>\insight.exe mcp`, so it works in every repo, with no PATH guessing; (b) a per-repo `.mcp.json`; (c) user scope relying on PATH.
 - Rec: (a).
