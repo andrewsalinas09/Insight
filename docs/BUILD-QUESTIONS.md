@@ -475,7 +475,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Both.
 - Rec: (a).
 
-### BQ-40: Linking prose to graph elements — OPEN
+### BQ-40: Linking prose to graph elements — ANSWERED (a)
+**Ruling:** text in notes and steps can contain links to nodes (e.g. `[graftNode](MainApp › graftNode)`), which are clickable in the window and light up the node. The terminal copy stays plain text.
+
+*(Original question:)*
 - Options:
   - (a) Inline markup in any text field (`[nodeUp](HistoryTree › nodeUp)`), validated like `maps_to`, with the terminal copy left plain.
   - (b) A separate `say(text, refs[])` tool.
