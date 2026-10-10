@@ -1,6 +1,6 @@
 # ADR-0002: The prime directive: the graph may be incomplete, never wrong
 
-- **Status:** Accepted
+- **Status:** Accepted; scope narrowed by ADR-0041 (covers Insight's own deterministic facts; what Claude says is interpretation, shown as such)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 1 (Q-01; borrowed from Humanity Tech Tree ADR-0015)
 

@@ -556,7 +556,8 @@ The agents were (1) a dry run of building M0→M2 and the MVP question, (2) a co
 
 ## R2-A: Contradictions between accepted decisions
 
-### R2-01: Does "never wrong" cover the model, or only Insight's own facts? — OPEN (vis)
+### R2-01: Does "never wrong" cover the model, or only Insight's own facts? — ANSWERED → ADR-0041
+**Ruling:** (a), plus Claude's words shown as interpretation. Checkable things get tools: `compare(a, b)` (exact diff) and a quiet read-coverage reminder to Claude when it references code it hasn't fully read.
 ADR-0002 says every label must be true or marked, and LLM output must be checked. ADR-0037 says model content is never gated, and "Insight never states something false; the model is responsible for what it says."
 - Options: (a) narrow ADR-0002 to Insight's deterministic layer (graph, paths, receipts, reference resolution); (b) every model element carries a mandatory "interpretation" marker; (c) merge both into a new ADR.
 - Rec: (a), which is ADR-0037's own sentence.
