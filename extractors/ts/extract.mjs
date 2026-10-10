@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const FACT_SCHEMA_VERSION = 2;
+const FACT_SCHEMA_VERSION = 3;
 const EXTRACTOR = "ts@0.1.0";
 
 function parseArgs(argv) {
@@ -565,6 +565,13 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
       } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
         emit({ type: "literal", value: n.text, from, receipt: receipt(n, "literal", ctr) });
         counts.literals++;
+      } else if (ts.isNumericLiteral(n)) {
+        // Integers only, in canonical decimal (the scanner already normalizes 0x1F to "31").
+        const v = Number(n.text);
+        if (Number.isSafeInteger(v)) {
+          emit({ type: "literal", value: String(v), number: true, from, receipt: receipt(n, "literal", ctr) });
+          counts.literals++;
+        }
       }
 
       // A function returning function literals (curried handlers, BQ-15 / R3-G #5).

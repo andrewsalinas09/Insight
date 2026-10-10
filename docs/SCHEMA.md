@@ -27,12 +27,13 @@ Every node is one row in `nodes`. Containment (what is lexically inside what) is
 | `container` | `block` | A control-flow region: `if`/`else` arm, `switch` case/default, `match` arm, loop body, `try`/`catch`/`finally`, ternary arm (BQ-18). | Built |
 | `container` | `init` | Module initialization code, with init order where the language defines it (P11). | Planned |
 | `state` | `var` / `field` / `element` / `static` / `cell` | Storage. Locals and parameters are `var` state (R3-G #3). | Planned |
-| `literal` | | One node per distinct string value, id `lit:<JSON string>` (`lit:"hist-cmd"`), so same-literal links are not N² (R2-30). Created by the solver's link pass from every extractor's literal occurrences, across languages. | Built (strings) |
-| `external` | | A referenced symbol outside the analyzed code, one leaf per symbol (BQ-20): `ext:ts:<package or lib>:<Owner.name>`, `ext:rust:<crate>:<module::path::Type::name>`. Package version: Planned. | Built |
+| `literal` | | One node per distinct value, so same-literal links are not N² (R2-30): strings `lit:<JSON string>` (`lit:"hist-cmd"`), integers in canonical decimal `lit:31` (`0x1F`, `31u8` and `31` are one node). Created by the solver's link pass from every extractor's literal occurrences, across languages. | Built (strings, integers) |
+| `external` | | A referenced symbol outside the analyzed code, one leaf per symbol (BQ-20): `ext:ts:<package or lib>:<Owner.name>`, `ext:rust:<crate>:<module::path::Type::name>`, `ext:cpp:<declaring header>:<ns::Type::name>` (builtins have an empty header). Package version: Planned. | Built |
 | `unresolved` | | A reference the compiler could not resolve. Today this is an edge with `resolution='unresolved'` and `to_nid NULL` instead of a node. | Planned |
 | `macro` | | A macro definition; expansions link to it with `expand` (P9). | Planned |
+| `inactive` | | Source text the build configuration excluded (an inactive `#if` region, P9), id `<file> › #if-inactive#k`. Recorded, never analyzed. A region compiled by another inclusion of the same header is not inactive. | Built (C/C++) |
 
-Node column `anonymous` (Built): 1 when the name is positional (`map#1`, `=>#2`, blocks), so `names` links only match declared names. Planned node columns: `origin` (`project` / `dependency` / `stdlib`, ADR-0049), `body_hash` (R3-17: "same name, different body" is visible), `generated` (1 for macro-generated, R4-B).
+Node column `anonymous` (Built): 1 when the name is positional (`map#1`, `=>#2`, blocks), so `names` links only match declared names. Node column `generated` (Built for C/C++, R4-B): 1 for a function or type a macro produced from its own template (its body is spelled in the macro, not at its location). Planned node columns: `origin` (`project` / `dependency` / `stdlib`, ADR-0049), `body_hash` (R3-17: "same name, different body" is visible).
 
 ## 3. Node IDs (`nodes.path`)
 
@@ -61,9 +62,9 @@ Implements BQ-10 / R3-G #1.
 
 | `kind` | `subkind` | Meaning | Status |
 |---|---|---|---|
-| `call` | | A function calls a function (or an external leaf). **TS:** resolved by the project's own checker; a call through a variable, parameter, property or prop gets `possible` edges to every function value written to that declaration (one-hop value flow, BQ-15), tied by `group_id`, plus an absent candidate (`to_nid NULL`) when the call is optional (`?.`) or the declaration is optional. Writes counted: variable initializers, assignments, object-literal properties and JSX attributes (matched through contextual typing), and call arguments (matched to the resolved signature's parameters). **Rust:** resolved by rust-analyzer through macro expansions (attribute macros included). | Built |
-| `call` | `implicit` | Operators, accessors, conversions, Deref, Index, iteration, destructors (P3). | Planned |
-| `value-flow` | `handoff` | A function value passed to external code (an argument of an external call; for JSX, the component, or the function-valued attributes of an intrinsic element). Who calls it later is the model's question. | Built |
+| `call` | | A function calls a function (or an external leaf). **TS:** resolved by the project's own checker; a call through a variable, parameter, property or prop gets `possible` edges to every function value written to that declaration (one-hop value flow, BQ-15), tied by `group_id`, plus an absent candidate (`to_nid NULL`) when the call is optional (`?.`) or the declaration is optional. Writes counted: variable initializers, assignments, object-literal properties and JSX attributes (matched through contextual typing), and call arguments (matched to the resolved signature's parameters). **Rust:** resolved by rust-analyzer through macro expansions (attribute macros included). **C/C++:** resolved by clang (libclang) on the project's own compile commands, across translation units by symbol (USR); a template instance resolves to its template. A virtual call through a pointer or reference gets `possible` edges, tied by `group_id`, to the named method (if it has a body) and every override in the analyzed code. Calls to compiler-generated constructors and operators have no code and are not edges. | Built |
+| `call` | `implicit` | Operators, accessors, conversions, Deref, Index, iteration, destructors (P3). | Built (C/C++ operator and conversion calls to written code); Planned elsewhere |
+| `value-flow` | `handoff` | A function value passed to external code (an argument of an external call; for JSX, the component, or the function-valued attributes of an intrinsic element; for C/C++, a function, `&function` or lambda argument). Who calls it later is the model's question. | Built |
 | `value-flow` | `returns` | A function returns this function literal, one level (BQ-15; curried path starts, R3-G #5). | Built (TS) |
 | `link` | `literal` | From a function (or file) to a `literal` node, one edge per occurrence (BQ-22). Order-unknown hop (R3-14 as amended). | Built |
 | `link` | `names` | From a `literal` node to every named function, type or module whose declared name equals the string (ADR-0048). | Built |
@@ -111,9 +112,12 @@ A **function** is any function-like syntax **with a body** written in the source
     1. the whole argument list, parsed as call arguments or as block statements;
     2. else each comma-separated piece, as an expression, a pattern, or the value after a leading `key:` / `key =>` / `key =`;
     3. else the bracketed groups inside the piece, recursively.
-- **Not counted:** `macro_rules!` bodies (templates), and functions a macro generates from its own template. Those stay in the graph with `generated=1` once that column lands.
+- **C/C++:** definitions with a written body (`{…}` or a function-try-block) and lambdas. `= default`, `= delete` and pure virtual declarations have no body. Functions in inactive `#if` regions are not compiled, so the counter skips the extractor's recorded `inactive` regions (which regions are inactive is a preprocessor fact; whether a function is written there is still counted independently). The counter needs a function declarator, so a misparse like `struct EXPORT_API Name { … }` is not a function.
+- **Not counted:** `macro_rules!` and `#define` bodies (templates), and functions a macro generates from its own template (`generated=1`).
+- **Unchecked (C/C++ only):** without a preprocessor, tree-sitter cannot parse some code (unexpanded macros produce `ERROR` nodes). A function is identified on both sides by its last line; any last line where either side's function touches a failed parse is left out of both counts. Each file with unchecked functions gets an info diagnostic and a log line with the number, so the gap is stated, never silent. Rust and TypeScript parse without a preprocessor, so their counts stay strict.
+- **On a mismatch,** the refusal lists, per file, the last lines of the functions only one side found.
 
-## 7. Tables (layout version 4)
+## 7. Tables (layout version 5)
 
 Built today, as created by `insight-engine`:
 
@@ -123,7 +127,7 @@ CREATE TABLE files (path TEXT PRIMARY KEY, lang TEXT NOT NULL, sha256 TEXT NOT N
                     bytes INTEGER NOT NULL, content BLOB NOT NULL);
 CREATE TABLE nodes (nid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
                     parent_nid INTEGER REFERENCES nodes(nid), kind TEXT NOT NULL, subkind TEXT,
-                    name TEXT NOT NULL, anonymous INTEGER NOT NULL DEFAULT 0, lang TEXT, file TEXT,
+                    name TEXT NOT NULL, anonymous INTEGER NOT NULL DEFAULT 0, generated INTEGER NOT NULL DEFAULT 0, lang TEXT, file TEXT,
                     byte_start INTEGER, byte_end INTEGER, line_start INTEGER, line_end INTEGER);
 CREATE TABLE edges (eid INTEGER PRIMARY KEY, kind TEXT NOT NULL, subkind TEXT,
                     from_nid INTEGER NOT NULL REFERENCES nodes(nid), to_nid INTEGER REFERENCES nodes(nid),
@@ -156,16 +160,16 @@ Planned: `entries` and `order_breaks` tables, a `race_candidates` view, and the 
   Identical keys reuse the existing file.
 - **File name:** `%LOCALAPPDATA%\Insight[-dev]\snapshots\<project>\<repo>-<key>.sqlite`.
 
-## 9. Extractor protocol (R2-28), fact schema 2
+## 9. Extractor protocol (R2-28), fact schema 3
 
-`<extractor> --root <dir> (--project <cfg> | --package <dir>)… --schema <N>` writes NDJSON to stdout. Progress goes to stderr, then to the build log.
+`<extractor> --root <dir> (--project <cfg> | --package <dir> | --compdb <compile_commands.json>)… --schema <N>` writes NDJSON to stdout. Progress goes to stderr, then to the build log.
 
 1. `{"type":"header","schema":N,"extractor":"<name>@<version>","toolchain":"…"}`
 2. Facts:
    - `{"type":"file","path","lang","sha256","bytes"}`, before that file's nodes;
-   - `{"type":"node","id","parent","kind","name","span":{…}|null,"anonymous"}`, parents before children. `kind` is `file` / `module` / `type` / `function` / `block` / `external`; externals have no parent and no span.
+   - `{"type":"node","id","parent","kind","name","span":{…}|null,"anonymous","generated"}`, parents before children. `kind` is `file` / `module` / `type` / `function` / `block` / `external` / `inactive`; externals have no parent and no span.
    - `{"type":"edge","kind":"call"|"value_flow","subkind","from","to"|null,"resolution","group"|null,"receipts":[…]}`. Edges may come after all nodes; they may name any node of the same stream.
-   - `{"type":"literal","value","from","receipt"}`: one per string-literal occurrence.
+   - `{"type":"literal","value","number","from","receipt"}`: one per string or integer literal occurrence; `number` is true for integers, whose `value` is canonical decimal.
    - `{"type":"diagnostic","file","severity","message"}`.
 3. `{"type":"end","files","nodes","edges","literals","diagnostics"}`. The counts must match what was streamed, which detects truncation.
 

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "extractors/rust"]
-default-members = ["crates/*", "extractors/rust"]
+members = ["crates/*", "extractors/rust", "extractors/cpp"]
+default-members = ["crates/*", "extractors/rust", "extractors/cpp"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ insight-engine = { path = "crates/insight-engine" }
 insight-solver = { path = "crates/insight-solver" }
 insight-lang-ts = { path = "crates/insight-lang-ts" }
 insight-lang-rust = { path = "crates/insight-lang-rust" }
+insight-lang-cpp = { path = "crates/insight-lang-cpp" }
 insight-count = { path = "crates/insight-count" }
 insight-mcp = { path = "crates/insight-mcp" }
 

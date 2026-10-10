@@ -1,0 +1,23 @@
+[package]
+name = "insight-extract-cpp"
+description = "Insight's C/C++ extractor: libclang on the project's compilation database -> the standard representation (ADR-0034)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "insight-extract-cpp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clang = { version = "2.1.0", features = ["runtime", "clang_10_0"] }
+insight-model = { version = "0.1.0", path = "../../crates/insight-model" }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+
+[dev-dependencies]
+serde_json = "1.0.151"

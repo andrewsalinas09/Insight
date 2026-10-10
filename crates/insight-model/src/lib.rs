@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Version of the fact schema. Part of every snapshot cache key (R2-28).
-pub const FACT_SCHEMA_VERSION: u32 = 2;
+pub const FACT_SCHEMA_VERSION: u32 = 3;
 
 /// One line of an extractor's NDJSON stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -64,6 +64,10 @@ pub struct NodeFact {
     /// Named by position, not by a declared name (`map#1`, `=>#2`). `names` links skip these.
     #[serde(default)]
     pub anonymous: bool,
+    /// Produced by macro expansion from the macro's own template, not written at its
+    /// location (R4-B). Kept in the graph; not counted by the M0 check (SCHEMA.md §6).
+    #[serde(default)]
+    pub generated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -79,6 +83,9 @@ pub enum NodeKind {
     Block,
     /// A referenced symbol outside the analyzed code: one leaf per symbol (BQ-20).
     External,
+    /// Source text the build configuration excluded (an inactive `#if` region, P9):
+    /// recorded, never analyzed.
+    Inactive,
 }
 
 /// A byte range plus 1-based lines, in the UTF-8 bytes of the snapshot file (BQ-11).
@@ -140,11 +147,15 @@ pub struct Receipt {
     pub container: Option<String>,
 }
 
-/// One occurrence of a string literal in the source. The solver turns these into
-/// literal nodes and the generic `link/literal` and `link/names` edges (BQ-22, ADR-0048).
+/// One occurrence of a string or number literal in the source. The solver turns these
+/// into literal nodes and the generic `link/literal` and `link/names` edges (BQ-22, ADR-0048).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LiteralFact {
+    /// The string's value, or for a number its canonical decimal form (`0x1F` → `31`).
     pub value: String,
+    /// True for a number literal (integers; `lit:31`), false for a string (`lit:"31"`).
+    #[serde(default)]
+    pub number: bool,
     /// The innermost function (or file) containing it.
     pub from: String,
     pub receipt: Receipt,

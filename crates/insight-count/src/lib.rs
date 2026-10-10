@@ -17,6 +17,8 @@ pub enum Lang {
     TypeScript,
     Tsx,
     Rust,
+    C,
+    Cpp,
 }
 
 impl Lang {
@@ -30,6 +32,10 @@ impl Lang {
             "ts" | "mts" | "cts" | "js" | "mjs" | "cjs" => Some(Lang::TypeScript),
             "tsx" | "jsx" => Some(Lang::Tsx),
             "rs" => Some(Lang::Rust),
+            "c" => Some(Lang::C),
+            // Headers are parsed as C++ (a near-superset); a C-only header that uses a C++
+            // keyword as a name shows up as a mismatch, never as a silent pass.
+            "cc" | "cpp" | "cxx" | "c++" | "h" | "hh" | "hpp" | "hxx" | "h++" | "ipp" | "tpp" | "inl" => Some(Lang::Cpp),
             _ => None,
         }
     }
@@ -39,38 +45,112 @@ impl Lang {
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Lang::C => tree_sitter_c::LANGUAGE.into(),
+            Lang::Cpp => tree_sitter_cpp::LANGUAGE.into(),
         }
     }
 }
 
 /// Counts function-like syntax with a body in `source`.
 pub fn count_functions(lang: Lang, source: &str) -> anyhow::Result<usize> {
+    count_functions_outside(lang, source, &[])
+}
+
+/// Counts functions that start outside every `[start, end)` byte range in `skip`:
+/// the regions the build configuration excluded (inactive `#if` blocks). Which
+/// regions are inactive is a preprocessor fact the extractor records; whether a
+/// function is written there is still counted independently.
+pub fn count_functions_outside(lang: Lang, source: &str, skip: &[(usize, usize)]) -> anyhow::Result<usize> {
+    Ok(function_ends(lang, source, skip)?.len())
+}
+
+/// The end byte of each counted function, for reporting where a count differs.
+pub fn function_ends(lang: Lang, source: &str, skip: &[(usize, usize)]) -> anyhow::Result<Vec<usize>> {
+    Ok(function_spans(lang, source, skip)?.into_iter().map(|(_, e)| e).collect())
+}
+
+/// The byte span `(start, end)` of each counted function outside `skip`. (Functions found
+/// by re-parsing macro arguments span the macro's argument list.)
+pub fn function_spans(lang: Lang, source: &str, skip: &[(usize, usize)]) -> anyhow::Result<Vec<(usize, usize)>> {
     let mut parser = Parser::new();
     parser.set_language(&lang.language())?;
     let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("tree-sitter could not parse"))?;
-    let mut n = 0;
-    walk(tree.root_node(), source, lang, &mut n);
-    Ok(n)
+    let mut spans = Vec::new();
+    walk(tree.root_node(), source, lang, &mut spans, skip);
+    Ok(spans)
 }
 
-fn walk(node: Node, src: &str, lang: Lang, n: &mut usize) {
+/// Byte ranges where the counter's own parse failed (tree-sitter `ERROR`/missing nodes),
+/// for C and C++ only: unexpanded macros make some source unparsable without a
+/// preprocessor, so the counter cannot vouch for what is there. The M0 check leaves
+/// functions touching these ranges out of both counts and reports them as unchecked.
+/// Rust and TypeScript parse without a preprocessor, so their counts stay strict.
+pub fn unparsed_ranges(lang: Lang, source: &str) -> anyhow::Result<Vec<(usize, usize)>> {
+    if !matches!(lang, Lang::C | Lang::Cpp) {
+        return Ok(Vec::new());
+    }
+    let mut parser = Parser::new();
+    parser.set_language(&lang.language())?;
+    let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("tree-sitter could not parse"))?;
+    fn go(n: Node, out: &mut Vec<(usize, usize)>) {
+        if n.is_error() || n.is_missing() {
+            out.push((n.start_byte(), n.end_byte().max(n.start_byte() + 1)));
+            return;
+        }
+        if n.has_error() {
+            let mut c = n.walk();
+            for ch in n.children(&mut c) {
+                go(ch, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    go(tree.root_node(), &mut out);
+    Ok(out)
+}
+
+/// The syntax tree's named nodes between two lines, indented, for debugging a mismatch.
+pub fn outline(lang: Lang, source: &str, from: usize, to: usize) -> anyhow::Result<String> {
+    let mut parser = Parser::new();
+    parser.set_language(&lang.language())?;
+    let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("tree-sitter could not parse"))?;
+    let mut out = String::new();
+    fn go(n: Node, depth: usize, from: usize, to: usize, out: &mut String) {
+        let (s, e) = (n.start_position().row + 1, n.end_position().row + 1);
+        if e < from || s > to {
+            return;
+        }
+        if n.is_named() {
+            out.push_str(&format!("{}{} {}-{}\n", "  ".repeat(depth), n.kind(), s, e));
+        }
+        let mut c = n.walk();
+        for ch in n.children(&mut c) {
+            go(ch, depth + 1, from, to, out);
+        }
+    }
+    go(tree.root_node(), 0, from, to, &mut out);
+    Ok(out)
+}
+
+fn walk(node: Node, src: &str, lang: Lang, n: &mut Vec<(usize, usize)>, skip: &[(usize, usize)]) {
     if lang == Lang::Rust {
         if node.kind() == "macro_definition" {
             return;
         }
         if node.kind() == "token_tree" {
             if node.parent().is_some_and(|p| p.kind() == "macro_invocation") {
-                *n += count_token_tree(node, src);
+                let k = count_token_tree(node, src);
+                n.extend(std::iter::repeat_n((node.start_byte(), node.end_byte()), k));
             }
             return;
         }
     }
-    if is_function(node, lang) {
-        *n += 1;
+    if is_function(node, lang) && !skip.iter().any(|(s, e)| (*s..*e).contains(&node.start_byte())) {
+        n.push((node.start_byte(), node.end_byte()));
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk(child, src, lang, n);
+        walk(child, src, lang, n, skip);
     }
 }
 
@@ -117,11 +197,21 @@ fn reparse(code: &str, wrappers: &[(&str, &str)]) -> Option<usize> {
         if tree.root_node().has_error() {
             continue;
         }
-        let mut n = 0;
-        walk(tree.root_node(), &wrapped, Lang::Rust, &mut n);
-        return Some(n - 1); // the wrapper `__m`
+        let mut n = Vec::new();
+        walk(tree.root_node(), &wrapped, Lang::Rust, &mut n, &[]);
+        return Some(n.len() - 1); // the wrapper `__m`
     }
     None
+}
+
+/// True if a declarator is or contains (through pointers, references, parentheses and
+/// qualifiers) a function declarator or a conversion operator.
+fn has_function_declarator(d: Node) -> bool {
+    if matches!(d.kind(), "function_declarator" | "operator_cast") {
+        return true;
+    }
+    let mut cursor = d.walk();
+    d.named_children(&mut cursor).any(has_function_declarator)
 }
 
 fn is_function(node: Node, lang: Lang) -> bool {
@@ -142,6 +232,15 @@ fn is_function(node: Node, lang: Lang) -> bool {
         Lang::Rust => {
             (node.kind() == "function_item" && node.child_by_field_name("body").is_some())
                 || node.kind() == "closure_expression"
+        }
+        // A definition with a written body (`= default` / `= delete` have none), and lambdas.
+        // A function definition always has a function declarator; without one, tree-sitter
+        // has misread an unexpanded macro (`struct EXPORT Name { … }` as a "function" Name).
+        Lang::C | Lang::Cpp => {
+            (node.kind() == "function_definition"
+                && node.child_by_field_name("body").is_some_and(|b| matches!(b.kind(), "compound_statement" | "try_statement"))
+                && node.child_by_field_name("declarator").is_some_and(has_function_declarator))
+                || node.kind() == "lambda_expression"
         }
     }
 }
@@ -197,5 +296,27 @@ mod tests {
         "#;
         // a + three closures in json! + one in matches!
         assert_eq!(count_functions(Lang::Rust, src).unwrap(), 5);
+    }
+
+    #[test]
+    fn counts_cpp_definitions_and_lambdas() {
+        let src = r#"
+            int f(int);
+            int f(int x) { return x; }
+            struct S {
+                S() = default;
+                ~S() {}
+                virtual void p() = 0;
+                void m() const { auto g = [](int y) { return y; }; }
+                template <class T> T t(T v) { return v; }
+            };
+            void S2::out() try { } catch (...) { }
+            struct EXPORT_API Vec { float x; };
+            #define M() { }
+        "#;
+        // f, ~S, m, the lambda, t, out
+        assert_eq!(count_functions(Lang::Cpp, src).unwrap(), 6);
+        let skip = [(src.find("void S2").unwrap(), src.find("#define").unwrap())];
+        assert_eq!(count_functions_outside(Lang::Cpp, src, &skip).unwrap(), 5);
     }
 }

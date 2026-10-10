@@ -12,6 +12,36 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — C/C++ extractor; number literals; count-gate diagnostics
+**Done:**
+- **`extractors/cpp` (`insight-extract-cpp`):** libclang (LLVM 23, loaded at runtime) on every `compile_commands.json` the project's check produced.
+  - **Compile commands:** cl/clang-cl use clang's cl mode, and clang commands pass through. gcc-style cross compilers are asked for their include paths and macros (`-E -dM -v`), then parsed with `-undef -nostdinc`.
+  - **One owner per file:** each file is analyzed by the first translation unit (sorted) that reaches it. Calls resolve across translation units by USR.
+  - **Virtual calls** get `possible` candidates: the named method plus every override.
+  - **Handoffs:** functions and lambdas passed to external code.
+  - **Literals:** strings and integers. **Inactive `#if` regions** are recorded, and **macro-made functions** are marked `generated`.
+  - Launcher crate `insight-lang-cpp`. A made-up sample test covers dispatch, handoff, lambdas, `#if 0`, macros and `= default`.
+- **Fact schema 3 / DB layout 5:**
+  - `NodeFact.generated` and the `nodes.generated` column;
+  - node kind `inactive`;
+  - `LiteralFact.number`;
+  - integer literals in TS and Rust too, with literal nodes `lit:31` shared across languages.
+- **Count gate:**
+  - C/C++ rules;
+  - inactive regions skipped;
+  - "unchecked" where the counter's own parse fails (C/C++ only), stated in diagnostics;
+  - mismatches list the differing functions' last lines.
+
+  New debugging aid: `cargo run -p insight-count --example functions -- <file> [from to]`.
+- **Validation (private sensor firmware, PC build):** 136 files, 3,284 functions, 0 mismatches, 208 unchecked (all in vendored, macro-heavy code). The build takes about 16 s including the check. Fletcher and Insight still pass, and so does the M1 gate.
+
+**Learned:**
+- **libclang's per-file skipped ranges only cover a header's first inclusion.** The TU-wide list is needed, because a header included twice (declarations, then implementation) is inactive in one inclusion and compiled in the other.
+- **clang synthesizes bodies for `= default` members.** "Has a body" has to exclude defaulted functions.
+- **An independent tree-sitter count can't be strict for C/C++.** Unexpanded macros break its parse, and `struct EXPORT_API Name {}` reads as a function. Hence the function-declarator rule plus explicit, reported "unchecked" functions.
+
+**Next:** data-flow edges (state nodes, read/write, argument→parameter binds, function values through variables and fields) across all three extractors, for "where is this created → where is it sent".
+
 ## 2026-10-10 (cont.) — M2: `insight mcp`, after a security review
 **Security review** (MCP is where outside input reaches Insight). Findings and fixes:
 1. **Project and repo names became paths unchecked.** `..\..\x` from an agent could reach folders outside Insight's. Fixed: `paths::check_name` on every project, repo and snapshot path. Snapshot names over MCP must be one of the project's listed files.

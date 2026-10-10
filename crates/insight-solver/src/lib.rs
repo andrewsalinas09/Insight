@@ -29,7 +29,8 @@ pub enum Refusal {
     NeedsApproval(String),
     CheckFailed { command: String, code: i32 },
     Tripwire { command: String, files: Vec<PathBuf> },
-    CountMismatch(Vec<(String, usize, usize)>),
+    /// (file, extractor count, counter count, where they differ).
+    CountMismatch(Vec<(String, usize, usize, String)>),
 }
 
 impl Refusal {
@@ -64,8 +65,8 @@ impl std::fmt::Display for Refusal {
             }
             Refusal::CountMismatch(rows) => {
                 write!(f, "function count mismatch (R3-11), file: extractor vs independent counter:")?;
-                for (file, ours, theirs) in rows {
-                    write!(f, "\n  {file}: {ours} vs {theirs}")?;
+                for (file, ours, theirs, at) in rows {
+                    write!(f, "\n  {file}: {ours} vs {theirs} ({at})")?;
                 }
                 Ok(())
             }
@@ -217,12 +218,14 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     // Snapshot key: everything that affects the facts (R3-08).
     let ts_script = std::fs::read(insight_lang_ts::script_path(&paths::cache_root()?)?)?;
     let rust_helper = std::fs::read(insight_lang_rust::helper_path()?)?;
+    let cpp_helper = std::fs::read(insight_lang_cpp::helper_path()?)?;
     let mut h = Sha256::new();
     h.update(commit.as_bytes());
     h.update(FACT_SCHEMA_VERSION.to_le_bytes());
     h.update(insight_engine::DB_LAYOUT_VERSION.to_le_bytes());
     h.update(&ts_script);
     h.update(&rust_helper);
+    h.update(&cpp_helper);
     h.update(settings::Commands::of(&settings::Settings { tagging: String::new(), repo: [(name.to_string(), repo.clone())].into() }).fingerprint());
     let key: String = h.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect();
     let snap_path = paths::snapshot_path(project, name, &key)?;
@@ -246,6 +249,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     let projects = discover::discover(&exported.files, |p| std::fs::read_to_string(tree.join(p)).ok());
     log.line(format!("rust packages: {:?}", projects.rust_packages));
     log.line(format!("ts projects: {:?}", projects.ts_projects));
+    let compdbs = discover::compile_databases(&tree);
+    log.line(format!("compilation databases: {:?}", compdbs.iter().map(|p| p.strip_prefix(&tree).unwrap_or(p).display().to_string()).collect::<Vec<_>>()));
     let mut w = SnapshotWriter::create(&snap_path)?;
     w.meta("project", project)?;
     w.meta("repo", name)?;
@@ -264,6 +269,10 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
         cmd.envs(env.iter().map(|(k, v)| (k, v)));
         ingest(cmd, "rust", &tree, &exported, &mut w, &mut tally, log)?;
     }
+    if !compdbs.is_empty() {
+        let cmd = insight_lang_cpp::command(&tree, &compdbs, FACT_SCHEMA_VERSION)?;
+        ingest(cmd, "cpp", &tree, &exported, &mut w, &mut tally, log)?;
+    }
     link_literals(&mut w, &tally, log)?;
 
     // Never silently incomplete: source files no project covered are stated.
@@ -274,7 +283,7 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
             w.diagnostic(&insight_model::Diagnostic {
                 file: Some(path.clone()),
                 severity: insight_model::Severity::Info,
-                message: "not analyzed: no Cargo package or tsconfig covers this file".into(),
+                message: "not analyzed: no Cargo package, tsconfig or compiled translation unit covers this file".into(),
             })?;
         }
     }
@@ -282,16 +291,49 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
     // The M0 pass: an independent count must match exactly, per file (R3-11).
     let mut mismatches = Vec::new();
     let mut total = 0;
+    let mut unchecked_total = 0;
     for (file, content) in &tally.files {
         let Some(lang) = insight_count::Lang::from_path(file) else { continue };
-        let theirs = insight_count::count_functions(lang, content)?;
-        let ours = tally.functions.get(file).copied().unwrap_or(0);
-        total += ours;
+        let skip: Vec<(usize, usize)> = tally.inactive.get(file).cloned().unwrap_or_default();
+        // Where the counter's own parse failed, it cannot vouch. A function is identified on
+        // both sides by its last line (both agree where a body ends; starts differ with
+        // templates and attributes): any last line where either side's function touches a
+        // failed parse is left out of both counts and reported as unchecked.
+        let unparsed = insight_count::unparsed_ranges(lang, content)?;
+        let touches = |s: usize, e: usize| unparsed.iter().any(|(a, b)| s < *b && *a < e);
+        let line_of = |b: usize| content.as_bytes()[..b.min(content.len())].iter().filter(|c| **c == b'\n').count() as u32 + 1;
+        let theirs_all: Vec<(u32, bool)> = insight_count::function_spans(lang, content, &skip)?.iter().map(|(s, e)| (line_of(e.saturating_sub(1)), touches(*s, *e))).collect();
+        let mine_all: Vec<(u32, bool)> = tally.function_spans.get(file).cloned().unwrap_or_default().iter().map(|(s, e, l)| (*l, touches(*s, *e))).collect();
+        let excluded: std::collections::BTreeSet<u32> = theirs_all.iter().chain(&mine_all).filter(|(_, t)| *t).map(|(l, _)| *l).collect();
+        let unchecked = mine_all.iter().filter(|(l, _)| excluded.contains(l)).count();
+        if !excluded.is_empty() {
+            unchecked_total += unchecked;
+            log.line(format!("  unchecked: {file}: {unchecked} function(s) where the independent counter could not parse (unexpanded macros)"));
+            w.diagnostic(&insight_model::Diagnostic {
+                file: Some(file.clone()),
+                severity: insight_model::Severity::Info,
+                message: format!("{unchecked} function(s) not verified by the independent count: its parser failed there (unexpanded macros)"),
+            })?;
+        }
+        let mut a: Vec<u32> = mine_all.iter().map(|(l, _)| *l).filter(|l| !excluded.contains(l)).collect();
+        let mut b: Vec<u32> = theirs_all.iter().map(|(l, _)| *l).filter(|l| !excluded.contains(l)).collect();
+        let (ours, theirs) = (a.len(), b.len());
+        total += tally.functions.get(file).copied().unwrap_or(0);
         if ours != theirs {
-            mismatches.push((file.clone(), ours, theirs));
+            // What only one side has, as multisets of last lines.
+            a.sort_unstable();
+            b.sort_unstable();
+            let (only_a, only_b) = multiset_difference(&a, &b);
+            let show = |v: &[u32]| v.iter().take(8).map(u32::to_string).collect::<Vec<_>>().join(",");
+            let at = format!("functions ending on lines only the extractor found: [{}]; only the counter: [{}]", show(&only_a), show(&only_b));
+            mismatches.push((file.clone(), ours, theirs, at));
         }
     }
-    log.line(format!("functions: {total} in {} files; independent count mismatches: {}", tally.files.len(), mismatches.len()));
+    log.line(format!(
+        "functions: {total} in {} files; independent count mismatches: {}; unchecked (counter could not parse): {unchecked_total}",
+        tally.files.len(),
+        mismatches.len()
+    ));
     if !mismatches.is_empty() {
         return Err(Refusal::CountMismatch(mismatches).into());
     }
@@ -308,7 +350,12 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
 struct Tally {
     /// file -> its text (for the independent count and receipt columns).
     files: BTreeMap<String, String>,
+    /// Functions written in each file (not macro-generated; SCHEMA.md §6).
     functions: BTreeMap<String, usize>,
+    /// The byte span and last line of each of those functions, to check and show where a count differs.
+    function_spans: BTreeMap<String, Vec<(usize, usize, u32)>>,
+    /// Inactive `#if` regions per file: the counter skips functions written there.
+    inactive: BTreeMap<String, Vec<(usize, usize)>>,
     /// Every literal occurrence, for the link passes after all extractors ran.
     literals: Vec<insight_model::LiteralFact>,
     /// Next free snapshot-wide group id (extractor group numbers are local).
@@ -391,8 +438,14 @@ fn ingest(
             Record::Node(n) => {
                 let file = n.id.split(" › ").next().unwrap_or(&n.id).to_string();
                 let flang = file_lang.get(&file).with_context(|| format!("node `{}` before its file record", n.id))?.clone();
-                if n.kind == NodeKind::Function {
+                if n.kind == NodeKind::Function && !n.generated {
                     *tally.functions.entry(file.clone()).or_default() += 1;
+                    if let Some(s) = n.span {
+                        tally.function_spans.entry(file.clone()).or_default().push((s.byte_start as usize, s.byte_end as usize, s.line_end));
+                    }
+                }
+                if let (NodeKind::Inactive, Some(s)) = (n.kind, n.span) {
+                    tally.inactive.entry(file.clone()).or_default().push((s.byte_start as usize, s.byte_end as usize));
                 }
                 w.node(&n, &flang, Some(&file))?;
                 sent.nodes += 1;
@@ -445,18 +498,19 @@ fn ingest(
 }
 
 /// The generic link passes (BQ-22, ADR-0047, ADR-0048), across languages:
-/// one `literal` node per distinct string value with a `link/literal` edge from
-/// every function containing it, and `link/names` edges from a literal to every
-/// declaration (function, type, module) whose declared name equals it.
+/// one `literal` node per distinct value (strings `lit:"x"`, numbers `lit:31`) with a
+/// `link/literal` edge from every function containing it, and `link/names` edges from
+/// a string literal to every declaration (function, type, module) whose declared name
+/// equals it.
 fn link_literals(w: &mut SnapshotWriter, tally: &Tally, log: &mut Log) -> Result<()> {
-    let mut by_value: BTreeMap<&str, Vec<&insight_model::LiteralFact>> = BTreeMap::new();
+    let mut by_value: BTreeMap<(bool, &str), Vec<&insight_model::LiteralFact>> = BTreeMap::new();
     for l in &tally.literals {
-        by_value.entry(l.value.as_str()).or_default().push(l);
+        by_value.entry((l.number, l.value.as_str())).or_default().push(l);
     }
     let decls = w.named_declarations()?;
     let (mut occurrences, mut names) = (0, 0);
-    for (value, occs) in &by_value {
-        let path = format!("lit:{}", serde_json::to_string(value)?);
+    for ((number, value), occs) in &by_value {
+        let path = if *number { format!("lit:{value}") } else { format!("lit:{}", serde_json::to_string(value)?) };
         let lit = w.raw_node(&path, None, "literal", None, value, false, None, None, None)?;
         for o in occs {
             let from = w.nid(&o.from).with_context(|| format!("literal in unknown node `{}`", o.from))?;
@@ -464,7 +518,7 @@ fn link_literals(w: &mut SnapshotWriter, tally: &Tally, log: &mut Log) -> Result
             w.receipt(eid, &o.receipt)?;
             occurrences += 1;
         }
-        for d in decls.get(*value).into_iter().flatten() {
+        for d in decls.get(*value).into_iter().flatten().filter(|_| !number) {
             let eid = w.edge("link", Some("names"), lit, Some(d.nid), "exact", None)?;
             if let Some(text) = tally.files.get(&d.file) {
                 w.receipt(eid, &receipt_at(text, &d.file, d.byte_start, d.byte_end, "decl", Some(d.path.clone())))?;
@@ -507,4 +561,36 @@ pub fn latest_snapshot(project: &str) -> Result<PathBuf> {
 fn rustc_version() -> Result<String> {
     let out = std::process::Command::new("rustc").arg("--version").output()?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+
+/// (a − b, b − a) of two sorted multisets.
+fn multiset_difference(a: &[u32], b: &[u32]) -> (Vec<u32>, Vec<u32>) {
+    let (mut i, mut j, mut oa, mut ob) = (0, 0, Vec::new(), Vec::new());
+    while i < a.len() || j < b.len() {
+        match (a.get(i), b.get(j)) {
+            (Some(x), Some(y)) if x == y => {
+                i += 1;
+                j += 1;
+            }
+            (Some(x), Some(y)) if x < y => {
+                oa.push(*x);
+                i += 1;
+            }
+            (Some(_), Some(y)) => {
+                ob.push(*y);
+                j += 1;
+            }
+            (Some(x), None) => {
+                oa.push(*x);
+                i += 1;
+            }
+            (None, Some(y)) => {
+                ob.push(*y);
+                j += 1;
+            }
+            (None, None) => break,
+        }
+    }
+    (oa, ob)
 }

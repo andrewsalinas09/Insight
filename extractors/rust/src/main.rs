@@ -154,7 +154,7 @@ fn run() -> Result<()> {
     }
     for id in externals {
         let name = id.rsplit(':').next().unwrap_or(&id).to_string();
-        out.emit(Record::Node(NodeFact { id, parent: None, kind: NodeKind::External, name, span: None, anonymous: false }))?;
+        out.emit(Record::Node(NodeFact { id, parent: None, kind: NodeKind::External, name, span: None, anonymous: false, generated: false }))?;
     }
     let end = out.end.clone();
     out.emit(Record::End(end))?;
@@ -300,7 +300,7 @@ impl<W: Write> FileCx<'_, W> {
 
     fn node(&mut self, id: String, parent: &str, kind: NodeKind, name: String, span: Span, anonymous: bool) -> Result<String> {
         self.containers.push(Ctr { start: span.byte_start as u32, end: span.byte_end as u32, id: id.clone(), is_fn: kind == NodeKind::Function });
-        self.out.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(parent.to_string()), kind, name, span: Some(span), anonymous }))?;
+        self.out.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(parent.to_string()), kind, name, span: Some(span), anonymous, generated: false }))?;
         Ok(id)
     }
 }
@@ -331,6 +331,7 @@ fn extract_file<W: Write>(
         name: file.rsplit('/').next().unwrap_or(&file).to_string(),
         span: Some(Span { byte_start: 0, byte_end: bytes.len() as u64, line_start: 1, line_end: last_line }),
         anonymous: false,
+        generated: false,
     }))?;
     let (tree, macro_fns) = match sema {
         Some((sema, id)) => {
@@ -384,8 +385,16 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
             if let Some(s) = ast::String::cast(tok.clone()) {
                 if let Ok(v) = s.value() {
                     let from = f.innermost(ts, te, true);
-                    out.emit(Record::Literal(LiteralFact { value: v.to_string(), from, receipt: f.receipt("literal", ts, te) }))?;
+                    out.emit(Record::Literal(LiteralFact { value: v.to_string(), number: false, from, receipt: f.receipt("literal", ts, te) }))?;
                 }
+            }
+            continue;
+        }
+        if tok.kind() == SyntaxKind::INT_NUMBER {
+            // Integers in canonical decimal (`0x1F` and `31u8` are both 31).
+            if let Some(v) = ast::IntNumber::cast(tok.clone()).and_then(|n| n.value().ok()) {
+                let from = f.innermost(ts, te, true);
+                out.emit(Record::Literal(LiteralFact { value: v.to_string(), number: true, from, receipt: f.receipt("literal", ts, te) }))?;
             }
             continue;
         }

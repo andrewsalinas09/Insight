@@ -1,0 +1,12 @@
+[package]
+name = "insight-lang-cpp"
+description = "Launcher for the C/C++ extractor helper (insight-extract-cpp.exe)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.104"

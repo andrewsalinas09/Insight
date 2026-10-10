@@ -14,7 +14,7 @@ pub use rusqlite;
 use rusqlite::{Connection, params};
 
 /// Bumped whenever the table layout changes; recorded in `meta`.
-pub const DB_LAYOUT_VERSION: u32 = 4;
+pub const DB_LAYOUT_VERSION: u32 = 5;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -33,6 +33,7 @@ CREATE TABLE nodes (
     subkind TEXT,
     name TEXT NOT NULL,
     anonymous INTEGER NOT NULL DEFAULT 0,
+    generated INTEGER NOT NULL DEFAULT 0,
     lang TEXT,
     file TEXT,
     byte_start INTEGER,
@@ -129,9 +130,14 @@ impl SnapshotWriter {
     pub fn node(&mut self, fact: &NodeFact, lang: &str, file: Option<&str>) -> Result<i64> {
         let (kind, subkind) = match fact.kind {
             NodeKind::External => ("external", None),
+            NodeKind::Inactive => ("inactive", None),
             k => ("container", Some(kind_str(k))),
         };
-        self.raw_node(&fact.id, fact.parent.as_deref(), kind, subkind, &fact.name, fact.anonymous, Some(lang), file, fact.span.as_ref())
+        let nid = self.raw_node(&fact.id, fact.parent.as_deref(), kind, subkind, &fact.name, fact.anonymous, Some(lang), file, fact.span.as_ref())?;
+        if fact.generated {
+            self.conn.execute("UPDATE nodes SET generated = 1 WHERE nid = ?1", [nid])?;
+        }
+        Ok(nid)
     }
 
     /// Inserts any node by its parts; returns its nid.
@@ -288,6 +294,7 @@ pub fn kind_str(k: NodeKind) -> &'static str {
         NodeKind::Function => "function",
         NodeKind::Block => "block",
         NodeKind::External => "external",
+        NodeKind::Inactive => "inactive",
     }
 }
 
@@ -313,8 +320,8 @@ mod tests {
         let path = dir.join("snap.sqlite");
         let _ = std::fs::remove_file(&path);
         let mut w = SnapshotWriter::create(&path).unwrap();
-        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: Some(span()), anonymous: false };
-        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false };
+        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: Some(span()), anonymous: false, generated: false };
+        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
         w.node(&file, "ts", Some("a.ts")).unwrap();
         w.node(&func, "ts", Some("a.ts")).unwrap();
         let out = w.finish().unwrap();
@@ -327,9 +334,9 @@ mod tests {
     fn rejects_duplicate_ids_and_unknown_parents() {
         let dir = std::env::temp_dir().join(format!("insight-engine-dup-{}", std::process::id()));
         let mut w = SnapshotWriter::create(&dir.join("s.sqlite")).unwrap();
-        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false };
+        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false, generated: false };
         assert!(w.node(&orphan, "ts", Some("x")).is_err());
-        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: Some(span()), anonymous: false };
+        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: Some(span()), anonymous: false, generated: false };
         w.node(&file, "ts", Some("x")).unwrap();
         assert!(w.node(&file, "ts", Some("x")).is_err());
         drop(w);
