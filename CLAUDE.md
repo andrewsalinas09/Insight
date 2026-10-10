@@ -10,7 +10,7 @@ A personal desktop tool for seeing and checking code. Insight builds a complete,
 
 ## Current status
 
-**Build phase: M0, M1, M2 and the C/C++ extractor built; next data-flow edges.** The design and all four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
+**Build phase: M0, M1, M2, the C/C++ extractor and C/C++ data flow built; next TS/Rust data flow and multi-repo projects.** The design and all four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
 - a Rust Cargo workspace (BQ-03);
 - per-language extractors on each project's own native toolchain (ADR-0034, R2-15), run against a frozen source copy (R3-05);
 - one read-only SQLite file per codebase snapshot (ADR-0038);

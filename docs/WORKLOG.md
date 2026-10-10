@@ -12,6 +12,39 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — Data flow (C/C++), indirect calls, `path` data tokens
+**Done:**
+- **Fact schema 4.**
+  - State node kinds `var` / `field` / `static`. Their ordinals are separate, so adding a variable never renames a function.
+  - Edge kinds `read` / `write` / `access` / `binds`, and value-flow subkinds `assign` / `result` / `return`.
+- **C/C++ extractor (`flow.rs`):**
+  - locals, parameters, fields and globals as state, with their reads and writes;
+  - an `access` edge for each pass by non-const reference or `&x`;
+  - `assign` for initializers and assignments, `binds` from argument to parameter (or to the external callee) with mode;
+  - `return` / `result`;
+  - calls through a variable or field point at that state;
+  - arguments of virtual calls bind to every override's parameter (possible).
+- **Solver, language-independent:** calls through state get `possible` callees by walking function values backward through the data edges, including reference bindings and results.
+- **`path`:** new hop kinds `data`, `read`, `write`, `access`. Virtual-dispatch bindings are labeled `possible`.
+- Sample test extended. Fletcher, Insight and the sensor all build with 0 mismatches, and the M1 gate passes.
+
+**Validation (private sensor, PC build):**
+- A `--follow data` path from the buffer pool's allocate function to the radio-send function's parameter gives a fully receipted route:
+  - the acquired packet goes into the simulator's local;
+  - into the pipeline's input parameter;
+  - through the virtual `process` (possible) into the BLE node;
+  - into the send function's parameter.
+- 30 calls through function-pointer fields resolve to 67 candidates.
+
+**Learned:**
+- **libclang shows templates as written, not instantiated.** `&F<T>::run` with `F` a template parameter resolves to nothing. The flow stops at the write in the template, and the receipt shows it. This is documented in SCHEMA §5.
+- **Data reaching a function arrives at its parameter.** So `data` routes end at parameters, states or external leaves. Adding `read` makes functions pass-through nodes, which is coarser and is Claude's choice.
+
+**Next:**
+- The same state and data edges for TS and Rust.
+- Multi-repo projects, so a producer in one repo and a consumer in another connect. They would link through shared declarations (the same source compiled in both) and through literal links.
+- The sensor firmware build, once its SDK and toolchain are available.
+
 ## 2026-10-10 (cont.) — C/C++ extractor; number literals; count-gate diagnostics
 **Done:**
 - **`extractors/cpp` (`insight-extract-cpp`):** libclang (LLVM 23, loaded at runtime) on every `compile_commands.json` the project's check produced.

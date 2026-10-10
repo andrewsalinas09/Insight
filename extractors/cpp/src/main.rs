@@ -18,10 +18,15 @@
 //!   control-flow blocks); inactive `#if` regions; calls (exact, or `possible` candidates
 //!   for virtual dispatch: the named method if it has a body plus every override in the
 //!   analyzed code); handoffs of functions and lambdas to external code; string and
-//!   integer literals.
+//!   integer literals; and data flow (`flow.rs`): variables, parameters, fields and
+//!   globals as state, their reads and writes, and values moving by assignment,
+//!   argument binding and return. A call through a variable or field is a call edge
+//!   to that state; the solver finds the functions that can reach it.
 //!
 //! Spans and receipts use file locations: code written in macro arguments points at its
 //! own text; code from a macro's template points at the macro call and is `generated`.
+
+mod flow;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufWriter, Write};
@@ -341,6 +346,8 @@ struct PendingCall {
     dynamic: bool,
     implicit: bool,
     constructor: bool,
+    /// A call through a variable, parameter or field: the state called.
+    via: Option<flow::Ref>,
     receipt: Receipt,
 }
 
@@ -373,9 +380,24 @@ struct Extractor {
     claimed: Vec<String>,
     /// Spans of the containers the walk found, per file, during one TU.
     found: HashMap<String, Vec<(usize, usize)>>,
+    state_by_usr: HashMap<String, String>,
+    /// Function USR → its parameters' state ids, in order.
+    fn_params: HashMap<String, Vec<String>>,
+    data_edges: Vec<flow::PendingData>,
+    /// Expressions in a write position (not reads): (file, offset).
+    skip_read: HashSet<(String, usize)>,
+    externals: BTreeMap<String, String>,
+    /// Every node id emitted (ids are unique per snapshot).
+    ids: HashSet<String>,
 }
 
 impl Extractor {
+    /// Registers an external leaf (emitted at the end); returns its id.
+    fn external(&mut self, id: &str, name: &str) -> String {
+        self.externals.entry(id.to_string()).or_insert_with(|| name.to_string());
+        id.to_string()
+    }
+
     fn out(&mut self) -> &mut Out {
         self.out.as_mut().expect("output")
     }
@@ -510,6 +532,9 @@ impl Extractor {
     #[allow(clippy::too_many_arguments)]
     fn node(&mut self, ctx: &Ctx, seg: &str, name: &str, kind: NodeKind, span: Span, anonymous: bool, generated: bool) -> Result<String> {
         let id = format!("{} › {seg}", ctx.scope);
+        if !self.ids.insert(id.clone()) {
+            anyhow::bail!("two declarations produced the node id `{id}`");
+        }
         self.found.entry(ctx.file.clone()).or_default().push((span.byte_start as usize, span.byte_end as usize));
         self.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(ctx.parent.clone()), kind, name: name.to_string(), span: Some(span), anonymous, generated }))?;
         Ok(id)
@@ -580,9 +605,30 @@ impl Extractor {
                 self.children(e, &inner)?;
             }
             K::VarDecl | K::FieldDecl => {
+                if e.get_kind() == K::FieldDecl {
+                    self.state_node(e, ctx, NodeKind::Field)?;
+                } else if e.is_definition() {
+                    let global = ctx.func == ctx.file || e.get_storage_class() == Some(clang::StorageClass::Static);
+                    self.state_node(e, ctx, if global { NodeKind::Static } else { NodeKind::Var })?;
+                    self.initializer(e, ctx)?;
+                }
                 let inner = Ctx { lambda_name: e.get_name(), ..ctx.clone() };
                 self.children(e, &inner)?;
             }
+            K::BinaryOperator | K::CompoundAssignOperator | K::UnaryOperator => {
+                self.assignment(e, ctx)?;
+                self.children(e, ctx)?;
+            }
+            K::ReturnStmt => {
+                self.return_stmt(e, ctx)?;
+                self.children(e, ctx)?;
+            }
+            K::DeclRefExpr | K::MemberRefExpr => {
+                self.read(e, ctx)?;
+                self.children(e, ctx)?;
+            }
+            // Parameters are state nodes emitted by their function; default arguments are still code.
+            K::ParmDecl => self.children(e, ctx)?,
             K::StringLiteral | K::IntegerLiteral => self.literal(e, ctx)?,
             K::IfStmt => self.if_blocks(e, ctx)?,
             K::ForStmt | K::ForRangeStmt | K::WhileStmt => {
@@ -677,7 +723,17 @@ impl Extractor {
         } else if let Some(u) = e.get_usr() {
             self.fn_by_usr.entry(u.0).or_insert_with(|| id.clone());
         }
-        let inner = Ctx { file: ctx.file.clone(), scope: id.clone(), parent: id.clone(), func: id, lambda_name: None };
+        let inner = Ctx { file: ctx.file.clone(), scope: id.clone(), parent: id.clone(), func: id.clone(), lambda_name: None };
+        let mut params = Vec::new();
+        for p in kids.iter().filter(|k| k.get_kind() == K::ParmDecl) {
+            self.state_node(*p, &inner, NodeKind::Var)?;
+            if let Some(pid) = p.get_usr().and_then(|u| self.state_by_usr.get(&u.0)).cloned() {
+                params.push(pid);
+            }
+        }
+        if let Some(u) = e.get_usr() {
+            self.fn_params.entry(u.0).or_insert(params);
+        }
         for c in kids {
             // Parameters' default arguments and constructor initializers belong to the function too.
             self.visit(c, &inner)?;
@@ -696,13 +752,19 @@ impl Extractor {
         let callee = e.get_reference();
         let fn_kinds = [K::FunctionDecl, K::Method, K::Constructor, K::Destructor, K::ConversionFunction, K::FunctionTemplate];
         let Some(callee) = callee.filter(|c| fn_kinds.contains(&c.get_kind())) else {
-            // Through a variable, field, parameter or expression: who is called is not known here
-            // (one-hop value flow for C/C++ is Planned). Implicit constructions without a callee are not calls.
+            // Through a variable, field or parameter: a call to that state (the solver finds the
+            // functions that can reach it). Through any other expression: unresolved.
+            // Implicit constructions without a callee are not calls.
+            let via = match callee {
+                Some(c) if matches!(c.get_kind(), K::VarDecl | K::ParmDecl | K::FieldDecl) => self.state_ref(c)?,
+                _ => None,
+            };
             if callee.is_some() || e.get_name().is_some() {
-                self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, receipt });
+                self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via, receipt });
             }
             return Ok(());
         };
+        self.bind_args(e, callee, ctx)?;
         let mut usrs: Vec<String> = callee.get_usr().map(|u| u.0).into_iter().collect();
         let mut t = callee.get_template();
         while let Some(tt) = t {
@@ -723,7 +785,7 @@ impl Extractor {
                 self.handoffs.push(PendingHandoff { from: ctx.func.clone(), target, receipt: r });
             }
         }
-        self.calls.push(PendingCall { from: ctx.func.clone(), usrs, external, dynamic: e.is_dynamic_call(), implicit, constructor, receipt });
+        self.calls.push(PendingCall { from: ctx.func.clone(), usrs, external, dynamic: e.is_dynamic_call(), implicit, constructor, via: None, receipt });
         Ok(())
     }
 
@@ -888,18 +950,22 @@ impl Extractor {
             v.sort();
             closure.insert(base.clone(), v);
         }
-        let mut externals: BTreeMap<String, String> = BTreeMap::new();
         let calls = std::mem::take(&mut self.calls);
         for c in calls {
             let target = c.usrs.iter().find_map(|u| self.fn_by_usr.get(u)).cloned();
             let subkind = c.implicit.then(|| "implicit".to_string());
+            if let Some(via) = &c.via {
+                let to = self.resolve(via);
+                let res = if to.is_some() { Resolution::Exact } else { Resolution::Unresolved };
+                self.edge(EdgeKind::Call, None, &c.from, to, res, None, c.receipt)?;
+                continue;
+            }
             if c.usrs.is_empty() && c.external.is_none() {
                 self.edge(EdgeKind::Call, None, &c.from, None, Resolution::Unresolved, None, c.receipt)?;
                 continue;
             }
             if let Some((id, name)) = &c.external {
-
-                externals.insert(id.clone(), name.clone());
+                self.external(id, name);
                 self.edge(EdgeKind::Call, subkind, &c.from, Some(id.clone()), Resolution::Exact, None, c.receipt)?;
                 continue;
             }
@@ -939,8 +1005,30 @@ impl Extractor {
                 self.emit(Record::Edge(e))?;
             }
         }
+        let data = std::mem::take(&mut self.data_edges);
+        for d in data {
+            let Some(from) = self.resolve(&d.from) else { continue };
+            // An argument of a virtual method binds to the same parameter of every override:
+            // `possible` targets, as with the call's candidates.
+            if let flow::Ref::Param { usrs, index, ext: None } = &d.to {
+                let overrides: Vec<String> = usrs.first().and_then(|u| closure.get(u)).into_iter().flatten().filter_map(|o| self.fn_params.get(o).and_then(|p| p.get(*index))).cloned().collect();
+                if !overrides.is_empty() {
+                    self.group += 1;
+                    let g = self.group;
+                    let mut targets: Vec<String> = self.resolve(&d.to).into_iter().chain(overrides).collect();
+                    targets.sort();
+                    targets.dedup();
+                    for t in targets {
+                        self.edge(d.kind, d.subkind.clone(), &from, Some(t), Resolution::Possible, Some(g), d.receipt.clone())?;
+                    }
+                    continue;
+                }
+            }
+            let Some(to) = self.resolve(&d.to) else { continue };
+            self.edge(d.kind, d.subkind, &from, Some(to), Resolution::Exact, None, d.receipt)?;
+        }
         // External leaves after the edges that name them is fine: the solver inserts edges last.
-        for (id, name) in externals {
+        for (id, name) in std::mem::take(&mut self.externals) {
             self.emit(Record::Node(NodeFact { id, parent: None, kind: NodeKind::External, name, span: None, anonymous: false, generated: false }))?;
         }
         let mut out = self.out.take().expect("output");

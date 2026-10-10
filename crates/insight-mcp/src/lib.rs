@@ -436,6 +436,9 @@ const STATIC_STATUS: &str = "
 - handoff: kind='value-flow' AND subkind='handoff'
 - literal: F -[kind='link' AND subkind='literal']-> literal node <-[same]- G, for G != F
 - names: F -[link/literal]-> literal node -[kind='link' AND subkind='names']-> declaration
+- data: (kind='value-flow' AND subkind IN ('assign','result','return')) OR kind='binds' (virtual-dispatch binds are resolution='possible')
+- write / access: kind='write' / kind='access' (function -> state)
+- read: kind='read' walked from the state to the reading function
 - constraints: max_occurrences (skip literals occurring more often), max_depth (route length)
 
 ## Shipped views (TEMP schema)
@@ -448,7 +451,7 @@ None yet: nothing lean-by-default is withheld today (standard-library origin, im
 sql: max_rows <= {max_rows}, timeout_ms <= {timeout}; one read-only statement; no ATTACH/PRAGMA writes/extensions.
 
 ## Not built yet (see SCHEMA.md)
-reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; state nodes and read/write/access, binds, implements, exits, timing.
+reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; state and data edges for TS and Rust (built for C/C++); implements, exits, timing.
 ";
 
 fn tools() -> Value {
@@ -490,7 +493,7 @@ fn tools() -> Value {
             "inputSchema": {"type": "object", "properties": {
                 "from": {"type": "array", "items": {"type": "string"}},
                 "to": {"type": "array", "items": {"type": "string"}},
-                "follow": {"type": "array", "items": {"type": "string", "enum": ["call", "handoff", "literal", "names"]}, "minItems": 1},
+                "follow": {"type": "array", "items": {"type": "string", "enum": ["call", "handoff", "literal", "names", "data", "read", "write", "access"]}, "minItems": 1},
                 "max_occurrences": {"type": "integer", "minimum": 1, "description": "Skip literals that occur more often than this."},
                 "max_depth": {"type": "integer", "minimum": 1, "description": "Keep only routes of at most this many hops."},
                 "receipts": {"type": "string", "enum": ["expr", "none"], "description": "Source lines per hop (expr) or none."}

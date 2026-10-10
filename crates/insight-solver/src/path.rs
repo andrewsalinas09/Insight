@@ -5,7 +5,11 @@
 //! - `call`: `kind='call'` with a target (exact and possible; possible is labeled);
 //! - `handoff`: `kind='value-flow' AND subkind='handoff'` (a function value passed to external code);
 //! - `literal`: function → literal node (`link/literal`) → every other function containing it;
-//! - `names`: function → literal node → the declaration it names (`link/names`).
+//! - `names`: function → literal node → the declaration it names (`link/names`);
+//! - `data`: value moving between states and functions: `value-flow` `assign`, `result`,
+//!   `return` and `binds` (argument → parameter or external callee);
+//! - `write` / `access`: function → the state it writes / may write;
+//! - `read`: state → each function that reads it (read edges walked toward the reader).
 //!
 //! The start may be a function that returns function literals: those are starts too
 //! (R3-G #5, from `value-flow/returns` edges). Loops and recursion are never followed
@@ -22,7 +26,13 @@ pub enum Follow {
     Handoff,
     Literal,
     Names,
+    Data,
+    Read,
+    Write,
+    Access,
 }
+
+const TOKENS: &str = "call, handoff, literal, names, data, read, write, access";
 
 impl Follow {
     pub fn parse_list(s: &str) -> Result<Vec<Follow>> {
@@ -33,11 +43,15 @@ impl Follow {
                 "handoff" => Follow::Handoff,
                 "literal" => Follow::Literal,
                 "names" => Follow::Names,
-                other => bail!("unknown follow token `{other}`; valid: call, handoff, literal, names"),
+                "data" => Follow::Data,
+                "read" => Follow::Read,
+                "write" => Follow::Write,
+                "access" => Follow::Access,
+                other => bail!("unknown follow token `{other}`; valid: {TOKENS}"),
             });
         }
         if out.is_empty() {
-            bail!("--follow is required: choose the hop kinds (call, handoff, literal, names); there is no default (ADR-0047)");
+            bail!("--follow is required: choose the hop kinds ({TOKENS}); there is no default (ADR-0047)");
         }
         out.sort();
         out.dedup();
@@ -130,6 +144,37 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
     if f(Follow::Handoff) {
         for (eid, from, to, _) in edges("SELECT eid, from_nid, to_nid, '' FROM edges WHERE kind = 'value-flow' AND subkind = 'handoff'")? {
             add(from, to, "handoff", eid);
+        }
+    }
+    if f(Follow::Data) {
+        for (eid, from, to, sub) in edges("SELECT eid, from_nid, to_nid, coalesce(subkind, '') || '/' || resolution FROM edges WHERE to_nid IS NOT NULL AND ((kind = 'value-flow' AND subkind IN ('assign', 'result', 'return')) OR kind = 'binds')")? {
+            let label = match sub.as_str() {
+                "assign/exact" => "assign",
+                "result/exact" => "result",
+                "return/exact" => "return",
+                "ref/exact" => "binds (ref)",
+                "pointer/exact" => "binds (pointer)",
+                "value/exact" => "binds",
+                "ref/possible" => "binds (ref, possible)",
+                "pointer/possible" => "binds (pointer, possible)",
+                _ => "binds (possible)",
+            };
+            add(from, to, label, eid);
+        }
+    }
+    if f(Follow::Write) {
+        for (eid, from, to, _) in edges("SELECT eid, from_nid, to_nid, '' FROM edges WHERE kind = 'write' AND to_nid IS NOT NULL")? {
+            add(from, to, "write", eid);
+        }
+    }
+    if f(Follow::Access) {
+        for (eid, from, to, _) in edges("SELECT eid, from_nid, to_nid, '' FROM edges WHERE kind = 'access' AND to_nid IS NOT NULL")? {
+            add(from, to, "access", eid);
+        }
+    }
+    if f(Follow::Read) {
+        for (eid, from, to, _) in edges("SELECT eid, from_nid, to_nid, '' FROM edges WHERE kind = 'read' AND to_nid IS NOT NULL")? {
+            add(to, from, "read by", eid);
         }
     }
     if f(Follow::Literal) || f(Follow::Names) {

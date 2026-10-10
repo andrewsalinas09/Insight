@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Version of the fact schema. Part of every snapshot cache key (R2-28).
-pub const FACT_SCHEMA_VERSION: u32 = 3;
+pub const FACT_SCHEMA_VERSION: u32 = 4;
 
 /// One line of an extractor's NDJSON stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -86,6 +86,12 @@ pub enum NodeKind {
     /// Source text the build configuration excluded (an inactive `#if` region, P9):
     /// recorded, never analyzed.
     Inactive,
+    /// State (R3-G #3): a local variable or parameter.
+    Var,
+    /// State: a field of a type (one node per declaration, shared by every instance).
+    Field,
+    /// State: a global, or a static local (one storage for the whole program).
+    Static,
 }
 
 /// A byte range plus 1-based lines, in the UTF-8 bytes of the snapshot file (BQ-11).
@@ -119,7 +125,19 @@ pub enum EdgeKind {
     Call,
     /// `subkind = "handoff"`: a function value passed to external code (BQ-16 as amended).
     /// `subkind = "returns"`: a function returns this function literal (BQ-15, R3-G #5).
+    /// Data (SCHEMA.md §5): `assign` (state or function value → state), `result`
+    /// (a callee's result → the state or function receiving it), `return` (state → the
+    /// function returning it).
     ValueFlow,
+    /// A function reads a state.
+    Read,
+    /// A function writes a state (`subkind = "pointee"`: through a pointer it holds).
+    Write,
+    /// A function may write a state (passes it by non-const reference or pointer, R3-G #13).
+    Access,
+    /// An argument binds to a parameter (or to an external callee): state → parameter.
+    /// `subkind` is the mode: `value`, `ref`, `pointer` (P6).
+    Binds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

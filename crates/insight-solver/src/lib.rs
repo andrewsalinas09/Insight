@@ -274,6 +274,8 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
         ingest(cmd, "cpp", &tree, &exported, &mut w, &mut tally, log)?;
     }
     link_literals(&mut w, &tally, log)?;
+    let (calls, cands) = w.resolve_indirect_calls(tally.next_group)?;
+    log.line(format!("calls through variables and fields: {calls} resolved to {cands} possible candidates"));
 
     // Never silently incomplete: source files no project covered are stated.
     for path in exported.files.keys() {
@@ -366,6 +368,10 @@ fn edge_kind(k: insight_model::EdgeKind) -> &'static str {
     match k {
         insight_model::EdgeKind::Call => "call",
         insight_model::EdgeKind::ValueFlow => "value-flow",
+        insight_model::EdgeKind::Read => "read",
+        insight_model::EdgeKind::Write => "write",
+        insight_model::EdgeKind::Access => "access",
+        insight_model::EdgeKind::Binds => "binds",
     }
 }
 

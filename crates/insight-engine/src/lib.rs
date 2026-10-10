@@ -131,6 +131,7 @@ impl SnapshotWriter {
         let (kind, subkind) = match fact.kind {
             NodeKind::External => ("external", None),
             NodeKind::Inactive => ("inactive", None),
+            NodeKind::Var | NodeKind::Field | NodeKind::Static => ("state", Some(kind_str(fact.kind))),
             k => ("container", Some(kind_str(k))),
         };
         let nid = self.raw_node(&fact.id, fact.parent.as_deref(), kind, subkind, &fact.name, fact.anonymous, Some(lang), file, fact.span.as_ref())?;
@@ -223,6 +224,84 @@ impl SnapshotWriter {
         Ok(eid)
     }
 
+    /// Calls through a variable, parameter or field (a `call` edge whose target is a
+    /// state node) get `possible` edges to every function value that can reach that
+    /// state through the data edges (SCHEMA.md §5), tied by one group per call and
+    /// carrying the call's receipts. Language-independent; the original edge stays.
+    ///
+    /// Backward from the called state: the sources of `value-flow/assign` and `binds`
+    /// edges into it (a function source is a function value; a state source is followed),
+    /// states it aliases (a `binds` edge in `ref`/`pointer` mode from it to a parameter:
+    /// what the callee assigns to the parameter reaches the argument), and through a
+    /// `value-flow/result` edge from a function F: F's `returns` targets are candidates
+    /// and the states F `return`s are followed. Returns (calls resolved, candidate edges).
+    pub fn resolve_indirect_calls(&mut self, first_group: i64) -> Result<(usize, usize)> {
+        use std::collections::{BTreeSet, HashMap};
+        let rows = |sql: &str| -> Result<Vec<(i64, i64, String)>> {
+            let mut stmt = self.conn.prepare(sql)?;
+            let r = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, Option<String>>(2)?.unwrap_or_default())))?;
+            Ok(r.collect::<Result<_, _>>()?)
+        };
+        let is_fn: BTreeSet<i64> = rows("SELECT nid, nid, '' FROM nodes WHERE kind = 'container' AND subkind = 'function'")?.into_iter().map(|r| r.0).collect();
+        let mut into: HashMap<i64, Vec<i64>> = HashMap::new(); // state -> value sources (assign, binds)
+        let mut alias: HashMap<i64, Vec<i64>> = HashMap::new(); // argument state -> ref/pointer parameter
+        let mut result_from: HashMap<i64, Vec<i64>> = HashMap::new(); // state -> functions whose result reaches it
+        let mut returns_fn: HashMap<i64, Vec<i64>> = HashMap::new(); // function -> function values it returns
+        let mut returned: HashMap<i64, Vec<i64>> = HashMap::new(); // function -> states it returns
+        for (from, to, kind) in rows("SELECT from_nid, to_nid, kind || '/' || coalesce(subkind, '') FROM edges WHERE to_nid IS NOT NULL AND (kind IN ('binds', 'value-flow'))")? {
+            match kind.as_str() {
+                "value-flow/assign" | "binds/value" | "binds/ref" | "binds/pointer" => into.entry(to).or_default().push(from),
+                "value-flow/result" => result_from.entry(to).or_default().push(from),
+                "value-flow/returns" => returns_fn.entry(from).or_default().push(to),
+                "value-flow/return" => returned.entry(to).or_default().push(from),
+                _ => {}
+            }
+            if kind == "binds/ref" || kind == "binds/pointer" {
+                alias.entry(from).or_default().push(to);
+            }
+        }
+        let calls = rows("SELECT e.eid, e.from_nid, CAST(e.to_nid AS TEXT) FROM edges e JOIN nodes n ON n.nid = e.to_nid WHERE e.kind = 'call' AND n.kind = 'state'")?;
+        let (mut resolved, mut candidates, mut group) = (0, 0, first_group);
+        for (eid, caller, state) in calls {
+            let state: i64 = state.parse()?;
+            let mut found: BTreeSet<i64> = BTreeSet::new();
+            let mut seen: BTreeSet<i64> = BTreeSet::new();
+            let mut stack = vec![state];
+            while let Some(x) = stack.pop() {
+                if !seen.insert(x) {
+                    continue;
+                }
+                for s in into.get(&x).into_iter().flatten() {
+                    if is_fn.contains(s) {
+                        found.insert(*s);
+                    } else {
+                        stack.push(*s);
+                    }
+                }
+                stack.extend(alias.get(&x).into_iter().flatten());
+                for f in result_from.get(&x).into_iter().flatten() {
+                    found.extend(returns_fn.get(f).into_iter().flatten());
+                    stack.extend(returned.get(f).into_iter().flatten());
+                }
+            }
+            if found.is_empty() {
+                continue;
+            }
+            resolved += 1;
+            for f in found {
+                let new = self.edge("call", None, caller, Some(f), "possible", Some(group))?;
+                self.conn.execute(
+                    "INSERT INTO receipts(eid, role, file, byte_start, byte_end, line, col, end_line, end_col, container_nid)
+                     SELECT ?1, role, file, byte_start, byte_end, line, col, end_line, end_col, container_nid FROM receipts WHERE eid = ?2",
+                    params![new, eid],
+                )?;
+                candidates += 1;
+            }
+            group += 1;
+        }
+        Ok((resolved, candidates))
+    }
+
     pub fn receipt(&self, eid: i64, r: &Receipt) -> Result<()> {
         let container = r.container.as_deref().and_then(|c| self.ids.get(c).copied());
         self.conn.execute(
@@ -295,6 +374,9 @@ pub fn kind_str(k: NodeKind) -> &'static str {
         NodeKind::Block => "block",
         NodeKind::External => "external",
         NodeKind::Inactive => "inactive",
+        NodeKind::Var => "var",
+        NodeKind::Field => "field",
+        NodeKind::Static => "static",
     }
 }
 

@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const FACT_SCHEMA_VERSION = 3;
+const FACT_SCHEMA_VERSION = 4;
 const EXTRACTOR = "ts@0.1.0";
 
 function parseArgs(argv) {

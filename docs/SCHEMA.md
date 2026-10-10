@@ -26,7 +26,7 @@ Every node is one row in `nodes`. Containment (what is lexically inside what) is
 | `container` | `function` | Every function with a body, named or anonymous: functions, methods, accessors, constructors, arrows, closures, and functions written inside macro-call arguments (§6). Signatures without bodies are not nodes. | Built |
 | `container` | `block` | A control-flow region: `if`/`else` arm, `switch` case/default, `match` arm, loop body, `try`/`catch`/`finally`, ternary arm (BQ-18). | Built |
 | `container` | `init` | Module initialization code, with init order where the language defines it (P11). | Planned |
-| `state` | `var` / `field` / `element` / `static` / `cell` | Storage. Locals and parameters are `var` state (R3-G #3). | Planned |
+| `state` | `var` / `field` / `static` (`element` / `cell`: Planned) | Storage (R3-G #3): locals and parameters are `var` (child of their function), fields are `field` (child of their type; one node per declaration, shared by every instance until `base_nid`), globals and static locals are `static`. Ids use their own ordinals, so adding a variable never renames a function. | Built (C/C++); Planned (TS, Rust) |
 | `literal` | | One node per distinct value, so same-literal links are not N² (R2-30): strings `lit:<JSON string>` (`lit:"hist-cmd"`), integers in canonical decimal `lit:31` (`0x1F`, `31u8` and `31` are one node). Created by the solver's link pass from every extractor's literal occurrences, across languages. | Built (strings, integers) |
 | `external` | | A referenced symbol outside the analyzed code, one leaf per symbol (BQ-20): `ext:ts:<package or lib>:<Owner.name>`, `ext:rust:<crate>:<module::path::Type::name>`, `ext:cpp:<declaring header>:<ns::Type::name>` (builtins have an empty header). Package version: Planned. | Built |
 | `unresolved` | | A reference the compiler could not resolve. Today this is an edge with `resolution='unresolved'` and `to_nid NULL` instead of a node. | Planned |
@@ -65,11 +65,14 @@ Implements BQ-10 / R3-G #1.
 | `call` | | A function calls a function (or an external leaf). **TS:** resolved by the project's own checker; a call through a variable, parameter, property or prop gets `possible` edges to every function value written to that declaration (one-hop value flow, BQ-15), tied by `group_id`, plus an absent candidate (`to_nid NULL`) when the call is optional (`?.`) or the declaration is optional. Writes counted: variable initializers, assignments, object-literal properties and JSX attributes (matched through contextual typing), and call arguments (matched to the resolved signature's parameters). **Rust:** resolved by rust-analyzer through macro expansions (attribute macros included). **C/C++:** resolved by clang (libclang) on the project's own compile commands, across translation units by symbol (USR); a template instance resolves to its template. A virtual call through a pointer or reference gets `possible` edges, tied by `group_id`, to the named method (if it has a body) and every override in the analyzed code. Calls to compiler-generated constructors and operators have no code and are not edges. | Built |
 | `call` | `implicit` | Operators, accessors, conversions, Deref, Index, iteration, destructors (P3). | Built (C/C++ operator and conversion calls to written code); Planned elsewhere |
 | `value-flow` | `handoff` | A function value passed to external code (an argument of an external call; for JSX, the component, or the function-valued attributes of an intrinsic element; for C/C++, a function, `&function` or lambda argument). Who calls it later is the model's question. | Built |
+| `value-flow` | `assign` | State, function value or lambda → the state receiving it (`b = a`, `T b = a;`, `b = f;`). By declaration, not by program point: where it happens is the receipt. | Built (C/C++) |
+| `value-flow` | `result` | A callee → the state, parameter or function receiving its result (`b = f(x)`, `g(f(x))`, `return f(x)`). | Built (C/C++) |
+| `value-flow` | `return` | State → the function returning its value (`return b;`). | Built (C/C++) |
 | `value-flow` | `returns` | A function returns this function literal, one level (BQ-15; curried path starts, R3-G #5). | Built (TS) |
 | `link` | `literal` | From a function (or file) to a `literal` node, one edge per occurrence (BQ-22). Order-unknown hop (R3-14 as amended). | Built |
 | `link` | `names` | From a `literal` node to every named function, type or module whose declared name equals the string (ADR-0048). | Built |
-| `read` / `write` / `access` | | State reads and writes; `access` = may write (R3-G #13); `via_eid` names the method. | Planned |
-| `binds` | modes: value / move / ref / mut-ref / out / inout / pointer; closure captures | Argument → parameter, prop → field (P6). Today these bindings are used internally for one-hop value flow but not stored as edges. | Planned |
+| `read` / `write` / `access` | `write` subkind `pointee`: through a pointer it holds | Function → state, one edge per occurrence. `read`: the value is used. `write`: assigned, initialized, `++`/`--` (compound assignments also read). `access`: may write: passed by non-const reference, or `&x` to a pointer parameter (R3-G #13). `via_eid`: Planned. | Built (C/C++); Planned (TS, Rust) |
+| `binds` | mode: `value` / `ref` / `pointer` (move / out / inout, closure captures: Planned) | Argument → parameter (P6): each state, function value or lambda the argument's value comes from → the callee's parameter at that index, or → the external leaf for external callees (data handed to code outside the analysis). For a virtual call, `possible` edges to the same parameter of every override, tied by `group_id`. `ref`/`pointer` mode means the callee can write back through it. TS uses these bindings internally for one-hop value flow; they are not stored for TS and Rust yet. | Built (C/C++) |
 | `implements` | overrides, structural conformance, default methods (P7) | Type ↔ interface/trait; dispatch is expanded at query time (BQ-19). Rust calls through `dyn Trait` are `unresolved` until then. | Planned |
 | `exit` | kinds and targets: return, `?`, throw, break/continue, diverges; catch types (P5) | | Planned |
 | `suspend` / `resume` | `await` / `yield` (P2) | | Planned |
@@ -81,6 +84,10 @@ Each edge row is one occurrence (R2-30):
 - `to_nid NULL` is an absent candidate (`possible`) or an unknown target (`unresolved`).
 
 Rust calls through locals, fields and other function values are `unresolved` until Rust gets one-hop value flow (Planned).
+
+**Calls through variables, parameters and fields (C/C++):** the call edge points at the state called (`resolution=exact`: "calls whatever this holds"). The solver then adds `possible` call edges, one group per call, to every function value that reaches that state backward through `assign` and `binds` edges, through `ref`/`pointer` bindings (what the callee assigns to the parameter reaches the argument), and through `result` (a function's `returns` targets; the states it `return`s). Language-independent; it applies to any extractor that emits these edges.
+
+**Known limit (C/C++):** libclang exposes template code as written, not instantiated, so a name that depends on a template parameter (`&F<T>::run` with `F` a template parameter) resolves to nothing. The flow stops at the write in the template, and its receipt shows the code.
 
 Planned edge columns:
 - `timing` (P1);
@@ -195,6 +202,8 @@ Over MCP: `path(from?, to?, follow, max_occurrences?, max_depth?, receipts=expr|
 - `handoff`: `kind='value-flow' AND subkind='handoff'`.
 - `literal`: function →`link/literal`→ literal node → every function containing the same literal. The literal node is shown on the route.
 - `names`: function →`link/literal`→ literal node →`link/names`→ the declaration.
+- `data`: `value-flow` `assign` / `result` / `return` and `binds` (labeled `possible` for virtual-dispatch bindings). Data reaching a function arrives at its parameter, so a data route usually ends at a parameter or an external leaf.
+- `write` / `access`: function → state. `read`: state → the function reading it (the read edge walked toward the reader). With both `read` and `write`, a function joins every state it reads to every state it writes; that is coarser than `data`, and the choice is the caller's.
 
 **Ends:**
 - **Resolution:** an exact id, or a unique suffix starting at a ` › `, `/` or `:` boundary. An ambiguous suffix returns the candidates.

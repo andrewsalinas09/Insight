@@ -75,6 +75,13 @@ fn extracts_a_small_cpp_program() {
     // A function handed to external code.
     assert!(edges.iter().any(|e| e.subkind.as_deref() == Some("handoff") && e.to.as_deref() == Some("sample.cpp › compare")));
     assert!(edges.iter().any(|e| e.to.as_deref().is_some_and(|t| t.starts_with("ext:cpp:") && t.ends_with("qsort"))));
+    // Data flow: the argument of a virtual call binds to each override's parameter (possible);
+    // parameters and locals are state; `twice` is written by its initializer.
+    let binds: Vec<_> = edges.iter().filter(|e| e.kind == insight_model::EdgeKind::Binds && e.to.as_deref().is_some_and(|t| t.ends_with("process › x"))).collect();
+    assert_eq!(binds.len(), 2, "{binds:?}");
+    assert!(binds.iter().all(|e| e.resolution == Resolution::Possible));
+    assert!(nodes.iter().any(|n| n.id == "sample.cpp › run › xs" && n.kind == NodeKind::Var));
+    assert!(edges.iter().any(|e| e.kind == insight_model::EdgeKind::Write && e.to.as_deref() == Some("sample.cpp › run › twice")));
     // A number literal through a macro, canonical decimal.
     assert!(recs.iter().any(|r| matches!(r, Record::Literal(l) if l.number && l.value == "5")));
     std::fs::remove_dir_all(dir).ok();
