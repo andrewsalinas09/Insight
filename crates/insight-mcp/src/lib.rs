@@ -35,11 +35,39 @@ struct Loaded {
     main: PathBuf,
     attached: Vec<(String, PathBuf)>,
     db: QueryDb,
-    repo_root: Option<PathBuf>,
+    /// Every loaded snapshot's source view: `main` first, then each attached one.
+    repos: Vec<RepoView>,
+}
+
+/// One loaded snapshot's files as the agent may see them.
+struct RepoView {
+    schema: String,
+    root: Option<PathBuf>,
     deny: DenyRules,
     /// Snapshot files the agent's deny rules cover.
     denied: Vec<String>,
     frozen: PathBuf,
+}
+
+impl RepoView {
+    /// Reads the snapshot's repo, mirrors its deny rules and writes its frozen-source folder.
+    fn open(db: &QueryDb, project: &str, schema: &str, file: &Path) -> Result<RepoView> {
+        let repo: String = db.conn().query_row(&format!("SELECT value FROM {schema}.meta WHERE key = 'repo'"), [], |r| r.get(0))?;
+        let root = settings::load(&paths::project_dir(project)?).ok().and_then(|s| s.repo.get(&repo).map(|r| PathBuf::from(&r.path)));
+        let deny = DenyRules::load(root.as_deref());
+        let files: Vec<String> = {
+            let mut stmt = db.conn().prepare(&format!("SELECT path FROM {schema}.files ORDER BY path"))?;
+            stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
+        };
+        let denied: Vec<String> = files.iter().filter(|f| deny.denies(root.as_deref(), f)).cloned().collect();
+        let frozen = paths::frozen_source_dir(file)?;
+        freeze(db, schema, &frozen, &files, &denied)?;
+        Ok(RepoView { schema: schema.to_string(), root, deny, denied, frozen })
+    }
+
+    fn denies(&self, file: &str) -> bool {
+        self.denied.iter().any(|d| d == file) || self.deny.denies(self.root.as_deref(), file)
+    }
 }
 
 #[derive(Default)]
@@ -186,15 +214,18 @@ impl Session {
         for (alias, p) in &l.attached {
             o.push_str(&format!("- `{alias}`: {}\n", file_name(p)));
         }
-        o.push_str(&format!("\nFrozen-source folder (Grep/Read these bytes, not the working tree): {}\n", l.frozen.display()));
-        if !l.denied.is_empty() {
-            o.push_str(&format!(
-                "Deny rules hide {} file(s) of this snapshot: `source` refuses them, they're absent from the folder, and `files.content` reads as NULL.\n",
-                l.denied.len()
-            ));
-        }
-        if !l.deny.sources.is_empty() {
-            o.push_str(&format!("Mirrored deny rules: {}\n", l.deny.sources.join("; ")));
+        o.push_str("\nFrozen-source folders (Grep/Read these bytes, not the working tree):\n");
+        for r in &l.repos {
+            o.push_str(&format!("- `{}`: {}\n", r.schema, r.frozen.display()));
+            if !r.denied.is_empty() {
+                o.push_str(&format!(
+                    "  deny rules hide {} file(s): `source` refuses them, they're absent from the folder, and `files.content` reads as NULL.\n",
+                    r.denied.len()
+                ));
+            }
+            if !r.deny.sources.is_empty() {
+                o.push_str(&format!("  mirrored deny rules: {}\n", r.deny.sources.join("; ")));
+            }
         }
         o.push_str("\n## Schema (main)\n");
         let mut stmt = l.db.conn().prepare("SELECT sql FROM main.sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name")?;
@@ -239,41 +270,44 @@ impl Session {
                 bail!("alias `{alias}` is taken");
             }
             l.db.attach(alias, &file)?;
+            // Freezing reads content, which SQL may be hiding.
+            l.db.set_hide_content(false);
+            let view = RepoView::open(&l.db, project, alias, &file);
+            l.db.set_hide_content(l.repos.iter().chain(view.as_ref().ok()).any(|r| !r.denied.is_empty()));
+            let view = view?;
             l.attached.push((alias.to_string(), file.clone()));
+            l.repos.push(view);
             return Ok(format!("attached {} as `{alias}`: query it as `{alias}.nodes`, `{alias}.edges`, …", file_name(&file)));
         }
         let db = QueryDb::open(&file)?;
-        let repo: String = db.conn().query_row("SELECT value FROM main.meta WHERE key = 'repo'", [], |r| r.get(0))?;
-        let repo_root = settings::load(&paths::project_dir(project)?).ok().and_then(|s| s.repo.get(&repo).map(|r| PathBuf::from(&r.path)));
-        let deny = DenyRules::load(repo_root.as_deref());
-        let files: Vec<String> = {
-            let mut stmt = db.conn().prepare("SELECT path FROM main.files ORDER BY path")?;
-            stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
-        };
-        let denied: Vec<String> = files.iter().filter(|f| deny.denies(repo_root.as_deref(), f)).cloned().collect();
-        let frozen = paths::frozen_source_dir(&file)?;
-        freeze(&db, &frozen, &files, &denied)?;
-        db.set_hide_content(!denied.is_empty());
-        let summary = format!(
+        let main = RepoView::open(&db, project, "main", &file)?;
+        let files: i64 = db.conn().query_row("SELECT count(*) FROM main.files", [], |r| r.get(0))?;
+        let mut summary = format!(
             "loaded {} / {} as `main` (pinned until the next `load` without an alias)\n{} files; frozen-source folder: {}{}",
             project,
             file_name(&file),
-            files.len(),
-            frozen.display(),
-            if denied.is_empty() { String::new() } else { format!("\n{} file(s) hidden by the agent's deny rules", denied.len()) }
+            files,
+            main.frozen.display(),
+            if main.denied.is_empty() { String::new() } else { format!("\n{} file(s) hidden by the agent's deny rules", main.denied.len()) }
         );
-        let mut summary = summary;
         let mut attached = Vec::new();
+        let mut repos = vec![main];
         for (repo, p) in others {
             let a = insight_solver::schema_alias(&repo);
             db.attach(&a, &p)?;
-            summary.push_str(&format!("\nattached repo `{repo}` ({}) as `{a}`", file_name(&p)));
+            let view = RepoView::open(&db, project, &a, &p)?;
+            summary.push_str(&format!("\nattached repo `{repo}` ({}) as `{a}`; frozen-source folder: {}", file_name(&p), view.frozen.display()));
+            if !view.denied.is_empty() {
+                summary.push_str(&format!(" ({} file(s) hidden by deny rules)", view.denied.len()));
+            }
             attached.push((a, p));
+            repos.push(view);
         }
         if !attached.is_empty() {
-            summary.push_str("\n`path` searches every loaded repo; nodes show as `<schema>:<path>`; `same` follows identical source across repos.");
+            summary.push_str("\n`path` searches every loaded repo; nodes show as `<schema>:<path>`; `same` follows identical source across repos. `source` takes those `<schema>:` prefixes too.");
         }
-        self.loaded = Some(Loaded { project: project.to_string(), main: file, attached, db, repo_root, deny, denied, frozen });
+        db.set_hide_content(repos.iter().any(|r| !r.denied.is_empty()));
+        self.loaded = Some(Loaded { project: project.to_string(), main: file, attached, db, repos });
         Ok(summary)
     }
 
@@ -315,8 +349,14 @@ impl Session {
     }
 
     fn one_source(&self, l: &Loaded, r: &str) -> Result<String> {
+        // `<schema>:…` (as `path` prints nodes of several repos) picks a loaded repo; default `main`.
+        let (repo, r) = match r.split_once(':').and_then(|(s, rest)| l.repos.iter().find(|v| v.schema == s).map(|v| (v, rest))) {
+            Some(x) => x,
+            None => (&l.repos[0], r),
+        };
+        let schema = repo.schema.as_str();
         let conn = l.db.conn();
-        let exists = |f: &str| conn.query_row("SELECT 1 FROM main.files WHERE path = ?1", [f], |_| Ok(())).is_ok();
+        let exists = |f: &str| conn.query_row(&format!("SELECT 1 FROM {schema}.files WHERE path = ?1"), [f], |_| Ok(())).is_ok();
         // `file`, `file:line`, `file:start-end`; otherwise a node.
         let (file, range) = match r.rsplit_once(':') {
             Some((f, lines)) if exists(f) => {
@@ -331,21 +371,27 @@ impl Session {
             }
             _ if exists(r) => (r.to_string(), None),
             _ => {
-                let nid = insight_solver::path::resolve(conn, r)?;
+                // One schema searched: its global id is the node id.
+                let nid = insight_solver::path::resolve_in(conn, &[schema.to_string()], r)?;
                 let (path, file, s, e): (String, Option<String>, Option<i64>, Option<i64>) =
-                    conn.query_row("SELECT path, file, line_start, line_end FROM main.nodes WHERE nid = ?1", [nid], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?)))?;
+                    conn.query_row(&format!("SELECT path, file, line_start, line_end FROM {schema}.nodes WHERE nid = ?1"), [nid], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?)))?;
                 let file = file.with_context(|| format!("`{path}` has no source (an external or literal node)"))?;
-                return self.lines(l, &file, s.zip(e).map(|(s, e)| (s as usize, e as usize)), &path);
+                return self.lines(l, repo, &file, s.zip(e).map(|(s, e)| (s as usize, e as usize)), &path);
             }
         };
-        self.lines(l, &file, range, r)
+        self.lines(l, repo, &file, range, r)
     }
 
-    fn lines(&self, l: &Loaded, file: &str, range: Option<(usize, usize)>, title: &str) -> Result<String> {
-        if l.denied.iter().any(|d| d == file) || l.deny.denies(l.repo_root.as_deref(), file) {
+    fn lines(&self, l: &Loaded, repo: &RepoView, file: &str, range: Option<(usize, usize)>, title: &str) -> Result<String> {
+        if repo.denies(file) {
             bail!("`{file}` is covered by the agent's deny rules");
         }
-        let content: Vec<u8> = l.db.conn().query_row("SELECT content FROM main.files WHERE path = ?1", [file], |r| r.get(0))?;
+        // Allowed files are readable here even while `files.content` is hidden from SQL.
+        let hidden = l.repos.iter().any(|r| !r.denied.is_empty());
+        l.db.set_hide_content(false);
+        let content = l.db.conn().query_row::<Vec<u8>, _, _>(&format!("SELECT content FROM {}.files WHERE path = ?1", repo.schema), [file], |r| r.get(0));
+        l.db.set_hide_content(hidden);
+        let content = content?;
         let text = String::from_utf8_lossy(&content);
         let all: Vec<&str> = text.lines().collect();
         let (s, e) = range.unwrap_or((1, all.len()));
@@ -362,12 +408,12 @@ impl Session {
 }
 
 /// Writes the snapshot's allowed files once into a read-only folder.
-fn freeze(db: &QueryDb, dir: &Path, files: &[String], denied: &[String]) -> Result<()> {
+fn freeze(db: &QueryDb, schema: &str, dir: &Path, files: &[String], denied: &[String]) -> Result<()> {
     let marker = dir.join(".insight-complete");
     if marker.exists() {
         return Ok(());
     }
-    let mut stmt = db.conn().prepare("SELECT content FROM main.files WHERE path = ?1")?;
+    let mut stmt = db.conn().prepare(&format!("SELECT content FROM {schema}.files WHERE path = ?1"))?;
     for f in files {
         // Paths come from extractors; never write outside the folder.
         let rel = Path::new(f);

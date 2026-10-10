@@ -3,6 +3,8 @@
 //! own exit codes (R3-10): 2 needs init/settings, 3 needs approval, 5 does not
 //! build, 6 tripwire, 7 count mismatch; 1 is any other error.
 
+mod install;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -53,12 +55,31 @@ enum Cmd {
         #[arg(long)]
         no_receipts: bool,
     },
-    /// The MCP stdio server (`claude mcp add -s user insight -- <path>\insight.exe mcp`).
+    /// The MCP stdio server (`insight install` registers it with Claude Code).
     Mcp,
+    /// Install for use: copy insight and its helpers to Insight's bin folder, check each
+    /// language's toolchain, and register the MCP server with Claude Code (user scope).
+    Install {
+        /// Only copy and check; print the registration command instead of running it.
+        #[arg(long)]
+        no_register: bool,
+    },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Cmd::Install { no_register } = cli.cmd {
+        return match install::install(!no_register) {
+            Ok(text) => {
+                print!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e:#}");
+                ExitCode::from(1)
+            }
+        };
+    }
     if let Cmd::Mcp = cli.cmd {
         return match insight_mcp::serve() {
             Ok(()) => ExitCode::SUCCESS,
@@ -91,7 +112,7 @@ fn main() -> ExitCode {
             (log, r)
         }
         Cmd::Approve { project } => with_log(&project, "approve", |log| insight_solver::approve(&project, log)),
-        Cmd::Path { .. } | Cmd::Mcp => unreachable!("handled above"),
+        Cmd::Path { .. } | Cmd::Mcp | Cmd::Install { .. } => unreachable!("handled above"),
         Cmd::Build { project, commit } => with_log(&project, "build", |log| {
             let built = insight_solver::build(&project, &BuildOptions { commit }, log)?;
             for b in built {
