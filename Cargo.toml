@@ -22,3 +22,9 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# Dependencies (rust-analyzer, SQLite, tree-sitter) are far too slow unoptimized;
+# our own crates still build fast and debuggable.
+[profile.dev.package."*"]
+opt-level = 2
+

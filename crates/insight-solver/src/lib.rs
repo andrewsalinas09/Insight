@@ -7,6 +7,7 @@
 
 pub mod discover;
 pub mod export;
+pub mod path;
 pub mod paths;
 pub mod run;
 pub mod settings;
@@ -257,9 +258,12 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
         ingest(cmd, "ts", &tree, &exported, &mut w, &mut tally, log)?;
     }
     if !projects.rust_packages.is_empty() {
-        let cmd = insight_lang_rust::command(&tree, &projects.rust_packages, FACT_SCHEMA_VERSION)?;
+        let mut cmd = insight_lang_rust::command(&tree, &projects.rust_packages, FACT_SCHEMA_VERSION)?;
+        // rust-analyzer runs build scripts; they share the check's private target (R3-16).
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
         ingest(cmd, "rust", &tree, &exported, &mut w, &mut tally, log)?;
     }
+    link_literals(&mut w, &tally, log)?;
 
     // Never silently incomplete: source files no project covered are stated.
     for path in exported.files.keys() {
@@ -301,13 +305,34 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
 
 #[derive(Default)]
 struct Tally {
-    /// file -> its text (for the independent count).
+    /// file -> its text (for the independent count and receipt columns).
     files: BTreeMap<String, String>,
     functions: BTreeMap<String, usize>,
+    /// Every literal occurrence, for the link passes after all extractors ran.
+    literals: Vec<insight_model::LiteralFact>,
+    /// Next free snapshot-wide group id (extractor group numbers are local).
+    next_group: i64,
+}
+
+fn edge_kind(k: insight_model::EdgeKind) -> &'static str {
+    match k {
+        insight_model::EdgeKind::Call => "call",
+        insight_model::EdgeKind::ValueFlow => "value-flow",
+    }
+}
+
+fn resolution(r: insight_model::Resolution) -> &'static str {
+    match r {
+        insight_model::Resolution::Exact => "exact",
+        insight_model::Resolution::Possible => "possible",
+        insight_model::Resolution::Unresolved => "unresolved",
+    }
 }
 
 /// Streams one extractor's NDJSON into the snapshot, checking the protocol (R2-28)
 /// and that every file it read is byte-identical to the exported tree (R3-05).
+/// Edges are inserted once the stream is complete, so they may name any node it sent.
+#[allow(clippy::too_many_arguments)]
 fn ingest(
     mut cmd: std::process::Command,
     lang: &str,
@@ -320,10 +345,11 @@ fn ingest(
     cmd.stderr(log.file().try_clone()?);
     let mut child = cmd.spawn().with_context(|| format!("starting the {lang} extractor"))?;
     let stdout = child.stdout.take().expect("piped");
-    let (mut files, mut nodes, mut diags) = (0u64, 0u64, 0u64);
+    let mut sent = insight_model::End::default();
     let mut header = false;
     let mut end = None;
     let mut file_lang: BTreeMap<String, String> = BTreeMap::new();
+    let mut edges = Vec::new();
     for line in BufReader::new(stdout).lines() {
         let line = line?;
         let rec: Record = serde_json::from_str(&line).with_context(|| format!("{lang} extractor sent a bad record: {line}"))?;
@@ -352,7 +378,14 @@ fn ingest(
                 w.file(&f, &bytes)?;
                 tally.files.insert(f.path.clone(), String::from_utf8_lossy(&bytes).into_owned());
                 file_lang.insert(f.path, f.lang);
-                files += 1;
+                sent.files += 1;
+            }
+            Record::Node(n) if n.kind == NodeKind::External => {
+                // One leaf per symbol (BQ-20); the same symbol may be named by both languages' extractors.
+                if w.nid(&n.id).is_none() {
+                    w.node(&n, lang, None)?;
+                }
+                sent.nodes += 1;
             }
             Record::Node(n) => {
                 let file = n.id.split(" › ").next().unwrap_or(&n.id).to_string();
@@ -360,13 +393,21 @@ fn ingest(
                 if n.kind == NodeKind::Function {
                     *tally.functions.entry(file.clone()).or_default() += 1;
                 }
-                w.node(&n, &flang, &file)?;
-                nodes += 1;
+                w.node(&n, &flang, Some(&file))?;
+                sent.nodes += 1;
+            }
+            Record::Edge(e) => {
+                edges.push(e);
+                sent.edges += 1;
+            }
+            Record::Literal(l) => {
+                tally.literals.push(l);
+                sent.literals += 1;
             }
             Record::Diagnostic(d) => {
                 log.line(format!("  {lang} {:?}: {} {}", d.severity, d.file.as_deref().unwrap_or(""), d.message));
                 w.diagnostic(&d)?;
-                diags += 1;
+                sent.diagnostics += 1;
             }
             Record::End(e) => end = Some(e),
         }
@@ -376,11 +417,90 @@ fn ingest(
         bail!("the {lang} extractor failed ({status}); see the log");
     }
     let end = end.with_context(|| format!("the {lang} extractor stopped without an `end` record (truncated)"))?;
-    if (end.files, end.nodes, end.diagnostics) != (files, nodes, diags) {
-        bail!("the {lang} extractor's end counts {:?} do not match what it sent ({files}, {nodes}, {diags})", (end.files, end.nodes, end.diagnostics));
+    if end != sent {
+        bail!("the {lang} extractor's end counts {end:?} do not match what it sent {sent:?}");
     }
-    log.line(format!("{lang}: {files} files, {nodes} nodes, {diags} diagnostics"));
+
+    let base = tally.next_group;
+    let mut max_group = 0;
+    for e in &edges {
+        let from = w.nid(&e.from).with_context(|| format!("{lang} edge from unknown node `{}`", e.from))?;
+        let to = match &e.to {
+            Some(t) => Some(w.nid(t).with_context(|| format!("{lang} edge to unknown node `{t}`"))?),
+            None => None,
+        };
+        let group = e.group.map(|g| {
+            max_group = max_group.max(g as i64);
+            base + g as i64
+        });
+        let eid = w.edge(edge_kind(e.kind), e.subkind.as_deref(), from, to, resolution(e.resolution), group)?;
+        for r in &e.receipts {
+            w.receipt(eid, r)?;
+        }
+    }
+    tally.next_group = base + max_group + 1;
+    log.line(format!("{lang}: {} files, {} nodes, {} edges, {} literals, {} diagnostics", sent.files, sent.nodes, sent.edges, sent.literals, sent.diagnostics));
     Ok(())
+}
+
+/// The generic link passes (BQ-22, ADR-0047, ADR-0048), across languages:
+/// one `literal` node per distinct string value with a `link/literal` edge from
+/// every function containing it, and `link/names` edges from a literal to every
+/// declaration (function, type, module) whose declared name equals it.
+fn link_literals(w: &mut SnapshotWriter, tally: &Tally, log: &mut Log) -> Result<()> {
+    let mut by_value: BTreeMap<&str, Vec<&insight_model::LiteralFact>> = BTreeMap::new();
+    for l in &tally.literals {
+        by_value.entry(l.value.as_str()).or_default().push(l);
+    }
+    let decls = w.named_declarations()?;
+    let (mut occurrences, mut names) = (0, 0);
+    for (value, occs) in &by_value {
+        let path = format!("lit:{}", serde_json::to_string(value)?);
+        let lit = w.raw_node(&path, None, "literal", None, value, false, None, None, None)?;
+        for o in occs {
+            let from = w.nid(&o.from).with_context(|| format!("literal in unknown node `{}`", o.from))?;
+            let eid = w.edge("link", Some("literal"), from, Some(lit), "exact", None)?;
+            w.receipt(eid, &o.receipt)?;
+            occurrences += 1;
+        }
+        for d in decls.get(*value).into_iter().flatten() {
+            let eid = w.edge("link", Some("names"), lit, Some(d.nid), "exact", None)?;
+            if let Some(text) = tally.files.get(&d.file) {
+                w.receipt(eid, &receipt_at(text, &d.file, d.byte_start, d.byte_end, "decl", Some(d.path.clone())))?;
+            }
+            names += 1;
+        }
+    }
+    log.line(format!("links: {} distinct literals, {occurrences} occurrences, {names} names matches", by_value.len()));
+    Ok(())
+}
+
+/// A receipt for a byte range of a file, with 1-based line/col (UTF-8 bytes, BQ-11).
+fn receipt_at(text: &str, file: &str, s: u64, e: u64, role: &str, container: Option<String>) -> insight_model::Receipt {
+    let lc = |b: u64| {
+        let before = &text.as_bytes()[..(b as usize).min(text.len())];
+        let line = before.iter().filter(|c| **c == b'\n').count() as u32 + 1;
+        let col = before.iter().rev().take_while(|c| **c != b'\n').count() as u32 + 1;
+        (line, col)
+    };
+    let ((line, col), (end_line, end_col)) = (lc(s), lc(e));
+    insight_model::Receipt { role: role.into(), file: file.into(), byte_start: s, byte_end: e, line, col, end_line, end_col, container }
+}
+
+/// The newest complete snapshot of a project (any repo), unless one is named.
+pub fn latest_snapshot(project: &str) -> Result<PathBuf> {
+    let dir = paths::cache_root()?.join("snapshots").join(project);
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for e in std::fs::read_dir(&dir).with_context(|| format!("no snapshots for `{project}`: run `insight build` first"))? {
+        let p = e?.path();
+        if p.extension().is_some_and(|x| x == "sqlite") {
+            let t = std::fs::metadata(&p)?.modified()?;
+            if best.as_ref().is_none_or(|(bt, _)| t > *bt) {
+                best = Some((t, p));
+            }
+        }
+    }
+    best.map(|(_, p)| p).with_context(|| format!("no snapshots for `{project}`: run `insight build` first"))
 }
 
 fn rustc_version() -> Result<String> {

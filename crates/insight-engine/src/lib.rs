@@ -8,11 +8,12 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use insight_model::{Diagnostic, FileFact, NodeFact, NodeKind, Severity};
+use insight_model::{Diagnostic, FileFact, NodeFact, NodeKind, Receipt, Severity, Span};
+pub use rusqlite;
 use rusqlite::{Connection, params};
 
 /// Bumped whenever the table layout changes; recorded in `meta`.
-pub const DB_LAYOUT_VERSION: u32 = 2;
+pub const DB_LAYOUT_VERSION: u32 = 4;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -30,6 +31,7 @@ CREATE TABLE nodes (
     kind TEXT NOT NULL,
     subkind TEXT,
     name TEXT NOT NULL,
+    anonymous INTEGER NOT NULL DEFAULT 0,
     lang TEXT,
     file TEXT,
     byte_start INTEGER,
@@ -67,7 +69,20 @@ const INDEX_SQL: &str = r#"
 CREATE INDEX nodes_parent ON nodes(parent_nid);
 CREATE INDEX nodes_file ON nodes(file);
 CREATE INDEX nodes_kind ON nodes(kind);
+CREATE INDEX nodes_name ON nodes(name);
+CREATE INDEX edges_from ON edges(from_nid);
+CREATE INDEX edges_to ON edges(to_nid);
+CREATE INDEX receipts_eid ON receipts(eid);
 "#;
+
+/// A named declaration (see [`SnapshotWriter::named_declarations`]).
+pub struct Decl {
+    pub nid: i64,
+    pub path: String,
+    pub file: String,
+    pub byte_start: u64,
+    pub byte_end: u64,
+}
 
 /// Writes one codebase snapshot. Call [`SnapshotWriter::finish`] to publish it.
 pub struct SnapshotWriter {
@@ -75,6 +90,7 @@ pub struct SnapshotWriter {
     tmp_path: PathBuf,
     final_path: PathBuf,
     next_nid: i64,
+    next_eid: i64,
     ids: std::collections::HashMap<String, i64>,
 }
 
@@ -91,7 +107,7 @@ impl SnapshotWriter {
         conn.execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")?;
         conn.execute_batch(SCHEMA_SQL)?;
         conn.execute_batch("BEGIN")?;
-        Ok(Self { conn, tmp_path, final_path: final_path.to_path_buf(), next_nid: 1, ids: Default::default() })
+        Ok(Self { conn, tmp_path, final_path: final_path.to_path_buf(), next_nid: 1, next_eid: 1, ids: Default::default() })
     }
 
     pub fn meta(&self, key: &str, value: &str) -> Result<()> {
@@ -108,35 +124,105 @@ impl SnapshotWriter {
         Ok(())
     }
 
-    /// Inserts a node. Parents must be inserted before children.
-    pub fn node(&mut self, fact: &NodeFact, lang: &str, file: &str) -> Result<()> {
-        if self.ids.contains_key(&fact.id) {
-            bail!("duplicate node id `{}`", fact.id);
+    /// Inserts a container or external node. Parents must be inserted before children.
+    pub fn node(&mut self, fact: &NodeFact, lang: &str, file: Option<&str>) -> Result<i64> {
+        let (kind, subkind) = match fact.kind {
+            NodeKind::External => ("external", None),
+            k => ("container", Some(kind_str(k))),
+        };
+        self.raw_node(&fact.id, fact.parent.as_deref(), kind, subkind, &fact.name, fact.anonymous, Some(lang), file, fact.span.as_ref())
+    }
+
+    /// Inserts any node by its parts; returns its nid.
+    #[allow(clippy::too_many_arguments)]
+    pub fn raw_node(
+        &mut self,
+        path: &str,
+        parent: Option<&str>,
+        kind: &str,
+        subkind: Option<&str>,
+        name: &str,
+        anonymous: bool,
+        lang: Option<&str>,
+        file: Option<&str>,
+        span: Option<&Span>,
+    ) -> Result<i64> {
+        if self.ids.contains_key(path) {
+            bail!("duplicate node id `{path}`");
         }
-        let parent = match &fact.parent {
-            Some(p) => Some(*self.ids.get(p).with_context(|| format!("parent `{p}` of `{}` not inserted yet", fact.id))?),
+        let parent = match parent {
+            Some(p) => Some(*self.ids.get(p).with_context(|| format!("parent `{p}` of `{path}` not inserted yet"))?),
             None => None,
         };
         let nid = self.next_nid;
         self.next_nid += 1;
         self.conn.execute(
-            "INSERT INTO nodes(nid, path, parent_nid, kind, subkind, name, lang, file, byte_start, byte_end, line_start, line_end)
-             VALUES (?1, ?2, ?3, 'container', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO nodes(nid, path, parent_nid, kind, subkind, name, anonymous, lang, file, byte_start, byte_end, line_start, line_end)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 nid,
-                fact.id,
+                path,
                 parent,
-                kind_str(fact.kind),
-                fact.name,
+                kind,
+                subkind,
+                name,
+                anonymous,
                 lang,
                 file,
-                fact.span.byte_start as i64,
-                fact.span.byte_end as i64,
-                fact.span.line_start,
-                fact.span.line_end
+                span.map(|s| s.byte_start as i64),
+                span.map(|s| s.byte_end as i64),
+                span.map(|s| s.line_start),
+                span.map(|s| s.line_end)
             ],
         )?;
-        self.ids.insert(fact.id.clone(), nid);
+        self.ids.insert(path.to_string(), nid);
+        Ok(nid)
+    }
+
+    /// Declarations by declared name, for `names` links (ADR-0048): named functions,
+    /// types and modules. A repeated name's ordinal (`f#2`) is not part of the name.
+    pub fn named_declarations(&self) -> Result<std::collections::HashMap<String, Vec<Decl>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT nid, path, name, file, byte_start, byte_end FROM nodes
+             WHERE kind = 'container' AND subkind IN ('function', 'type', 'module') AND anonymous = 0",
+        )?;
+        let mut out: std::collections::HashMap<String, Vec<Decl>> = Default::default();
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, i64>(4)?, r.get::<_, i64>(5)?))
+        })?;
+        for row in rows {
+            let (nid, path, name, file, s, e) = row?;
+            let declared = match name.rsplit_once('#') {
+                Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base.to_string(),
+                _ => name,
+            };
+            out.entry(declared).or_default().push(Decl { nid, path, file, byte_start: s as u64, byte_end: e as u64 });
+        }
+        Ok(out)
+    }
+
+    pub fn nid(&self, path: &str) -> Option<i64> {
+        self.ids.get(path).copied()
+    }
+
+    /// Inserts an edge between known nodes; returns its eid.
+    pub fn edge(&mut self, kind: &str, subkind: Option<&str>, from: i64, to: Option<i64>, resolution: &str, group: Option<i64>) -> Result<i64> {
+        let eid = self.next_eid;
+        self.next_eid += 1;
+        self.conn.execute(
+            "INSERT INTO edges(eid, kind, subkind, from_nid, to_nid, resolution, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![eid, kind, subkind, from, to, resolution, group],
+        )?;
+        Ok(eid)
+    }
+
+    pub fn receipt(&self, eid: i64, r: &Receipt) -> Result<()> {
+        let container = r.container.as_deref().and_then(|c| self.ids.get(c).copied());
+        self.conn.execute(
+            "INSERT INTO receipts(eid, role, file, byte_start, byte_end, line, col, end_line, end_col, container_nid)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![eid, r.role, r.file, r.byte_start as i64, r.byte_end as i64, r.line, r.col, r.end_line, r.end_col, container],
+        )?;
         Ok(())
     }
 
@@ -200,6 +286,7 @@ pub fn kind_str(k: NodeKind) -> &'static str {
         NodeKind::Type => "type",
         NodeKind::Function => "function",
         NodeKind::Block => "block",
+        NodeKind::External => "external",
     }
 }
 
@@ -214,7 +301,6 @@ fn severity_str(s: Severity) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use insight_model::Span;
 
     fn span() -> Span {
         Span { byte_start: 0, byte_end: 10, line_start: 1, line_end: 2 }
@@ -226,10 +312,10 @@ mod tests {
         let path = dir.join("snap.sqlite");
         let _ = std::fs::remove_file(&path);
         let mut w = SnapshotWriter::create(&path).unwrap();
-        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: span() };
-        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: span() };
-        w.node(&file, "ts", "a.ts").unwrap();
-        w.node(&func, "ts", "a.ts").unwrap();
+        let file = NodeFact { id: "a.ts".into(), parent: None, kind: NodeKind::File, name: "a.ts".into(), span: Some(span()), anonymous: false };
+        let func = NodeFact { id: "a.ts › f".into(), parent: Some("a.ts".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false };
+        w.node(&file, "ts", Some("a.ts")).unwrap();
+        w.node(&func, "ts", Some("a.ts")).unwrap();
         let out = w.finish().unwrap();
         let conn = open_snapshot(&out).unwrap();
         assert_eq!(function_counts_by_file(&conn).unwrap(), vec![("a.ts".to_string(), 1)]);
@@ -240,11 +326,11 @@ mod tests {
     fn rejects_duplicate_ids_and_unknown_parents() {
         let dir = std::env::temp_dir().join(format!("insight-engine-dup-{}", std::process::id()));
         let mut w = SnapshotWriter::create(&dir.join("s.sqlite")).unwrap();
-        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: span() };
-        assert!(w.node(&orphan, "ts", "x").is_err());
-        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: span() };
-        w.node(&file, "ts", "x").unwrap();
-        assert!(w.node(&file, "ts", "x").is_err());
+        let orphan = NodeFact { id: "x › f".into(), parent: Some("x".into()), kind: NodeKind::Function, name: "f".into(), span: Some(span()), anonymous: false };
+        assert!(w.node(&orphan, "ts", Some("x")).is_err());
+        let file = NodeFact { id: "x".into(), parent: None, kind: NodeKind::File, name: "x".into(), span: Some(span()), anonymous: false };
+        w.node(&file, "ts", Some("x")).unwrap();
+        assert!(w.node(&file, "ts", Some("x")).is_err());
         drop(w);
         std::fs::remove_dir_all(dir).ok();
     }

@@ -17,12 +17,14 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use insight_model::{Diagnostic, FACT_SCHEMA_VERSION, End, FileFact, Header, NodeFact, NodeKind, Record, Severity, Span};
-use ra_ap_hir::Semantics;
+use insight_model::{
+    Diagnostic, EdgeFact, EdgeKind, End, FACT_SCHEMA_VERSION, FileFact, Header, LiteralFact, NodeFact, NodeKind, Receipt, Record, Resolution, Severity, Span,
+};
+use ra_ap_hir::{AsAssocItem, HasCrate, Semantics};
 use ra_ap_ide_db::RootDatabase;
 use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
 use ra_ap_project_model::{CargoConfig, RustLibSource};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxNode, T, ast, ast::HasLoopBody, ast::HasName};
+use ra_ap_syntax::{AstNode, AstToken, Edition, SourceFile, SyntaxKind, SyntaxNode, T, ast, ast::HasArgList, ast::HasLoopBody, ast::HasName};
 use ra_ap_vfs::FileId;
 use sha2::{Digest, Sha256};
 
@@ -56,6 +58,12 @@ fn norm(p: &str) -> String {
 }
 
 fn main() -> Result<()> {
+    // rust-analyzer recurses deeply (type inference, macro expansion); like
+    // rust-analyzer itself, run on a thread with a large stack.
+    std::thread::Builder::new().name("extract".into()).stack_size(256 * 1024 * 1024).spawn(run)?.join().map_err(|_| anyhow::anyhow!("extractor thread panicked"))?
+}
+
+fn run() -> Result<()> {
     let mut root = None;
     let mut packages = Vec::new();
     let mut schema = None;
@@ -112,9 +120,41 @@ fn main() -> Result<()> {
         dbs.push(db);
     }
     let semas: Vec<Semantics<'_, RootDatabase>> = dbs.iter().map(Semantics::new).collect();
+
+    // Pass 1: containers.
+    let mut indexed = Vec::new();
     for abs in files {
-        let sema = owner.get(&norm(&abs.to_string_lossy())).map(|(i, id)| (&semas[*i], *id));
-        extract_file(&root, &abs, sema, &mut out)?;
+        let ix = owner.get(&norm(&abs.to_string_lossy())).copied();
+        let sema = ix.map(|(i, id)| (&semas[i], id));
+        indexed.push(extract_file(&root, &abs, sema, ix, &mut out)?);
+    }
+
+    // Pass 2: edges and literals, per database.
+    let mut fns = HashMap::new();
+    let mut paths = HashMap::new();
+    for f in &indexed {
+        for c in f.containers.iter().filter(|c| c.is_fn) {
+            fns.insert((f.file.clone(), c.start, c.end), c.id.clone());
+        }
+        if let Some(key) = f.sema {
+            paths.insert(key, f.file.clone());
+        }
+    }
+    let mut externals = BTreeSet::new();
+    for (ix, db) in dbs.iter().enumerate() {
+        let mut g = Global { fns, paths, externals, db, ix };
+        // Type inference (method resolution) needs the database attached to this thread.
+        ra_ap_hir::attach_db(db, || -> Result<()> {
+            for f in indexed.iter().filter(|f| f.sema.is_some_and(|(i, _)| i == ix)) {
+                edges_for_file(&semas[ix], f, f.sema.expect("filtered").1, &mut g, &mut out)?;
+            }
+            Ok(())
+        })?;
+        (fns, paths, externals) = (g.fns, g.paths, g.externals);
+    }
+    for id in externals {
+        let name = id.rsplit(':').next().unwrap_or(&id).to_string();
+        out.emit(Record::Node(NodeFact { id, parent: None, kind: NodeKind::External, name, span: None, anonymous: false }))?;
     }
     let end = out.end.clone();
     out.emit(Record::End(end))?;
@@ -132,6 +172,8 @@ impl<W: Write> Out<W> {
         match &r {
             Record::File(_) => self.end.files += 1,
             Record::Node(_) => self.end.nodes += 1,
+            Record::Edge(_) => self.end.edges += 1,
+            Record::Literal(_) => self.end.literals += 1,
             Record::Diagnostic(_) => self.end.diagnostics += 1,
             _ => {}
         }
@@ -190,6 +232,54 @@ struct FileCx<'a, W: Write> {
     ordinals: HashMap<(String, String), u32>,
     /// Functions inside macro-call arguments, sorted by (start, longest first).
     macro_fns: Vec<MacroFn>,
+    /// Every container emitted for this file, for pass 2's range lookups.
+    containers: Vec<Ctr>,
+}
+
+/// A container's source range and id (pass 1 output, pass 2 input).
+#[derive(Clone)]
+struct Ctr {
+    start: u32,
+    end: u32,
+    id: String,
+    is_fn: bool,
+}
+
+/// What pass 2 needs for one file.
+struct Indexed {
+    file: String,
+    sema: Option<(usize, FileId)>,
+    tree: SyntaxNode,
+    lines: Lines,
+    containers: Vec<Ctr>,
+}
+
+impl Indexed {
+    /// The innermost container (`fns_only`: function, else the file) holding a range.
+    fn innermost(&self, s: u32, e: u32, fns_only: bool) -> String {
+        self.containers
+            .iter()
+            .filter(|c| c.start <= s && e <= c.end && (c.is_fn || !fns_only))
+            .min_by_key(|c| c.end - c.start)
+            .map(|c| c.id.clone())
+            .unwrap_or_else(|| self.file.clone())
+    }
+
+    fn receipt(&self, role: &str, s: u32, e: u32) -> Receipt {
+        let (line, end_line) = (self.lines.line(s), self.lines.line(e));
+        let col = |b: u32, l: u32| b - self.lines.0[(l - 1) as usize] + 1;
+        Receipt {
+            role: role.into(),
+            file: self.file.clone(),
+            byte_start: s as u64,
+            byte_end: e as u64,
+            line,
+            col: col(s, line),
+            end_line,
+            end_col: col(e, end_line),
+            container: Some(self.innermost(s, e, false)),
+        }
+    }
 }
 
 impl<W: Write> FileCx<'_, W> {
@@ -208,13 +298,21 @@ impl<W: Write> FileCx<'_, W> {
         Span { byte_start: s as u64, byte_end: e as u64, line_start: self.lines.line(s), line_end: self.lines.line(e.saturating_sub(1).max(s)) }
     }
 
-    fn node(&mut self, id: String, parent: &str, kind: NodeKind, name: String, span: Span) -> Result<String> {
-        self.out.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(parent.to_string()), kind, name, span }))?;
+    fn node(&mut self, id: String, parent: &str, kind: NodeKind, name: String, span: Span, anonymous: bool) -> Result<String> {
+        self.containers.push(Ctr { start: span.byte_start as u32, end: span.byte_end as u32, id: id.clone(), is_fn: kind == NodeKind::Function });
+        self.out.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(parent.to_string()), kind, name, span: Some(span), anonymous }))?;
         Ok(id)
     }
 }
 
-fn extract_file<W: Write>(root: &Path, abs: &Path, sema: Option<(&Semantics<'_, RootDatabase>, FileId)>, out: &mut Out<W>) -> Result<()> {
+/// Pass 1 for one file: the file record and its containers.
+fn extract_file<W: Write>(
+    root: &Path,
+    abs: &Path,
+    sema: Option<(&Semantics<'_, RootDatabase>, FileId)>,
+    sema_ix: Option<(usize, FileId)>,
+    out: &mut Out<W>,
+) -> Result<Indexed> {
     let bytes = std::fs::read(abs)?;
     let text = String::from_utf8(bytes.clone()).with_context(|| format!("{} is not UTF-8", abs.display()))?;
     let file = rel(root, abs);
@@ -231,7 +329,8 @@ fn extract_file<W: Write>(root: &Path, abs: &Path, sema: Option<(&Semantics<'_, 
         parent: None,
         kind: NodeKind::File,
         name: file.rsplit('/').next().unwrap_or(&file).to_string(),
-        span: Span { byte_start: 0, byte_end: bytes.len() as u64, line_start: 1, line_end: last_line },
+        span: Some(Span { byte_start: 0, byte_end: bytes.len() as u64, line_start: 1, line_end: last_line }),
+        anonymous: false,
     }))?;
     let (tree, macro_fns) = match sema {
         Some((sema, id)) => {
@@ -251,11 +350,229 @@ fn extract_file<W: Write>(root: &Path, abs: &Path, sema: Option<(&Semantics<'_, 
             (SourceFile::parse(&text, Edition::Edition2024).tree().syntax().clone(), Vec::new())
         }
     };
-    let mut cx = FileCx { out, lines, ordinals: HashMap::new(), macro_fns };
+    let mut cx = FileCx { out, lines, ordinals: HashMap::new(), macro_fns, containers: Vec::new() };
+    cx.containers.push(Ctr { start: 0, end: bytes.len() as u32, id: file.clone(), is_fn: false });
     for child in tree.children() {
         visit(&mut cx, &child, &file, &file)?;
     }
+    Ok(Indexed { file, sema: sema_ix, tree, lines: cx.lines, containers: cx.containers })
+}
+
+// ================================ pass 2: edges and literals ================================
+// Generic Rust semantics only (ADR-0048): calls resolved by rust-analyzer (through
+// macro expansions, including attribute macros), handoffs of closures and function
+// items to external code, and string literals (BQ-22).
+
+/// Lookups shared by every file in pass 2.
+struct Global<'a> {
+    /// (file, start, end) -> function node id.
+    fns: HashMap<(String, u32, u32), String>,
+    /// (database index, FileId) -> repo-relative path.
+    paths: HashMap<(usize, FileId), String>,
+    externals: BTreeSet<String>,
+    db: &'a RootDatabase,
+    ix: usize,
+}
+
+fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id: FileId, g: &mut Global<'_>, out: &mut Out<W>) -> Result<()> {
+    let this_file = sema.attach_first_edition(id);
+    let mut seen_calls: BTreeSet<(u32, u32)> = BTreeSet::new();
+    for tok in f.tree.descendants_with_tokens().filter_map(|e| e.into_token()) {
+        let r = tok.text_range();
+        let (ts, te) = (u32::from(r.start()), u32::from(r.end()));
+        if tok.kind() == SyntaxKind::STRING {
+            if let Some(s) = ast::String::cast(tok.clone()) {
+                if let Ok(v) = s.value() {
+                    let from = f.innermost(ts, te, true);
+                    out.emit(Record::Literal(LiteralFact { value: v.to_string(), from, receipt: f.receipt("literal", ts, te) }))?;
+                }
+            }
+            continue;
+        }
+        if tok.kind() != SyntaxKind::IDENT {
+            continue;
+        }
+        // The token as the compiler sees it: itself, or its copies inside macro expansions.
+        for d in sema.descend_into_macros(tok.clone()) {
+            let Some(call) = call_named_by(&d) else { continue };
+            let Some(orig) = sema.original_range_opt(call.syntax()) else { continue };
+            if orig.file_id != this_file {
+                continue;
+            }
+            let (cs, ce) = (u32::from(orig.range.start()), u32::from(orig.range.end()));
+            if !seen_calls.insert((cs, ce)) {
+                continue;
+            }
+            let from = f.innermost(cs, ce, true);
+            let receipt = f.receipt("call", cs, ce);
+            match resolve_call(sema, &call) {
+                Callee::Fn(func) => {
+                    let (to, external) = target_of(g, func);
+                    out.emit(Record::Edge(EdgeFact {
+                        kind: EdgeKind::Call,
+                        subkind: None,
+                        from: from.clone(),
+                        to: to.clone(),
+                        resolution: if to.is_some() { Resolution::Exact } else { Resolution::Unresolved },
+                        group: None,
+                        receipts: vec![receipt],
+                    }))?;
+                    if external {
+                        for (arg_fn, (as_, ae)) in fn_args(sema, f, g, &call, this_file) {
+                            out.emit(Record::Edge(EdgeFact {
+                                kind: EdgeKind::ValueFlow,
+                                subkind: Some("handoff".into()),
+                                from: from.clone(),
+                                to: Some(arg_fn),
+                                resolution: Resolution::Exact,
+                                group: None,
+                                receipts: vec![f.receipt("arg", as_, ae)],
+                            }))?;
+                        }
+                    }
+                }
+                Callee::Indirect | Callee::Unknown => out.emit(Record::Edge(EdgeFact {
+                    kind: EdgeKind::Call,
+                    subkind: None,
+                    from,
+                    to: None,
+                    resolution: Resolution::Unresolved,
+                    group: None,
+                    receipts: vec![receipt],
+                }))?,
+                Callee::NotACall => {}
+            }
+            break;
+        }
+    }
     Ok(())
+}
+
+enum CallNode {
+    Call(ast::CallExpr),
+    Method(ast::MethodCallExpr),
+}
+
+impl CallNode {
+    fn syntax(&self) -> &SyntaxNode {
+        match self {
+            CallNode::Call(c) => c.syntax(),
+            CallNode::Method(m) => m.syntax(),
+        }
+    }
+    fn args(&self) -> Vec<ast::Expr> {
+        let list = match self {
+            CallNode::Call(c) => c.arg_list(),
+            CallNode::Method(m) => m.arg_list(),
+        };
+        list.map(|l| l.args().collect()).unwrap_or_default()
+    }
+}
+
+/// The call whose callee name is this token: `f(…)`, `a::b::f(…)`, `x.f(…)`.
+fn call_named_by(tok: &ra_ap_syntax::SyntaxToken) -> Option<CallNode> {
+    let name_ref = ast::NameRef::cast(tok.parent()?)?;
+    let parent = name_ref.syntax().parent()?;
+    if let Some(mc) = ast::MethodCallExpr::cast(parent.clone()) {
+        return (mc.name_ref()? == name_ref).then_some(CallNode::Method(mc));
+    }
+    let segment = ast::PathSegment::cast(parent)?;
+    let path = segment.parent_path();
+    if path.segment()? != segment {
+        return None;
+    }
+    let path_expr = ast::PathExpr::cast(path.syntax().parent()?)?;
+    let call = ast::CallExpr::cast(path_expr.syntax().parent()?)?;
+    (call.expr()?.syntax() == path_expr.syntax()).then_some(CallNode::Call(call))
+}
+
+enum Callee {
+    Fn(ra_ap_hir::Function),
+    /// Through a local, field or other function value: one-hop value flow comes later.
+    Indirect,
+    Unknown,
+    /// A tuple-struct or variant constructor, not a function call.
+    NotACall,
+}
+
+fn resolve_call(sema: &Semantics<'_, RootDatabase>, call: &CallNode) -> Callee {
+    use ra_ap_hir::{ModuleDef, PathResolution};
+    match call {
+        CallNode::Method(m) => sema.resolve_method_call(m).map(Callee::Fn).unwrap_or(Callee::Unknown),
+        CallNode::Call(c) => {
+            let Some(ast::Expr::PathExpr(pe)) = c.expr() else { return Callee::Indirect };
+            let Some(path) = pe.path() else { return Callee::Unknown };
+            match sema.resolve_path(&path) {
+                Some(PathResolution::Def(ModuleDef::Function(f))) => Callee::Fn(f),
+                Some(PathResolution::Def(ModuleDef::EnumVariant(_) | ModuleDef::Adt(_))) => Callee::NotACall,
+                Some(PathResolution::Local(_)) => Callee::Indirect,
+                Some(_) => Callee::Indirect,
+                None => Callee::Unknown,
+            }
+        }
+    }
+}
+
+/// The node a resolved function maps to: a project function node, or an external leaf.
+/// Returns (id, is_external). `None` = a project declaration with no body node (e.g. a trait method).
+fn target_of(g: &mut Global<'_>, func: ra_ap_hir::Function) -> (Option<String>, bool) {
+    use ra_ap_hir::{AssocItemContainer, HasSource};
+    let db = g.db;
+    if func.krate(db).origin(db).is_local() {
+        let Some(src) = func.source(db) else { return (None, false) };
+        let range = src.syntax().original_file_range_rooted(db);
+        let fid = range.file_id.file_id(db);
+        let Some(path) = g.paths.get(&(g.ix, fid)) else { return (None, false) };
+        let key = (path.clone(), u32::from(range.range.start()), u32::from(range.range.end()));
+        return (g.fns.get(&key).cloned(), false);
+    }
+    let krate = func.krate(db).display_name(db).map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+    let mut segs: Vec<String> = func.module(db).path_to_root(db).iter().rev().filter_map(|m| m.name(db)).map(|n| n.as_str().to_string()).collect();
+    if let Some(assoc) = func.as_assoc_item(db) {
+        match assoc.container(db) {
+            AssocItemContainer::Trait(t) => segs.push(t.name(db).as_str().to_string()),
+            AssocItemContainer::Impl(i) => {
+                if let Some(adt) = i.self_ty(db).as_adt() {
+                    segs.push(adt.name(db).as_str().to_string());
+                }
+            }
+        }
+    }
+    segs.push(func.name(db).as_str().to_string());
+    let name = segs.join("::");
+    let id = format!("ext:rust:{krate}:{name}");
+    (Some(id.clone()), {
+        g.externals.insert(id);
+        true
+    })
+}
+
+/// Closures and function items passed as arguments, mapped to their function nodes.
+fn fn_args(sema: &Semantics<'_, RootDatabase>, f: &Indexed, g: &mut Global<'_>, call: &CallNode, this_file: ra_ap_hir::EditionedFileId) -> Vec<(String, (u32, u32))> {
+    use ra_ap_hir::{ModuleDef, PathResolution};
+    let mut out = Vec::new();
+    for arg in call.args() {
+        let Some(orig) = sema.original_range_opt(arg.syntax()) else { continue };
+        if orig.file_id != this_file {
+            continue;
+        }
+        let (s, e) = (u32::from(orig.range.start()), u32::from(orig.range.end()));
+        let id = match &arg {
+            ast::Expr::ClosureExpr(_) => g.fns.get(&(f.file.clone(), s, e)).cloned(),
+            ast::Expr::PathExpr(pe) => match pe.path().and_then(|p| sema.resolve_path(&p)) {
+                Some(PathResolution::Def(ModuleDef::Function(func))) => match target_of(g, func) {
+                    (Some(id), false) => Some(id),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(id) = id {
+            out.push((id, (s, e)));
+        }
+    }
+    out
 }
 
 /// Finds every function written inside a macro call's arguments by descending
@@ -316,7 +633,7 @@ fn emit_macro_fns<W: Write>(cx: &mut FileCx<W>, tt: &SyntaxNode, scope: &str, pa
         let seg = cx.name(&sc, &name, anon);
         let id = format!("{sc} › {seg}");
         let span = cx.span_of(fs, fe);
-        cx.node(id.clone(), &pa, NodeKind::Function, seg, span)?;
+        cx.node(id.clone(), &pa, NodeKind::Function, seg, span, anon)?;
         stack.push((fe, id));
     }
     Ok(())
@@ -355,7 +672,7 @@ fn visit<W: Write>(cx: &mut FileCx<W>, n: &SyntaxNode, scope: &str, parent: &str
         let segname = cx.name(&scope, &name, anon);
         let id = format!("{scope} › {segname}");
         let span = cx.span(n);
-        cx.node(id.clone(), &parent, kind, segname, span)?;
+        cx.node(id.clone(), &parent, kind, segname, span, anon)?;
         scope = id.clone();
         parent = id;
     }
@@ -398,7 +715,7 @@ fn visit<W: Write>(cx: &mut FileCx<W>, n: &SyntaxNode, scope: &str, parent: &str
         let name = cx.name(&format!("{scope}\0blocks"), label, true);
         let id = format!("{scope} › {name}");
         let span = cx.span(&body);
-        cx.node(id.clone(), &parent, NodeKind::Block, label.to_string(), span)?;
+        cx.node(id.clone(), &parent, NodeKind::Block, label.to_string(), span, true)?;
         visit(cx, &body, &scope, &id)?;
     }
     Ok(())
