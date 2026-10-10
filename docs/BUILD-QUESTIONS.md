@@ -731,3 +731,134 @@ Windows locks a running exe, and open Claude sessions keep their old bridge (and
 - **R2-36 (ANSWERED by ADR-0045: workspaces = projects):** named workspaces (e.g. "sensor-system" = firmware + app), with link passes only within one. *(vis, multi-repo)*
 - **R2-37:** what "must build" means for firmware: an explicit build command and environment (PlatformIO env, ESP-IDF, maybe WSL), with the environment and Rust features as part of the snapshot key. *(vis, before TB-101)*
 - **R2-38:** cross-repo wire links: exact same-literal facts, plus model-declared "same message" pairs citing them. Runtime evidence (serial logs) is read by Claude first, with an ingest tool only if a wish asks. *(internal)*
+
+---
+
+# Third pass (R3): fresh-session dry run, red team, TESTBED sweep (2026-10-09)
+
+Merged from three reviews against the cleaned-up docs. User-visible questions are asked one at a time; internal ones need an explicit "you decide". The sweep's TESTBED corrections and ~45 new edge cases (TB-107…151) are applied after the rulings.
+
+## R3-A: Security and safety (before M0)
+
+### R3-01: Which code Insight is allowed to run — OPEN (vis)
+Building runs the repo's code (npm scripts, `build.rs`, Rust macros). A README prompt injection could get Claude to `load` a hostile repo and run it. Separately, build commands could come from repo files (`.insight/config.toml`) or be changed by Claude on its own via INSIGHT.md.
+- Rec:
+  - (1) Insight builds only projects **you** ran `insight init` on; anything else loaded over MCP is refused until you approve it in the window/CLI.
+  - (2) Executable settings (check/install commands) come only from the project folder, never from repo bytes.
+  - (3) If the command list changes, Insight refuses over MCP until you confirm the change in the window/CLI. Claude can *propose* settings but not self-approve.
+
+### R3-02: Insight must never mutate your live working copy — OPEN (vis)
+An after-build snapshot running `npm ci` in place would delete `node_modules` under your running `tauri dev`. Insight's own `tsc -b` would write `.tsbuildinfo` into `app/`.
+- Rec: install steps never run against the live working copy (only in Insight-owned trees), and Insight's own checks write all outputs into its cache. Drop BQ-07's `--ignore-scripts` claim; it isn't a security control.
+
+### R3-03: Secrets — OPEN (vis)
+`source`, string literals and receipts can serve an API key, even one your Claude Code deny rules (`Read(.env*)`) would block. Old snapshots keep secrets you've since removed.
+- Rec: `source` serves only files in the snapshot's input set; mechanically honor the agent's file deny globs for `source` and literal text; add `insight purge <project>`. No guessing which strings look secret.
+
+## R3-B: What a snapshot is, exactly (before M0)
+
+### R3-04: Re-run the check after your build, and storms — OPEN (vis)
+`tauri dev` runs `vite`, which never type-checks; `cargo test -p x` builds one crate; agent edit/check loops fire every 20 s.
+- Rec: the hook is only a **trigger**. Insight runs the project's own check, warm, in its private dirs, as the gate. Triggers are **coalesced**: one snapshot at a time per project, only the newest pending, a 10 s quiet period, skipped if the content hash is unchanged.
+
+### R3-05: Freeze the code at snapshot time — OPEN (vis)
+Working copies are analyzed in place, so `source` later reads today's disk, not what was analyzed. An edit-then-revert can slip past the before/after hash. Unrelated doc edits (WORKLOG) discard snapshots needlessly.
+- Rec:
+  - (1) Copy the snapshot's source files into a content-addressed store at snapshot time (Fletcher's is ~0.7 MB), so the snapshot's text never changes.
+  - (2) Each extractor reports the hash of every file it read. **The snapshot is exactly those files**, so doc edits don't discard it, and a mid-read change is caught exactly.
+
+### R3-06: Which Fletcher snapshot M0/M1 test against — OPEN (vis)
+The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncommitted edits.
+- Rec: build commit export in M0 and run both milestones on `--commit cd5d6ff`, a fixed, immutable target.
+
+### R3-07: One home for settings, in one format — OPEN (vis)
+`tagging` and `check` are described in `.insight/config.toml` (ADR-0032/0036) *and* in INSIGHT.md blocks (ADR-0044); R2-16 says nothing is written into repos.
+- Rec: all settings live in the project's INSIGHT.md as TOML ```` ```insight ```` blocks, with a `[repo."Fletcher"]` table per repo. In-repo `.insight/` holds only `tags.toml`.
+
+### R3-08: Bad settings and changes — OPEN (vis)
+- Rec: a malformed block or unknown key refuses with the parse error, for Claude to fix. Settings that affect facts are hashed into the cache key, so changing one rebuilds instead of serving stale facts.
+
+## R3-C: The CLI and milestones (before M0)
+
+### R3-09: Is `insight init` required, and what does `build` take? — OPEN (vis)
+- Rec: `insight init` first, then `insight build <project> [--commit <rev>]`.
+
+### R3-10: How the CLI "asks first" when it only prints a log path — OPEN (vis)
+- Rec: a distinct exit code, the estimate in the log, and re-run with `--yes`. MCP returns "needs confirmation" to Claude.
+
+### R3-11: What counts as "a function" for M0's exact-count pass — OPEN (vis)
+Rust macros generate functions with no source text; closures sit inside `format!(…)`.
+- Rec: count function syntax *written in the source*, with a completely separate parser (tree-sitter). Macro-generated functions are excluded. The rules go in SCHEMA.md, and mismatches are printed per file.
+
+### R3-12: The M1 gate as a list of required hops — OPEN (vis)
+Several "receipts" in the walkthrough are a comment, a local or an object field. They can never be hops on a path.
+- Rec: rewrite the gate as required function→function hops (with edge kind). Interesting lines inside a function are found with `sql`/`source`.
+
+## R3-D: `path` and causal order (before M1)
+
+### R3-13: Which edges `path` follows by default — OPEN (vis)
+The pop-out wiring needs a hop *into* a callback handed to `listen("hist-cmd", …)`, which no edge records. `"main"` (22 occurrences, under the 25 limit) **does** link, contrary to BQ-22's note.
+- Rec:
+  - Default: calls (exact + possible), the Tauri link, and trait-dispatch expansion.
+  - Opt-in, labeled as distinct hop kinds: `--via-literal`, `--via-handoff` (back from a value-flow-into-external to the callback), `--via-state`.
+  - Edges into already-visited nodes are still printed, so both routes to `graftNode` show.
+  - "May call nothing" is shown for absent props.
+  - Correct the BQ-22 note.
+
+### R3-14: Three places "a call finishes before the next line" is false — OPEN (vis)
+`invoke(...)` returns immediately while Rust runs; an un-awaited async function runs its rest later; JSX hands the component to React.
+- Rec: three more mechanical order breaks: every `link` hop, un-awaited async calls, JSX render edges. Plus: the race-candidate query also pairs a region with itself (rapid repeated grafts).
+
+## R3-E: Scale, cache, robustness
+
+### R3-15: Memory and big repos — OPEN (vis)
+- Rec: size Node's heap from free RAM, one extractor process per tsconfig/workspace, streamed output. Out-of-memory is a distinct "resource limit" refusal with peak memory. Before M2, keep a warm rust-analyzer helper per project between snapshots.
+
+### R3-16: Cache growth — OPEN (vis)
+A private cargo target per *lockfile* is 2–4 GB each, and vibe coding changes lockfiles constantly.
+- Rec: one private target per (project, toolchain); lockfile-keyed targets only for historical commits; keep the last N working-copy snapshots per project; "ask first" applies only to explicit loads, never to after-build snapshots.
+
+### R3-17: The active snapshot mustn't change under Claude — OPEN (vis)
+An after-build snapshot arriving mid-conversation would silently change what `FROM nodes` returns.
+- Rec: the active snapshot is pinned per Claude session and changes only on explicit load/switch; `status` reports newer ones. Plus a `body_hash` per node, so "same name, different body" is visible as a fact.
+
+### R3-18: Windows paths, line endings, encodings — OPEN (vis)
+- Rec: short cache roots plus long-path support; `compare` normalizes line endings and reports "line endings only" separately; per-file encoding and EOL recorded and spans transcoded to UTF-8; Git LFS pointer files trigger a smudge or a refusal.
+
+### R3-19: Old snapshots after an Insight update changes the schema — OPEN (vis)
+- Rec: refuse queries on a schema mismatch. Commits rebuild on load; working copies rebuild at the next build, or from the frozen copy (R3-05).
+
+## R3-F: Projects and later
+
+### R3-20: One repo of a multi-repo project fails its build — OPEN (vis)
+- Rec: keep that repo's last good snapshot, rebuild links over the mix, and show each repo's snapshot in `status`.
+
+### R3-21: Git worktrees — OPEN (vis)
+An agent working in a worktree builds and fires the hook.
+- Rec: repo identity = `git rev-parse --git-common-dir`; a worktree is a second working copy, snapshotted separately and labeled with its path and branch.
+
+### R3-22: "Must build" for Python/plain JS (post-MVP) — OPEN (vis)
+- Rec: the language's own syntax and import check (`python -m compileall`, `node --check`), with a configured check as override.
+
+### R3-23: Looking inside a dependency — OPEN (vis)
+- Rec: Claude reads dependency source with its own tools now; indexing a dependency as its own snapshot comes via the wish rule.
+
+### R3-24: Updating `insight.exe` while bridges hold it open — OPEN (vis, before first release)
+- Rec: versioned install folders behind a tiny stable launcher, old versions cleaned up when unused; checksum-verify any fetched toolchains.
+
+## R3-G: Internal (delegable)
+1. **Node ID grammar:** repo-relative file › lexical containers; anonymous = `<callee|prop|=>>#<1-based ordinal>`; Rust by file and lexical nesting, with module paths as aliases.
+2. **Schema additions:** `edges.subkind` (`call/render`, `link/tauri`, `link/literal`), a `literal` node kind, and `await` as an `order-break` row.
+3. **Locals and parameters are state nodes.**
+4. **Macro-generated facts get the macro call site as their receipt** (`role='macro'`).
+5. **A curried name as a path start** = the named function plus the functions it returns.
+6. **Named pipe hardening:** current-user-only access, reject remote clients, first-instance, server/client process verification.
+7. **SQL hardening:** authorizer allowlist (no ATTACH/PRAGMA/VACUUM), immutable read-only open, no extensions, a single statement, a 5 s deadline, a heap cap, one connection per session.
+8. **Receipts store spans only;** a `files` table holds the bytes, and text is computed. This avoids GB-sized DBs from huge JSX statements.
+9. **Atomic cache writes:** temp file, then a `meta.complete` flag, then rename; a single-writer lock; eviction skips attached files.
+10. **Cache key additions:** resolved toolchain versions, target triple, features/cfg, hashes of the check commands and settings.
+11. **Submodules and symlinks:** nothing outside the repo root is followed; a submodule is analyzed only if added as its own repo.
+12. **Unknown `@insight` keywords** become a diagnostic for Claude; never fail the build.
+13. **Rust `&self` mutation:** `access` when the receiver type contains `UnsafeCell` (computed); otherwise conservative.
+14. **The self-pair race query** (see R3-14).
+15. **Deterministic discovery order** (sorted by path).
