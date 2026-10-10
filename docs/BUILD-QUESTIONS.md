@@ -816,7 +816,8 @@ Several "receipts" in the walkthrough are a comment, a local or an object field.
 
 ## R3-D: `path` and causal order (before M1)
 
-### R3-13: Which edges `path` follows by default — OPEN (vis)
+### R3-13: Which edges `path` follows by default — ANSWERED → ADR-0047
+**Ruling:** no defaults. `path(from, to, follow=[…])` with Claude choosing the hop kinds per question; every hop is labeled; both routes into an already-visited node are shown; "may call nothing" is shown for absent props. The BQ-22 literal cutoff is removed (every literal linked; occurrence counts are facts).
 The pop-out wiring needs a hop *into* a callback handed to `listen("hist-cmd", …)`, which no edge records. `"main"` (22 occurrences, under the 25 limit) **does** link, contrary to BQ-22's note.
 - Rec:
   - Default: calls (exact + possible), the Tauri link, and trait-dispatch expansion.
