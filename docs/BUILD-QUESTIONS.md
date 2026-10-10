@@ -790,7 +790,8 @@ The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncomm
 `tagging` and `check` are described in `.insight/config.toml` (ADR-0032/0036) *and* in INSIGHT.md blocks (ADR-0044); R2-16 says nothing is written into repos.
 - Rec: all settings live in the project's INSIGHT.md as TOML ```` ```insight ```` blocks, with a `[repo."Fletcher"]` table per repo. In-repo `.insight/` holds only `tags.toml`.
 
-### R3-08: Bad settings and changes — OPEN (vis)
+### R3-08: Bad settings and changes — ANSWERED
+**Ruling:** a malformed block or unknown key refuses with the exact parse error, for Claude to fix (never silently ignored). Settings that affect facts are hashed into the cache key, so a change rebuilds.
 - Rec: a malformed block or unknown key refuses with the parse error, for Claude to fix. Settings that affect facts are hashed into the cache key, so changing one rebuilds instead of serving stale facts.
 
 ## R3-C: The CLI and milestones (before M0)
