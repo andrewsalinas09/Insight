@@ -406,7 +406,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Complete documents with ids, plus optional `base: <view_id>` and a small patch.
 - Rec: (c). The backend owns view state and the window is a pure renderer of versioned "scenes", which keeps replay and tests deterministic.
 
-### BQ-34: The view schema — OPEN
+### BQ-34: The view schema — ANSWERED → ADR-0040
+**Ruling:** nine element kinds, all in the MVP: nodes/edges, groups, collapse, highlight/focus, notes, steps, code excerpts, abstraction nodes, example data.
+
+*(Original question:)*
 - Options:
   - (a) One `elements[]` list: `{id, kind: group|abstraction|annotation|excerpt|table|instance|timeline, label, body, maps_to[], provenance: real|simplified|rewritten|example|pseudocode}`, plus `focus[]`, plus `steps[]`.
   - (b) A typed object per kind, each with its own tool.
@@ -421,7 +424,9 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Raw `file:line` ranges.
 - Rec: (b).
 
-### BQ-36: Bad references in a view — OPEN
+### BQ-36: Bad references in a view — ANSWERED (ADR-0037): only reference resolution is checked. Valid elements render; unresolvable ones come back as errors with candidates.
+
+*(Original question:)*
 - Case: the typo `MainApp › graftNodes`, or quoting `let best = 48;` but mapping it to `nodeUp` instead of `dropTarget`.
 - Options:
   - (a) Reject the whole call.
@@ -463,7 +468,9 @@ What's the first thing that runs, and what's its pass condition?
   - (c) None in the MVP.
 - Rec: (a).
 
-### BQ-41: Window → agent ("what am I looking at?") — OPEN
+### BQ-41: Window → agent ("what am I looking at?") — ANSWERED (ADR-0039): the `selection` tool.
+
+*(Original question:)*
 - Case: you click `ghost` in the window and ask "why is *this* useState?"
 - Options:
   - (a) A `ui_state()` tool returning {view_id, step, selection[], snapshot}.
