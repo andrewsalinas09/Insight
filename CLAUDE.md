@@ -18,6 +18,7 @@ An LLM-powered tool for understanding any codebase visually and interactively. Y
 | `docs/TESTBED.md` | Every known edge case (TB-IDs); the design acceptance suite | Before AND after any design change |
 | `docs/examples/` | Worked examples tracing real code through the design | When applying or testing a pattern |
 | `docs/research/` | Research reports (tooling, LLM providers, rendering) | When a question needs evidence |
+| `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-IDs), asked one at a time | Before any backend design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |
 | `docs/archive/` | Original raw notes, verbatim | Almost never (history only) |

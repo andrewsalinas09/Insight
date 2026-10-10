@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — The backend question round begins
+**Done:** ADR-0030: the backend and frontend are separate, and backend decisions are asked one at a time. Three background agents (solver, MCP tool API, architecture/stack/testing) drafted 57 Fletcher-anchored questions with options and recommendations. They were merged and deduplicated into `docs/BUILD-QUESTIONS.md` (BQ-01…BQ-47, seven rounds, most-blocking first), which is added to the doc map. Two places where the agents disagreed are flagged for the user: BQ-05 (TS checker in a Node sidecar vs. Rust-native oxc without types) and BQ-46 (whole-graph goldens vs. targeted assertions). One real conflict between accepted ADRs is surfaced: BQ-38 (example values in steps: ADR-0011 vs. 0019 vs. 0026).
+**Learned:** The solver agent found that the field-level state ruling (Q-20) effectively requires a real TS type checker, a consequence nobody had noticed.
+**Next:** Ask BQ-01.
+
 ## 2026-10-09 (cont.) — Clickable mockup; Fletcher's Console as the visual language
 **Done:** The user didn't understand the four views from their text descriptions, so I built a clickable mockup of the history-tree answer (private artifact: https://claude.ai/artifact/XgSXHu6urDiPDzwafaMtRr; 11 steps, real Fletcher code excerpts, example data labeled). v1 was a generic split terminal/window. The user: "the UI should be very very different… similar design language as Fletcher." ADR-0027: adopt Fletcher's Console. v2 is the Insight window full-frame: header (INSIGHT · GRAPH/SEQUENCE/JOURNAL tabs · repo chip · "claude · terminal" chip), a code graph strip (functions → state they write → what reacts), an example-instance strip (Map table + tree, the model's drawing), a labeled-cell inspector with real code, and a docked bottom bar carrying Claude's narration and step transport.
 **Learned:** Describing a visual tool in prose fails. Mock it in the real visual language from the start. The bottom-bar slot from Fletcher's A/B bar is a natural home for the agent's voice.

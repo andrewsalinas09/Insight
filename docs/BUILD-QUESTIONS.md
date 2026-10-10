@@ -1,0 +1,387 @@
+# Build questions (backend)
+
+The decisions needed before building the backend (ADR-0030). They were drafted by three agents (solver, MCP tool API, architecture/stack/testing) on 2026-10-09 and merged and deduplicated here, **most-blocking first**. They're asked one at a time; each answer is recorded (ADR or ruling) and the status updated here.
+
+Real code references are to Fletcher @ `cd5d6ff`. **Rec** = the drafting agent's recommendation, not a decision.
+
+Status key: **OPEN** · **ANSWERED → ADR-XXXX / ruling**
+
+---
+
+## Round 1: Shape of the system
+
+### BQ-01: Process layout and how Claude Code connects — OPEN
+Is the backend a headless `insight` program, separate from the window? And how does Claude Code reach it?
+- Case: `claude` in Fletcher calls `focus(graftNode)`. If the backend lives inside the Tauri app, calls fail unless the window is open. Two sessions (Claude Code + Codex) must not each build the graph.
+- Options:
+  - (a) One Tauri app: solver + MCP + UI.
+  - (b) A headless `insight` binary that Claude Code launches over stdio (`claude mcp add insight -- insight mcp`), with the window as a separate client.
+  - (c) (b), but the stdio process is a thin shim that attaches to one long-lived backend daemon.
+  - (d) The backend hosts an HTTP MCP endpoint directly.
+- Rec: (b) now (zero config; snapshots are cached on disk, so a cold start is cheap), moving to (c) if two simultaneous sessions become real. The architecture agent recommended (b); the tool-API agent recommended (c).
+
+### BQ-02: The first runnable milestone — OPEN
+What's the first thing that runs, and what's its pass condition?
+- Options:
+  - M0: `insight build <fletcher> cd5d6ff` prints stats (files, functions including anonymous ones, edges, time).
+  - M1: `insight path "HistoryTree › nodeUp" --to-effect write` prints the drag chain through both `onGraft` wirings → `applySnap` → `invoke("set_fletcher_chain")` → `fsx::write_atomic`, each hop with its receipt.
+  - M2: M1 as an MCP tool inside Claude Code, text only.
+- Rec: M0 → M1 (pass: every receipt in steps 1–12 of the drag-graft example is on the path) → M2. UI after that.
+
+### BQ-03: Cargo workspace layout — OPEN
+- Options:
+  - (a) Many crates: `insight-model`, `insight-contract`, `insight-solver`, `insight-lang-ts`, `insight-lang-rust`, `insight-link-tauri`, `insight-engine` (store + query), `insight-mcp`, and the `insight` binary. The window lives in `app/`, outside `default-members`, so backend tests never compile WebView2.
+  - (b) Three crates: core / plugins / bin.
+  - (c) One crate until it hurts.
+- Rec: (a).
+
+### BQ-04: What a plugin is physically — OPEN
+- Options:
+  - (a) Compile-time Rust crates implementing a `LanguagePlugin` / `LinkPlugin` trait.
+  - (b) WASM loaded at runtime.
+  - (c) Separate executables speaking a fact protocol.
+- Rec: (a). One user, no third-party plugins (ADR-0025), and link passes need TS and Rust facts in one address space.
+
+## Round 2: Solver front ends
+
+### BQ-05: The TypeScript engine (the agents disagree) — OPEN
+- Case: connecting `onto.children.push(node.id)` (`App.tsx:4966`) to `HistNode.children` needs type inference through `Map.get`. Scope analysis alone can't do it, and field-level state (Q-20 ruling) requires it.
+- Options:
+  - (a) The real TypeScript checker (compiler API) in a Node sidecar, emitting facts.
+  - (b) `oxc` in Rust: fast, one binary, scopes and read/write flags, but **no type checker**.
+  - (c) tree-sitter plus our own resolver.
+  - (d) The `scip-typescript` index.
+  - (e) The native TS port (`tsgo`), when its API is usable.
+- Rec: the solver agent says (a), because field-level state is impossible without types. The architecture agent says (b), for one binary and no Node or PATH surprises. Needs your call.
+
+### BQ-06: The Rust engine and macro expansion — OPEN
+- Case: `#[tauri::command] fn set_fletcher_chain` is registered only inside `tauri::generate_handler![…]` (`lib.rs:5029`). `#[derive(Serialize)]` generates the field reads. Neither is visible without expanding macros, which runs dependency code.
+- Options:
+  - (a) rust-analyzer as a library (`ra_ap_*`), with proc macros and build scripts **on**.
+  - (b) The same, with them **off**.
+  - (c) A rustc driver (nightly, full compile).
+  - (d) tree-sitter or `syn` plus our own resolver.
+- Rec: (a), falling back to (b) when expansion fails.
+
+### BQ-07: Where a commit's bytes and dependencies come from — OPEN
+- Case: Fletcher's working tree is dirty right now and `core.autocrlf=true`. Reading from disk would label uncommitted edits as `cd5d6ff`. Types for `useState` and `invoke` need `node_modules`, and rust-analyzer needs crates pinned by `Cargo.lock`.
+- Options:
+  - (a) Read sources from git's object store (`gix`) for exact bytes, and materialize dependencies in a cached worktree (`npm ci --ignore-scripts`, `cargo fetch`, keyed by lockfile hash).
+  - (b) Reuse the live checkout's `node_modules` and `target`.
+  - (c) No dependencies: external symbols stay unresolved.
+- Rec: (a), falling back to (c).
+
+### BQ-08: Code that doesn't parse or type-check — OPEN
+- Options:
+  - (a) Fail the build.
+  - (b) Build anyway, with per-file diagnostics, `unresolved` stubs, and nodes in error ranges flagged `degraded`.
+  - (c) Skip broken files.
+- Rec: (b), which is "incomplete, never wrong" (TB-029).
+
+## Round 3: The fact schema (the solver's output)
+
+### BQ-09: The closed set of node and edge kinds — OPEN
+- Options:
+  - (a) Nodes: `container{file|module|type|function|block}`, `state{var|field|element|static|cell}`, `external`, `unresolved`. Edges: `contains`, `call`, `read`, `write`, `access` (may write), `binds`, `value-flow`, `implements`, `link`, `exit`. Each edge carries {id, kind, from, to, resolution: exact|possible|unresolved, receipt}.
+  - (b) An open, plugin-defined vocabulary.
+- Rec: (a), closed, so the query layer stays language-agnostic.
+
+### BQ-10: The node ID grammar, anonymous naming, namespacing, and what the agent may type — OPEN
+- Case: dozens of `useEffect(() => …)` in `MainApp`; the curried `nodeDown = (id) => (e) => …` (`:737`) whose *inner* arrow is the mounted handler; the field `hist.current.current`.
+- Options:
+  - (a) Path with context names and per-name ordinals (`App.tsx › MainApp › useEffect#14`, `HistoryTree › nodeDown › =>`), scoped by `(repo, snapshot)` internally from day one. The agent may pass a unique suffix (`graftNode`), and ambiguity returns an error with candidates.
+  - (b) Pure ordinals (`λ7`).
+  - (c) `file:byte-offset`.
+  - (d) Opaque handles per query.
+- Rec: (a).
+
+### BQ-11: Path and span encoding — OPEN
+- Case: `App.tsx` has 486 non-ASCII lines, so UTF-8 bytes, UTF-16 offsets in the webview, and RustRover columns all disagree. Windows paths are case-insensitive; git paths aren't.
+- Options:
+  - (a) Repo-relative, forward-slash, case-exact git paths. Spans are UTF-8 byte ranges plus 1-based lines, converted to UTF-16 only at the window boundary.
+  - (b) LSP-style UTF-16 line/col.
+  - (c) Absolute Windows paths.
+- Rec: (a).
+
+### BQ-12: What a receipt contains — OPEN
+- Case: `id: h.next++,` (`:4958`) is both a read and a write. `invoke("history_save", …).catch(() => {})` (`:5126`) is a call, a read, a link and an anonymous function on one line.
+- Options:
+  - (a) {commit, file, byte range, line/col, the minimal expression text}.
+  - (b) Full source lines.
+  - (c) (a) plus the enclosing statement and the innermost container ID.
+- Rec: (c). Spans are exact because snapshots are immutable (ADR-0029), so quote-matching is unnecessary.
+
+### BQ-13: State identity and aliasing — OPEN
+- Case: `const h = hist.current; h.current = node.id;` (`:4942/4968`); `h.nodes.get(c)?.parent`; Rust `Arc` clones sharing one `AtomicBool` (`lib.rs:918–922`).
+- Options:
+  - (a) Declaration-symbol identity: `h.current` and `hist.current.current` are the same field symbol, collection contents are a pseudo-field `nodes[*]`, and a typed object literal writes every field it sets. Instances of a type merge, marked `possible-instance`.
+  - (b) Access paths with intraprocedural alias tracking.
+  - (c) Full points-to analysis.
+- Rec: (a).
+
+### BQ-14: When a method call counts as a write — OPEN
+- Case: `onto.children.push(…)` and `h.nodes.set(…)` look like plain calls in TS; Rust `stop.store(true)` mutates through `&self`.
+- Options:
+  - (a) Signature-based: Rust `&mut self` or a mutable deref is a write; interior-mutability types and every TS method call on state are recorded as `access` (may write).
+  - (b) A built-in list of mutating methods (`push`, `set`, `store`…).
+  - (c) Only `call-on-state`, and the model decides.
+- Rec: (a), since (b) is a catalogue (ADR-0023). Revisit if the mutation matrix is too noisy.
+
+### BQ-15: Function values and indirect calls — OPEN
+- Case: `onGraft?.(id, target)` (`:774`), where `HistoryTree` is mounted three times: `onGraft={graftNode}` (`:8345`), an `emitTo` arrow (`:1405`), and once with none (`:6351`). `busRef.current.cmd(...)` is assigned in two places. Rust `(self.make)(fs)`.
+- Options:
+  - (a) No resolution: the call targets the state node, and the model follows its writes.
+  - (b) One-hop value flow: callees are every function written to that symbol (assignments, object fields, arguments, JSX props), each marked `possible`, plus an "absent" candidate. Returned function literals are followed one level, which handles curried handlers.
+  - (c) Full points-to analysis.
+- Rec: (b), keeping the (a) edges as well.
+
+### BQ-16: Callers that aren't our code (React, Tauri, std) and JSX — OPEN
+- Case: `useEffect(() => …)`, `listen("hist-cmd", (e) => …)`, `setTimeout(…, 400)`, `std::thread::spawn(move || …)`, `<HistoryTree onGraft={graftNode}/>`.
+- Options:
+  - (a) A `value-flow` edge from the callback into the external leaf only.
+  - (b) (a) plus a synthetic `call` back from the external leaf.
+  - (c) (a) for externals, plus JSX as syntax: `<C p={v}/>` is a `render` call to `C` and binds `v` to prop `p`. That's plain desugaring, not a React rule.
+- Rec: (c). Without it there's no component tree and no prop flow.
+
+### BQ-17: Same-source binding, precisely — OPEN
+- Case: `const [histVersion, setHistVersion] = useState(0)` (about 120 in `App.tsx`); Rust `let (tx, rx) = mpsc::channel()`.
+- Options:
+  - (a) All names destructured from one call share one `cell` node: calling a function sibling is `access`, reading any other sibling is `read`.
+  - (b) (a) plus direction by position.
+  - (c) Per-hook plugins (rejected by ADR-0023).
+- Rec: (a).
+
+### BQ-18: Branches as block containers — OPEN
+- Case: `if (!h || !src || !onto || id === ontoId) return;` (`:4946`); bus arm `else if (p.type === "graft" …) graftNode(…)` (`:5235`); Rust `?`.
+- Options:
+  - (a) No blocks.
+  - (b) A block for every `if`/`else`/`switch` case/`match` arm/ternary/`&&` JSX guard/loop/`try`/`catch`, with its condition text, plus `exit` edges for `return`/`?`/`throw`.
+  - (c) Statement-level only.
+- Rec: (b), which ADR-0008 already commits to.
+
+### BQ-19: Trait and interface dispatch — OPEN
+- Case: `source.fill(&mut fbuf)` with `source: &mut dyn Source` has three impls across two crates (`playback.rs`, `engine.rs`, `profile.rs`).
+- Options:
+  - (a) Fan out to every impl at build time.
+  - (b) One edge to `Source::fill` plus `implements` edges, expanded at query time.
+  - (c) (b) plus narrowing by value flow.
+- Rec: (b) now, (c) later.
+
+### BQ-20: What gets analyzed, and external leaves — OPEN
+- Case: tests, `#[cfg(test)]`, `vite.config.ts`, `build.rs`; externals like `@tauri-apps/api/core.invoke`, dynamic `import("@tauri-apps/plugin-dialog")`, `window.location.search` (which decides `IS_HISTORY_WINDOW`), `std::fs`.
+- Options:
+  - (a) All git-tracked source in the TS projects and Cargo members, tests included, with one external leaf per referenced symbol and external globals as state.
+  - (b) One leaf per package.
+  - (c) Index dependency source too.
+- Rec: (a). Tests are needed for "what reaches X" (Q-31).
+
+### BQ-21: The Tauri link — OPEN
+- Case: `invoke<EqState>("set_fletcher_chain", { filters: own })` (`App.tsx:4724`) ↔ `fn set_fletcher_chain(filters: Vec<FilterIn>)` (`lib.rs:272`); `rename_all = "camelCase"` maps `fc_hz` to `fcHz`.
+- Options:
+  - (a) Tauri-bridge plugin: `invoke` string = `#[tauri::command]` fn name, at command level, flagging fns missing from `generate_handler!`.
+  - (b) Generic, via macro expansion and identical strings.
+  - (c) (a) plus argument-field links through `rename_all`.
+- Rec: (a). camelCase mapping is a transform, so it's the model's job.
+
+### BQ-22: Generic same-string links (events, bus dispatch) — OPEN
+- Case: `"hist-cmd"` in TS `emitTo`, TS `listen` and Rust `emit_to`; `{ type: "graft" }` ↔ `p.type === "graft"`; `"main"` appears everywhere (noise).
+- Options:
+  - (a) None: plugin rules only.
+  - (b) Undirected `same-literal` edges between literals in argument, property or comparison positions, workspace-wide.
+  - (c) (b), but literals above N occurrences, or very short ones, are recorded as counts instead of edges.
+- Rec: (c). This is mechanical and resolves the pop-out wiring with no framework rules.
+
+## Round 4: Snapshots
+
+### BQ-23: Uncommitted code — OPEN
+- Case: Claude Code just edited `App.tsx` without committing, and you ask "how does graft work now?"
+- Options:
+  - (a) Commits only, with every response stamped `snapshot: cd5d6ff (working tree differs in 2 files)`.
+  - (b) An automatic `commit+dirty` snapshot (HEAD plus modified files, keyed by a content hash).
+  - (c) Refuse until you commit.
+- Rec: (a) for the first milestone, then (b). The key format allows a dirty suffix from day one.
+
+### BQ-24: Snapshot storage and cache key — OPEN
+- Options:
+  - (a) In-memory graph, persisted as one immutable binary file per key under `%LOCALAPPDATA%\Insight\snapshots\…`, keyed by (commit, dirty hash, solver version, plugin versions).
+  - (b) SQLite as storage and query engine.
+  - (c) No persistence.
+- Rec: (a). Including the solver version means a solver bug fix never serves a stale graph. SQLite later only for mutable things (saved views).
+
+### BQ-25: Repo loading, build trigger and time budget — OPEN
+- Case: `claude` started in `Fletcher\app` (a subfolder); a cold build might exceed an MCP call timeout.
+- Options:
+  - (a) Default to the cwd's repo at HEAD, start building eagerly in the background at MCP startup, override with an `open(repo, rev)` tool, plus `insight build` on the CLI.
+  - (b) Explicit load only.
+  - (c) A per-repo `insight.toml`.
+- Rec: (a). Targets: Fletcher cold build < 60 s, cached load < 1 s.
+
+## Round 5: Queries and the MCP tool API
+
+### BQ-26: The query layer (Q-34 for the MVP) — OPEN
+- Case: "every path from `nodeUp` to a file write"; "all writers of `hist.*`" (the mutation matrix).
+- Options:
+  - (a) Hand-written traversal primitives as fixed tools: `related(node, relation, direction, depth)`, `paths(from, to, kinds)`, `matrix(rows, cols, relation)`, with facts stored as plain relations so Datalog can be added later.
+  - (b) Embedded Datalog now.
+  - (c) SQL recursive CTEs.
+- Rec: (a).
+
+### BQ-27: The MVP tool list — OPEN
+- Options:
+  - (a) About 9 coarse tools: `overview`, `find`, `resolve`, `inspect`, `related`, `matrix`, `source`, `show` (a whole view document), `ui_state`. ADR-0026's verbs become element kinds inside `show`.
+  - (b) About 20 imperative verbs (`focus`, `highlight`, `group`…).
+  - (c) Two tools: `query` + `render`.
+- Rec: (a).
+
+### BQ-28: Result size caps and row format — OPEN
+- Case: "everything in `MainApp`" means about 1,100 functions.
+- Options:
+  - (a) A hard cap (e.g. 50 rows), plus `total`/`truncated`/`cursor` and per-container rollups (`HistoryTree: +212`), in compact one-line text rows (`path | kind | L4960 | "h.current = node.id;"`).
+  - (b) A caller-given token budget.
+  - (c) No cap.
+- Rec: (a).
+
+### BQ-29: How the agent finds things — OPEN
+- Options:
+  - (a) `find(name pattern)` plus `resolve(file, line|quote)` → the innermost node. Text search stays with the agent's grep; semantic search is the model's job.
+  - (b) Also full-text/regex.
+  - (c) Also semantic search.
+- Rec: (a).
+
+### BQ-30: Reading source through Insight — OPEN
+- Case: you have uncommitted edits, and the agent quotes working-tree text that doesn't exist in snapshot `cd5d6ff`.
+- Options:
+  - (a) No source tool.
+  - (b) `source(ref, context)` returns snapshot text with line numbers, and responses warn when the working tree differs.
+  - (c) Source embedded in every result.
+- Rec: (b).
+
+### BQ-31: The commit stamp in every response — OPEN
+- Options:
+  - (a) An active snapshot, with every response starting `@cd5d6ff (dirty: no)`, plus an async `build(rev)` tool.
+  - (b) An explicit `rev` on every call.
+  - (c) Auto-follow HEAD (breaks ADR-0029's pinning).
+- Rec: (a).
+
+### BQ-32: What the agent is told up front — OPEN
+- Options:
+  - (a) Tool descriptions only.
+  - (b) Short MCP `instructions` (workflow + reference grammar, about 300 words) plus an `overview(depth)` tool (container tree with sizes, counts, unresolved rate).
+  - (c) A skill or AGENTS.md snippet in your repo.
+- Rec: (b).
+
+## Round 6: Views and the backend↔window contract
+
+### BQ-33: Views: whole documents or edits to a live view — OPEN
+- Options:
+  - (a) A complete view document every call.
+  - (b) Imperative edits to a server-held current view.
+  - (c) Complete documents with ids, plus optional `base: <view_id>` and a small patch.
+- Rec: (c). The backend owns view state and the window is a pure renderer of versioned "scenes", which keeps replay and tests deterministic.
+
+### BQ-34: The view schema — OPEN
+- Options:
+  - (a) One `elements[]` list: `{id, kind: group|abstraction|annotation|excerpt|table|instance|timeline, label, body, maps_to[], provenance: real|simplified|rewritten|example|pseudocode}`, plus `focus[]`, plus `steps[]`.
+  - (b) A typed object per kind, each with its own tool.
+  - (c) Free-form markdown/mermaid plus refs.
+- Rec: (a). `provenance` enforces "visibly authored" mechanically.
+
+### BQ-35: Anchors below node level — OPEN
+- Case: pseudocode "walk up parents, count steps" should map to the `for (let steps = 1; c != null; steps++)` loop; a highlight on the `< 6` check in `nodeMove`.
+- Options:
+  - (a) Node-level only.
+  - (b) `{node, quote}` anchors within a node, plus per-line `maps_to` on code and pseudocode.
+  - (c) Raw `file:line` ranges.
+- Rec: (b).
+
+### BQ-36: Bad references in a view — OPEN
+- Case: the typo `MainApp › graftNodes`, or quoting `let best = 48;` but mapping it to `nodeUp` instead of `dropTarget`.
+- Options:
+  - (a) Reject the whole call.
+  - (b) Render the valid elements, drop the bad ones, and return per-element errors with candidates.
+  - (c) Render everything marked "unmapped" (forbidden by ADR-0026).
+- Rec: (b).
+
+### BQ-37: Instance diagrams and before/after frames — OPEN
+- Case: `hist.nodes` holding `#0→#4→#5→#6→#7`; `graftNode(7, 4)` adds `#12` and `current` moves.
+- Options:
+  - (a) A typed object graph `objects[{id, type_ref, fields{name: value | ->objId}}]` with each field mapped to its field node. A frame is a full instance, and Insight computes the diff.
+  - (b) The agent sends diffs.
+  - (c) Tables only.
+- Rec: (a).
+
+### BQ-38: Example values in steps (conflict between ADRs) — OPEN
+- ADR-0011 says an LLM-predicted value is never displayed; ADR-0019 puts valued step-throughs out of the MVP; ADR-0026 allows *example* values.
+- Case: the graft walk's "`d = 3`, `node.id` e.g. 12, label '3 edits in one'".
+- Options:
+  - (a) Allow values tagged `provenance: example`, rendered as authored, and amend ADR-0011.
+  - (b) Steps carry location, highlights and prose only.
+  - (c) No steps in the MVP.
+- Rec: (a). It's what both Fletcher answers needed.
+
+### BQ-39: Step-throughs: all at once or one call per step — OPEN
+- Options:
+  - (a) The whole `steps[]` in one view (each step {focus, highlight[], frame?, values?, text}); the window owns Next/Back, and the agent can jump to a step.
+  - (b) One tool call per step, timed to the narration.
+  - (c) Both.
+- Rec: (a).
+
+### BQ-40: Linking prose to graph elements — OPEN
+- Options:
+  - (a) Inline markup in any text field (`[nodeUp](HistoryTree › nodeUp)`), validated like `maps_to`, with the terminal copy left plain.
+  - (b) A separate `say(text, refs[])` tool.
+  - (c) None in the MVP.
+- Rec: (a).
+
+### BQ-41: Window → agent ("what am I looking at?") — OPEN
+- Case: you click `ghost` in the window and ask "why is *this* useState?"
+- Options:
+  - (a) A `ui_state()` tool returning {view_id, step, selection[], snapshot}.
+  - (b) An MCP resource subscription.
+  - (c) None.
+- Rec: (a).
+
+### BQ-42: No window open — OPEN
+- Options:
+  - (a) Validate, store as the latest view, and return `window: not connected`.
+  - (b) Error.
+  - (c) Auto-launch the window.
+- Rec: (a), with auto-launch as an opt-in later. Headless is what makes it testable.
+
+### BQ-43: The push channel to the window — OPEN
+- Options:
+  - (a) The backend hosts a WebSocket on an ephemeral 127.0.0.1 port with a token, and writes `%LOCALAPPDATA%\Insight\run\session.json` for the window to find.
+  - (b) A named pipe relayed by Tauri events.
+  - (c) A watched file.
+- Rec: (a). It works for Tauri, a browser tab and a test client alike.
+
+### BQ-44: Where the contract types are defined — OPEN
+- Case: adding a `timing` field must not silently drop out of the window. That's the same bug class as Fletcher's `HistNode` → `HistTreeNode` copy (TB-082).
+- Options:
+  - (a) Rust serde types in `insight-contract`, with TS generated (`ts-rs` or `specta`), committed, and checked in CI.
+  - (b) JSON Schema with codegen for both sides.
+  - (c) Protobuf.
+- Rec: (a).
+
+## Round 7: Testing
+
+### BQ-45: How tests reach Fletcher — OPEN
+- Options:
+  - (a) A git submodule `testdata/fletcher` pinned to `cd5d6ff`, read via `gix`, plus tiny synthetic fixtures per language rule.
+  - (b) Your local clone at a pinned hash (local only).
+  - (c) Vendored files.
+- Rec: (a). It works in public CI (Insight is Apache-2.0).
+
+### BQ-46: The solver correctness suite — OPEN
+- Options:
+  - (a) Synthetic fixtures per rule plus curated assertions on Fletcher (e.g. `graftNode` writes `children/nodes/current/next`; `setHistVersion` ↔ the autosave deps; `invoke("history_save")` ↔ `fn history_save` → `fsx::write_atomic`).
+  - (b) (a) plus whole-graph snapshot goldens.
+  - (c) (b) plus a differential oracle against tsc/rust-analyzer "find all references", reporting the TB-097 resolution rate each run.
+- Rec: the solver agent says (c); the architecture agent warns whole-graph goldens are brittle (assert targeted facts only). Needs your call.
+
+### BQ-47: Tool-API replay, eval tiers and session logging — OPEN
+- Options:
+  - (a) A deterministic golden replay (scripted tool calls for the drag-graft and history-tree answers → snapshot-tested responses and scenes) in CI.
+  - (b) (a) plus a manual `insight eval` running headless `claude -p` with the MCP attached, scored against the hand key.
+  - (c) (b) plus an LLM judge.
+- Rec: (b), with JSONL session logging always on (`%LOCALAPPDATA%\Insight\sessions\`). Recorded sessions also let the window be built without a live agent.
