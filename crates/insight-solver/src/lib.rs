@@ -260,6 +260,19 @@ fn build_repo(project: &str, name: &str, repo: &settings::RepoSettings, rev: &st
         ingest(cmd, "rust", &tree, &exported, &mut w, &mut tally, log)?;
     }
 
+    // Never silently incomplete: source files no project covered are stated.
+    for path in exported.files.keys() {
+        let in_deps = path.split('/').any(|s| s == "node_modules");
+        if !in_deps && insight_count::Lang::from_path(path).is_some() && !tally.files.contains_key(path) {
+            log.line(format!("  not analyzed (no project covers it): {path}"));
+            w.diagnostic(&insight_model::Diagnostic {
+                file: Some(path.clone()),
+                severity: insight_model::Severity::Info,
+                message: "not analyzed: no Cargo package or tsconfig covers this file".into(),
+            })?;
+        }
+    }
+
     // The M0 pass: an independent count must match exactly, per file (R3-11).
     let mut mismatches = Vec::new();
     let mut total = 0;

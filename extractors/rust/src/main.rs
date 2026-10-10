@@ -1,23 +1,59 @@
 //! Insight's Rust extractor (ADR-0034, R2-27).
 //!
-//! M0 uses rust-analyzer's own parser crate (`ra_ap_syntax`) to emit containers:
-//! files, modules, types, impls, functions (including closures) and blocks.
-//! Semantic resolution (calls, reads/writes, macro expansion) arrives at M1 with
-//! rust-analyzer's semantic crates. Knows the Rust language only, no frameworks
-//! (ADR-0048). Output: NDJSON on stdout (R2-28).
+//! Loads each Cargo workspace into rust-analyzer (build scripts and proc macros
+//! on, so macros expand: BQ-06) and emits containers: files, modules, types,
+//! impls, functions (including closures) and blocks. Functions written inside
+//! macro-call arguments (`map(|x| …)` inside `println!(…)`) are found through
+//! the real macro expansion and mapped back to their source text (R3-11).
+//! Knows the Rust language only, no frameworks (ADR-0048). NDJSON on stdout (R2-28).
+//!
+//! rust-analyzer crates are pinned to 0.0.345 (newer releases need rustc > 1.95);
+//! `unicode-ident` is pinned to 1.0.22 to match its lexer's Unicode tables.
 //!
 //! Usage: insight-extract-rust --root <dir> --package <dir> [--package …] --schema <N>
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use insight_model::{FACT_SCHEMA_VERSION, End, FileFact, Header, NodeFact, NodeKind, Record, Span};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxNode, ast, ast::HasLoopBody, ast::HasName};
+use insight_model::{Diagnostic, FACT_SCHEMA_VERSION, End, FileFact, Header, NodeFact, NodeKind, Record, Severity, Span};
+use ra_ap_hir::Semantics;
+use ra_ap_ide_db::RootDatabase;
+use ra_ap_load_cargo::{LoadCargoConfig, ProcMacroServerChoice, load_workspace_at};
+use ra_ap_project_model::{CargoConfig, RustLibSource};
+use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxNode, T, ast, ast::HasLoopBody, ast::HasName};
+use ra_ap_vfs::FileId;
 use sha2::{Digest, Sha256};
 
 const EXTRACTOR: &str = concat!("rust@", env!("CARGO_PKG_VERSION"));
+
+/// A function written inside a macro call's arguments, mapped back to source.
+struct MacroFn {
+    start: u32,
+    end: u32,
+    name: String,
+    anon: bool,
+}
+
+/// The topmost folder (within `root`) whose Cargo.toml declares `[workspace]`, else the package itself.
+fn workspace_root(root: &Path, package: &Path) -> PathBuf {
+    let mut best = package.to_path_buf();
+    for dir in package.ancestors() {
+        if !dir.starts_with(root) {
+            break;
+        }
+        let is_ws = std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"));
+        if is_ws {
+            best = dir.to_path_buf();
+        }
+    }
+    best
+}
+
+fn norm(p: &str) -> String {
+    p.trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
+}
 
 fn main() -> Result<()> {
     let mut root = None;
@@ -49,10 +85,36 @@ fn main() -> Result<()> {
     out.emit(Record::Header(Header {
         schema: FACT_SCHEMA_VERSION,
         extractor: EXTRACTOR.into(),
-        toolchain: "ra_ap_syntax (pinned in Cargo.lock)".into(),
+        toolchain: "rust-analyzer 0.0.345 (ra_ap crates)".into(),
     }))?;
+
+    // Load every workspace once; map each file to the database that owns it.
+    let roots: BTreeSet<PathBuf> = packages.iter().map(|p| workspace_root(&root, &root.join(p))).collect();
+    let cargo_config = CargoConfig { sysroot: Some(RustLibSource::Discover), all_targets: true, set_test: true, ..Default::default() };
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let load_config = LoadCargoConfig {
+        load_out_dirs_from_check: true,
+        with_proc_macro_server: ProcMacroServerChoice::Sysroot,
+        prefill_caches: false,
+        num_worker_threads: threads,
+        proc_macro_processes: 1,
+    };
+    let mut dbs: Vec<RootDatabase> = Vec::new();
+    let mut owner: HashMap<String, (usize, FileId)> = HashMap::new();
+    for ws in &roots {
+        eprintln!("loading workspace {}", ws.display());
+        let (db, vfs, _pm) = load_workspace_at(ws, &cargo_config, &load_config, &|msg| eprintln!("  {msg}"))?;
+        for (id, path) in vfs.iter() {
+            if let Some(abs) = path.as_path() {
+                owner.entry(norm(abs.as_str())).or_insert((dbs.len(), id));
+            }
+        }
+        dbs.push(db);
+    }
+    let semas: Vec<Semantics<'_, RootDatabase>> = dbs.iter().map(Semantics::new).collect();
     for abs in files {
-        extract_file(&root, &abs, &mut out)?;
+        let sema = owner.get(&norm(&abs.to_string_lossy())).map(|(i, id)| (&semas[*i], *id));
+        extract_file(&root, &abs, sema, &mut out)?;
     }
     let end = out.end.clone();
     out.emit(Record::End(end))?;
@@ -126,6 +188,8 @@ struct FileCx<'a, W: Write> {
     lines: Lines,
     /// (scope id, name) -> count, for positional ordinals (R3-G #1).
     ordinals: HashMap<(String, String), u32>,
+    /// Functions inside macro-call arguments, sorted by (start, longest first).
+    macro_fns: Vec<MacroFn>,
 }
 
 impl<W: Write> FileCx<'_, W> {
@@ -137,7 +201,10 @@ impl<W: Write> FileCx<'_, W> {
 
     fn span(&self, n: &SyntaxNode) -> Span {
         let r = n.text_range();
-        let (s, e) = (u32::from(r.start()), u32::from(r.end()));
+        self.span_of(u32::from(r.start()), u32::from(r.end()))
+    }
+
+    fn span_of(&self, s: u32, e: u32) -> Span {
         Span { byte_start: s as u64, byte_end: e as u64, line_start: self.lines.line(s), line_end: self.lines.line(e.saturating_sub(1).max(s)) }
     }
 
@@ -147,7 +214,7 @@ impl<W: Write> FileCx<'_, W> {
     }
 }
 
-fn extract_file<W: Write>(root: &Path, abs: &Path, out: &mut Out<W>) -> Result<()> {
+fn extract_file<W: Write>(root: &Path, abs: &Path, sema: Option<(&Semantics<'_, RootDatabase>, FileId)>, out: &mut Out<W>) -> Result<()> {
     let bytes = std::fs::read(abs)?;
     let text = String::from_utf8(bytes.clone()).with_context(|| format!("{} is not UTF-8", abs.display()))?;
     let file = rel(root, abs);
@@ -166,16 +233,100 @@ fn extract_file<W: Write>(root: &Path, abs: &Path, out: &mut Out<W>) -> Result<(
         name: file.rsplit('/').next().unwrap_or(&file).to_string(),
         span: Span { byte_start: 0, byte_end: bytes.len() as u64, line_start: 1, line_end: last_line },
     }))?;
-    let parse = SourceFile::parse(&text, Edition::Edition2024);
-    let mut cx = FileCx { out, lines, ordinals: HashMap::new() };
-    for child in parse.tree().syntax().children() {
+    let (tree, macro_fns) = match sema {
+        Some((sema, id)) => {
+            let tree = sema.parse_guess_edition(id).syntax().clone();
+            if tree.text() != text.as_str() {
+                bail!("{file}: rust-analyzer's text differs from the file on disk");
+            }
+            let fns = macro_functions(sema, &tree, id);
+            (tree, fns)
+        }
+        None => {
+            out.emit(Record::Diagnostic(Diagnostic {
+                file: Some(file.clone()),
+                severity: Severity::Warning,
+                message: "not part of any crate's module tree; macro arguments not analyzed".into(),
+            }))?;
+            (SourceFile::parse(&text, Edition::Edition2024).tree().syntax().clone(), Vec::new())
+        }
+    };
+    let mut cx = FileCx { out, lines, ordinals: HashMap::new(), macro_fns };
+    for child in tree.children() {
         visit(&mut cx, &child, &file, &file)?;
+    }
+    Ok(())
+}
+
+/// Finds every function written inside a macro call's arguments by descending
+/// its `|`, `||` and `fn` tokens into the real expansion (all nesting levels),
+/// and keeping those whose expansion maps back to this exact source text.
+fn macro_functions(sema: &Semantics<'_, RootDatabase>, tree: &SyntaxNode, id: FileId) -> Vec<MacroFn> {
+    let this_file = sema.attach_first_edition(id);
+    let mut found: BTreeMap<(u32, std::cmp::Reverse<u32>), (String, bool)> = BTreeMap::new();
+    for tt in tree.descendants().filter(|n| n.kind() == SyntaxKind::TOKEN_TREE && n.parent().is_some_and(|p| p.kind() == SyntaxKind::MACRO_CALL)) {
+        let range = tt.text_range();
+        let mac = tt.parent().and_then(ast::MacroCall::cast);
+        let mac_name = mac.and_then(|m| m.path()).and_then(|p| p.segment()).map(|s| format!("{}!", s.syntax().text())).unwrap_or_else(|| "macro!".into());
+        for tok in tt.descendants_with_tokens().filter_map(|e| e.into_token()) {
+            if !matches!(tok.kind(), T![|] | T![||] | T![fn]) {
+                continue;
+            }
+            for d in sema.descend_into_macros(tok.clone()) {
+                let Some(p) = d.parent() else { continue };
+                let func: Option<(SyntaxNode, String, bool)> = if d.kind() == T![fn] {
+                    ast::Fn::cast(p).filter(|f| f.body().is_some()).map(|f| {
+                        let name = f.name().map(|n| n.text().to_string()).unwrap_or_else(|| "fn".into());
+                        (f.syntax().clone(), name, false)
+                    })
+                } else {
+                    p.ancestors()
+                        .take(2)
+                        .find_map(ast::ClosureExpr::cast)
+                        .filter(|c| c.param_list().is_some_and(|pl| pl.syntax().text_range().contains_range(d.text_range())))
+                        .map(|c| (c.syntax().clone(), mac_name.clone(), true))
+                };
+                let Some((node, name, anon)) = func else { continue };
+                let Some(orig) = sema.original_range_opt(&node) else { continue };
+                if orig.file_id == this_file && range.contains_range(orig.range) {
+                    found.insert((u32::from(orig.range.start()), std::cmp::Reverse(u32::from(orig.range.end()))), (name, anon));
+                }
+            }
+        }
+    }
+    found.into_iter().map(|((start, std::cmp::Reverse(end)), (name, anon))| MacroFn { start, end, name, anon }).collect()
+}
+
+/// Emits the macro-argument functions inside one macro call, nested by containment.
+fn emit_macro_fns<W: Write>(cx: &mut FileCx<W>, tt: &SyntaxNode, scope: &str, parent: &str) -> Result<()> {
+    let r = tt.text_range();
+    let (s, e) = (u32::from(r.start()), u32::from(r.end()));
+    let inside: Vec<(u32, u32, String, bool)> =
+        cx.macro_fns.iter().filter(|f| f.start >= s && f.end <= e).map(|f| (f.start, f.end, f.name.clone(), f.anon)).collect();
+    // Stack of (end, id): the innermost open function containing the next one.
+    let mut stack: Vec<(u32, String)> = Vec::new();
+    for (fs, fe, name, anon) in inside {
+        while stack.last().is_some_and(|(end, _)| fs >= *end) {
+            stack.pop();
+        }
+        let (sc, pa) = match stack.last() {
+            Some((_, id)) => (id.clone(), id.clone()),
+            None => (scope.to_string(), parent.to_string()),
+        };
+        let seg = cx.name(&sc, &name, anon);
+        let id = format!("{sc} › {seg}");
+        let span = cx.span_of(fs, fe);
+        cx.node(id.clone(), &pa, NodeKind::Function, seg, span)?;
+        stack.push((fe, id));
     }
     Ok(())
 }
 
 /// `scope` = nearest path segment (file/module/type/impl/function); `parent` = nearest container.
 fn visit<W: Write>(cx: &mut FileCx<W>, n: &SyntaxNode, scope: &str, parent: &str) -> Result<()> {
+    if n.kind() == SyntaxKind::TOKEN_TREE && n.parent().is_some_and(|p| p.kind() == SyntaxKind::MACRO_CALL) {
+        return emit_macro_fns(cx, n, scope, parent);
+    }
     let mut scope = scope.to_string();
     let mut parent = parent.to_string();
 
