@@ -580,7 +580,8 @@ ADR-0018 promises timing kinds on every edge, visible execution contexts, and a 
 - Options: (a) language-level `await`/`async` is an edge fact; the model sets an optional `timing` on edges in `show`; lanes are a layout mode for groups (a vocabulary change, through you); (b) timing only in note and step text, dropping swimlanes; (c) a tenth "sequence" element.
 - Rec: (a).
 
-### R2-05: "Must build" vs. leftover fallbacks — OPEN (vis)
+### R2-05: "Must build" vs. leftover fallbacks — ANSWERED (b) + extractor failures
+**Ruling:** refuse on a failed build check or failed dependency install (BQ-07's no-dependencies fallback is deleted). If a language's toolchain is missing entirely, build the other languages and report loudly ("TypeScript skipped: Node not found"). **Plus (user): refuse when an extractor misbehaves** (crash, protocol/schema mismatch, internally inconsistent facts) and give Claude the details. **Claude announces what it's about to do, then does it on its own** (fix the environment or repo build settings, retry) or tells you why it can't. You can stop it any time. Fixes to *Insight's own code* (e.g. an extractor bug) go through the wish rule (ADR-0039).
 ADR-0036 says refuse if the check fails. BQ-07 still says "fall back to no dependencies". ADR-0034 says "missing toolchain → that language absent". Old commits may not build on today's toolchains.
 - Options: (a) refuse on anything: a failed check, a missing toolchain, failed dependencies; (b) refuse on a failed check, and if a whole language's toolchain is missing, skip that language with a clear notice; delete BQ-07's no-dependencies fallback; (c) allow old commits with a "check skipped" stamp.
 - Rec: (b).
