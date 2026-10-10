@@ -686,7 +686,8 @@ Predicting a build's time or size isn't trivial.
 - Options: (a) ask whenever a dependency set (lockfile) has never been built before, showing the exact count of crates/packages to fetch and their download size; warm builds never ask; (b) start, and pause to ask after 3 minutes; (c) never ask, only show an ETA.
 - Rec: (a). It's exact, not a guess.
 
-### R2-20: What M0 prints, and when it passes — OPEN (vis)
+### R2-20: What M0 prints, and when it passes — ANSWERED (a), output to log files
+**Ruling:** M0 records per-language files, nodes and edges by kind, resolved vs. unresolved, and time per stage (check / extract / link). **Pass = the function count matches an independent count exactly.** **Output goes to log files, never directly to the terminal (user):** each CLI run writes a human-readable log plus a machine-readable stats file under `%APPDATA%\Insight\projects\<name>\logs\`. The terminal shows only the log's path and the exit code. MCP results go to Claude as tool responses, as usual.
 - Options: (a) per language: files, nodes by kind, edges by kind and resolution, the unresolved rate, and time (check / extract / link). Pass = both extractors run *and* the function count matches an independent count exactly, which catches silently dropped anonymous functions; (b) it runs without error; (c) it matches a hand count for one file.
 - Rec: (a).
 
