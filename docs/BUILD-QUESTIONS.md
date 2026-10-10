@@ -340,14 +340,19 @@ What's the first thing that runs, and what's its pass condition?
   - (c) SQL recursive CTEs.
 - Rec: (a).
 
-### BQ-27: The MVP tool list — OPEN
+### BQ-27: The MVP tool list — ANSWERED → ADR-0039
+**Ruling:** `status`, `load`/`unload`, `build`, `sql`, `source`, `show`, `selection`, `tag_coverage`. A fixed tool and style, free composition inside views, and capability wishes go to the user (no mods).
+
+*(Original question:)*
 - Options:
   - (a) About 9 coarse tools: `overview`, `find`, `resolve`, `inspect`, `related`, `matrix`, `source`, `show` (a whole view document), `ui_state`. ADR-0026's verbs become element kinds inside `show`.
   - (b) About 20 imperative verbs (`focus`, `highlight`, `group`…).
   - (c) Two tools: `query` + `render`.
 - Rec: (a).
 
-### BQ-28: Result size caps and row format — OPEN
+### BQ-28: Result size caps and row format — ANSWERED (ADR-0038/0039): `sql` is capped at 200 rows with "truncated, N total".
+
+*(Original question:)*
 - Case: "everything in `MainApp`" means about 1,100 functions.
 - Options:
   - (a) A hard cap (e.g. 50 rows), plus `total`/`truncated`/`cursor` and per-container rollups (`HistoryTree: +212`), in compact one-line text rows (`path | kind | L4960 | "h.current = node.id;"`).
@@ -355,14 +360,18 @@ What's the first thing that runs, and what's its pass condition?
   - (c) No cap.
 - Rec: (a).
 
-### BQ-29: How the agent finds things — OPEN
+### BQ-29: How the agent finds things — ANSWERED (ADR-0038): SQL over `nodes` and `receipts`.
+
+*(Original question:)*
 - Options:
   - (a) `find(name pattern)` plus `resolve(file, line|quote)` → the innermost node. Text search stays with the agent's grep; semantic search is the model's job.
   - (b) Also full-text/regex.
   - (c) Also semantic search.
 - Rec: (a).
 
-### BQ-30: Reading source through Insight — OPEN
+### BQ-30: Reading source through Insight — ANSWERED (ADR-0039): `source` returns snapshot text.
+
+*(Original question:)*
 - Case: you have uncommitted edits, and the agent quotes working-tree text that doesn't exist in snapshot `cd5d6ff`.
 - Options:
   - (a) No source tool.
@@ -370,14 +379,18 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Source embedded in every result.
 - Rec: (b).
 
-### BQ-31: The commit stamp in every response — OPEN
+### BQ-31: The commit stamp in every response — ANSWERED (ADR-0039): `status` shows the loaded snapshots, and every result names its snapshot.
+
+*(Original question:)*
 - Options:
   - (a) An active snapshot, with every response starting `@cd5d6ff (dirty: no)`, plus an async `build(rev)` tool.
   - (b) An explicit `rev` on every call.
   - (c) Auto-follow HEAD (breaks ADR-0029's pinning).
 - Rec: (a).
 
-### BQ-32: What the agent is told up front — OPEN
+### BQ-32: What the agent is told up front — ANSWERED (ADR-0039): the MCP instructions document the SQL schema, the workflow, and the wish rule. `status` returns the live schema.
+
+*(Original question:)*
 - Options:
   - (a) Tool descriptions only.
   - (b) Short MCP `instructions` (workflow + reference grammar, about 300 words) plus an `overview(depth)` tool (container tree with sizes, counts, unresolved rate).
