@@ -124,7 +124,7 @@ A **function** is any function-like syntax **with a body** written in the source
 - **Unchecked (C/C++ only):** without a preprocessor, tree-sitter cannot parse some code (unexpanded macros produce `ERROR` nodes). A function is identified on both sides by its last line; any last line where either side's function touches a failed parse is left out of both counts. Each file with unchecked functions gets an info diagnostic and a log line with the number, so the gap is stated, never silent. Rust and TypeScript parse without a preprocessor, so their counts stay strict.
 - **On a mismatch,** the refusal lists, per file, the last lines of the functions only one side found.
 
-## 7. Tables (layout version 5)
+## 7. Tables (layout version 6)
 
 Built today, as created by `insight-engine`:
 
@@ -138,7 +138,7 @@ CREATE TABLE nodes (nid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
                     byte_start INTEGER, byte_end INTEGER, line_start INTEGER, line_end INTEGER);
 CREATE TABLE edges (eid INTEGER PRIMARY KEY, kind TEXT NOT NULL, subkind TEXT,
                     from_nid INTEGER NOT NULL REFERENCES nodes(nid), to_nid INTEGER REFERENCES nodes(nid),
-                    resolution TEXT NOT NULL, group_id INTEGER);
+                    resolution TEXT NOT NULL, group_id INTEGER, site INTEGER);
 CREATE TABLE receipts (eid INTEGER NOT NULL REFERENCES edges(eid), role TEXT NOT NULL, file TEXT NOT NULL,
                        byte_start INTEGER NOT NULL, byte_end INTEGER NOT NULL, line INTEGER NOT NULL,
                        col INTEGER NOT NULL, end_line INTEGER NOT NULL, end_col INTEGER NOT NULL,
@@ -167,7 +167,7 @@ Planned: `entries` and `order_breaks` tables, a `race_candidates` view, and the 
   Identical keys reuse the existing file.
 - **File name:** `%LOCALAPPDATA%\Insight[-dev]\snapshots\<project>\<repo>-<key>.sqlite`.
 
-## 9. Extractor protocol (R2-28), fact schema 3
+## 9. Extractor protocol (R2-28), fact schema 5
 
 `<extractor> --root <dir> (--project <cfg> | --package <dir> | --compdb <compile_commands.json>)… --schema <N>` writes NDJSON to stdout. Progress goes to stderr, then to the build log.
 
@@ -175,7 +175,7 @@ Planned: `entries` and `order_breaks` tables, a `race_candidates` view, and the 
 2. Facts:
    - `{"type":"file","path","lang","sha256","bytes"}`, before that file's nodes;
    - `{"type":"node","id","parent","kind","name","span":{…}|null,"anonymous","generated"}`, parents before children. `kind` is `file` / `module` / `type` / `function` / `block` / `external` / `inactive`; externals have no parent and no span.
-   - `{"type":"edge","kind":"call"|"value_flow","subkind","from","to"|null,"resolution","group"|null,"receipts":[…]}`. Edges may come after all nodes; they may name any node of the same stream.
+   - `{"type":"edge","kind":"call"|"value_flow","subkind","from","to"|null,"resolution","group"|null,"site"|null,"receipts":[…]}`. `site` names the call expression of a `call`, `binds` or `value-flow/result` edge (one id per call, extractor-local; the solver makes it snapshot-wide). Edges may come after all nodes; they may name any node of the same stream.
    - `{"type":"literal","value","number","from","receipt"}`: one per string or integer literal occurrence; `number` is true for integers, whose `value` is canonical decimal.
    - `{"type":"diagnostic","file","severity","message"}`.
 3. `{"type":"end","files","nodes","edges","literals","diagnostics"}`. The counts must match what was streamed, which detects truncation.
@@ -230,6 +230,7 @@ Whether a link is a real connection (a shared header compiled into both programs
 - **Progress:** each hop moves further from the start or closer to a target.
 - **Literal round trips:** `F → lit → F` is never a hop.
 - **Pruning:** with starts, a node other than a start needs a way in; with targets, a node other than a target needs a way out.
+- **Call-site matching:** a route that enters a function through a call or an argument (`call`, `binds`, with their call's `site`) leaves it through a `value-flow/result` only of that same call. A shared helper does not connect its callers to each other. Context is one call deep: entering another call replaces it. For both-ended queries, a hop must be allowed by a context reached from the start (or, for reverse-only queries, from a target), and the search stops at `max_depth`.
 - **Loops:** strongly connected groups and self-loops are reported as cycles or recursion, never followed forever.
 - **Receipts:** each hop lists its receipts with the source text.
 

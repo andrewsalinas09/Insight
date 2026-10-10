@@ -23,7 +23,7 @@
 //! (R3-G #5, from `value-flow/returns` edges). Loops and recursion are never followed
 //! forever; they are reported as facts.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use anyhow::{Result, bail};
 use insight_engine::rusqlite::{Connection, params};
@@ -162,10 +162,30 @@ struct Graph {
     /// from -> [(to, label, eid)]
     out: HashMap<i64, Vec<(i64, &'static str, i64)>>,
     rev: HashMap<i64, Vec<(i64, &'static str, i64)>>,
+    /// Call-site context of data hops, by eid: entering a callee through an argument
+    /// (`binds`), or leaving it through its result (`result`).
+    ctx: HashMap<i64, Site>,
+}
+
+/// How a hop relates to a call site (call-site matching, SCHEMA.md §10).
+#[derive(Clone, Copy)]
+enum Site {
+    Enter(i64),
+    Exit(i64),
+}
+
+/// The call-site context after taking a hop: `ctx` is the site the route entered the
+/// current callee by (if any). Leaving through a different site's result is not a route.
+fn step(ctx: Option<i64>, hop: Option<&Site>, forward: bool) -> Option<Option<i64>> {
+    match (hop, forward) {
+        (None, _) => Some(ctx),
+        (Some(Site::Enter(s)), true) | (Some(Site::Exit(s)), false) => Some(Some(*s)),
+        (Some(Site::Exit(s)), true) | (Some(Site::Enter(s)), false) => (ctx.is_none() || ctx == Some(*s)).then_some(None),
+    }
 }
 
 fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
-    let mut g = Graph { out: HashMap::new(), rev: HashMap::new() };
+    let mut g = Graph { out: HashMap::new(), rev: HashMap::new(), ctx: HashMap::new() };
     let schemas = schema_list(opts);
     // One literal node per value across repos: every schema's `lit:…` maps to the first one's.
     let mut lit_canon: HashMap<i64, i64> = HashMap::new();
@@ -266,6 +286,14 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
             };
             add(from, to, label, eid);
         }
+        for (i, s) in schemas.iter().enumerate() {
+            let mut stmt = conn.prepare(&format!("SELECT eid, kind, site FROM {s}.edges WHERE site IS NOT NULL"))?;
+            let rows: Vec<(i64, String, i64)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
+            for (eid, kind, site) in rows {
+                let site = gid(i, site);
+                g.ctx.insert(gid(i, eid), if kind == "binds" || kind == "call" { Site::Enter(site) } else { Site::Exit(site) });
+            }
+        }
     }
     if f(Follow::Write) {
         for (eid, from, to, _) in edges("SELECT eid, from_nid, to_nid, '' FROM edges WHERE kind = 'write' AND to_nid IS NOT NULL")? {
@@ -334,27 +362,40 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
     Ok(g)
 }
 
-/// Breadth-first distances from `seeds` over `adj`, never continuing through a node in `stop`.
-fn bfs(adj: &HashMap<i64, Vec<(i64, &'static str, i64)>>, seeds: &[i64], stop: &BTreeSet<i64>) -> HashMap<i64, usize> {
+/// Breadth-first distances from `seeds` over `adj`, never continuing through a node in
+/// `stop`, with call-site matching: a state is (node, the site the route entered its
+/// current callee by). Returns the shortest distance per node and every state reached.
+#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
+fn bfs(
+    adj: &HashMap<i64, Vec<(i64, &'static str, i64)>>,
+    ctx: &HashMap<i64, Site>,
+    seeds: &[i64],
+    stop: &BTreeSet<i64>,
+    forward: bool,
+    limit: usize,
+) -> (HashMap<i64, usize>, HashSet<(i64, Option<i64>)>) {
     let mut dist: HashMap<i64, usize> = HashMap::new();
-    let mut q: VecDeque<i64> = VecDeque::new();
+    let mut seen: HashSet<(i64, Option<i64>)> = HashSet::new();
+    let mut q: VecDeque<(i64, Option<i64>, usize)> = VecDeque::new();
     for s in seeds {
         dist.insert(*s, 0);
-        q.push_back(*s);
+        seen.insert((*s, None));
+        q.push_back((*s, None, 0));
     }
-    while let Some(n) = q.pop_front() {
-        let d = dist[&n];
-        if stop.contains(&n) {
+    while let Some((n, c, d)) = q.pop_front() {
+        if stop.contains(&n) || d >= limit {
             continue;
         }
-        for (m, _, _) in adj.get(&n).into_iter().flatten() {
-            if !dist.contains_key(m) {
-                dist.insert(*m, d + 1);
-                q.push_back(*m);
+        for (m, _, eid) in adj.get(&n).into_iter().flatten() {
+            let Some(c2) = step(c, ctx.get(eid), forward) else { continue };
+            if seen.insert((*m, c2)) {
+                dist.entry(*m).or_insert(d + 1);
+                q.push_back((*m, c2, d + 1));
             }
         }
     }
-    dist
+    (dist, seen)
 }
 
 /// Reachability between two ends (R2-12, R4-B). Either end may be open:
@@ -402,9 +443,30 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     let pass_through = |n: &i64| !externals.contains(n) || starts.contains(n) || !fwd;
     let fwd_stop: BTreeSet<i64> = is_target.iter().copied().chain(externals.iter().copied().filter(|n| !starts.contains(n))).collect();
     let bwd_stop: BTreeSet<i64> = externals.iter().copied().filter(|n| !is_target.contains(n)).collect();
-    let depth = if fwd { bfs(&g.out, &starts, &fwd_stop) } else { HashMap::new() };
-    let to_target = if bwd { bfs(&g.rev, &targets, &bwd_stop) } else { HashMap::new() };
     let limit = opts.max_depth.unwrap_or(usize::MAX);
+    let (depth, fwd_states) = if fwd { bfs(&g.out, &g.ctx, &starts, &fwd_stop, true, limit) } else { Default::default() };
+    let (to_target, bwd_states) = if bwd { bfs(&g.rev, &g.ctx, &targets, &bwd_stop, false, limit) } else { Default::default() };
+    // A hop is on a route only if some call-site context reached at one end allows it
+    // (forward from the starts; for reverse-only queries, backward from the targets).
+    let by_node = |states: &HashSet<(i64, Option<i64>)>| {
+        let mut m: HashMap<i64, Vec<Option<i64>>> = HashMap::new();
+        for (n, c) in states {
+            m.entry(*n).or_default().push(*c);
+        }
+        m
+    };
+    let (fwd_at, bwd_at) = (by_node(&fwd_states), by_node(&bwd_states));
+    let hop_ok = |n: i64, m: i64, eid: i64| -> bool {
+        let hop = g.ctx.get(&eid);
+        if hop.is_none() {
+            return true;
+        }
+        if fwd {
+            fwd_at.get(&n).into_iter().flatten().any(|c| step(*c, hop, true).is_some_and(|c2| fwd_states.contains(&(m, c2))))
+        } else {
+            bwd_at.get(&m).into_iter().flatten().any(|c| step(*c, hop, false).is_some_and(|c2| bwd_states.contains(&(n, c2))))
+        }
+    };
     let route_len = |n: &i64| -> Option<usize> {
         match (fwd, bwd) {
             (true, true) => Some(depth.get(n)?.saturating_add(*to_target.get(n)?)),
@@ -431,7 +493,7 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
                 || is_target.contains(m)
                 || depth.get(m).is_some_and(|dm| *dm > depth[n])
                 || to_target.get(m).is_some_and(|tm| tm < &to_target[n]);
-            if within && progress {
+            if within && progress && hop_ok(*n, *m, *eid) {
                 hops.entry((*n, *m, label)).or_default().push(*eid);
             }
         }

@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Version of the fact schema. Part of every snapshot cache key (R2-28).
-pub const FACT_SCHEMA_VERSION: u32 = 4;
+pub const FACT_SCHEMA_VERSION: u32 = 5;
 
 /// One line of an extractor's NDJSON stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +116,11 @@ pub struct EdgeFact {
     /// Ties one call's `possible` candidates together (extractor-local number).
     #[serde(default)]
     pub group: Option<u64>,
+    /// The call site a `binds` (argument → parameter) or `value-flow/result` (callee →
+    /// receiver) edge belongs to (extractor-local number). Data that enters a callee at
+    /// one site leaves through the same site (SCHEMA.md §10).
+    #[serde(default)]
+    pub site: Option<u64>,
     pub receipts: Vec<Receipt>,
 }
 

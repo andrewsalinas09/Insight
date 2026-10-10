@@ -385,6 +385,8 @@ struct Tally {
     literals: Vec<insight_model::LiteralFact>,
     /// Next free snapshot-wide group id (extractor group numbers are local).
     next_group: i64,
+    /// Next free snapshot-wide call-site id (extractor site numbers are local).
+    next_site: i64,
 }
 
 fn edge_kind(k: insight_model::EdgeKind) -> &'static str {
@@ -506,6 +508,8 @@ fn ingest(
 
     let base = tally.next_group;
     let mut max_group = 0;
+    let site_base = tally.next_site;
+    let mut max_site = 0;
     for e in &edges {
         let from = w.nid(&e.from).with_context(|| format!("{lang} edge from unknown node `{}`", e.from))?;
         let to = match &e.to {
@@ -516,12 +520,17 @@ fn ingest(
             max_group = max_group.max(g as i64);
             base + g as i64
         });
-        let eid = w.edge(edge_kind(e.kind), e.subkind.as_deref(), from, to, resolution(e.resolution), group)?;
+        let site = e.site.map(|s| {
+            max_site = max_site.max(s as i64);
+            site_base + s as i64
+        });
+        let eid = w.edge_at(edge_kind(e.kind), e.subkind.as_deref(), from, to, resolution(e.resolution), group, site)?;
         for r in &e.receipts {
             w.receipt(eid, r)?;
         }
     }
     tally.next_group = base + max_group + 1;
+    tally.next_site = site_base + max_site + 1;
     log.line(format!("{lang}: {} files, {} nodes, {} edges, {} literals, {} diagnostics", sent.files, sent.nodes, sent.edges, sent.literals, sent.diagnostics));
     Ok(())
 }

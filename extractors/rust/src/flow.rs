@@ -175,7 +175,8 @@ fn place(sema: &Semantics<'_, RootDatabase>, g: &mut Global<'_>, e: &ast::Expr) 
 enum Src {
     State(String),
     Fn(String),
-    Result(String),
+    /// A call's result, with the call's site.
+    Result(String, u64),
 }
 
 /// Where an expression's value comes from (arguments of a call bind to its parameters).
@@ -204,7 +205,8 @@ fn sources(sema: &Semantics<'_, RootDatabase>, f: &Indexed, g: &mut Global<'_>, 
         ast::Expr::CallExpr(c) => match resolve_call(sema, &CallNode::Call(c.clone())) {
             Callee::Fn(func) => {
                 if let (Some(id), _) = target_of(g, func) {
-                    out.push(Src::Result(id));
+                    let site = site_of(g, f, c.syntax());
+                    out.push(Src::Result(id, site));
                 }
             }
             // A tuple struct or variant built from its arguments: they flow into it.
@@ -218,7 +220,8 @@ fn sources(sema: &Semantics<'_, RootDatabase>, f: &Indexed, g: &mut Global<'_>, 
         ast::Expr::MethodCallExpr(m) => {
             if let Some(func) = sema.resolve_method_call(m)
                 && let (Some(id), _) = target_of(g, func) {
-                    out.push(Src::Result(id));
+                    let site = site_of(g, f, m.syntax());
+                    out.push(Src::Result(id, site));
                 }
         }
         ast::Expr::IndexExpr(ix) => {
@@ -240,6 +243,13 @@ fn sources(sema: &Semantics<'_, RootDatabase>, f: &Indexed, g: &mut Global<'_>, 
     }
 }
 
+/// One id per call expression (by position), shared by its argument bindings and the
+/// edge carrying its result.
+fn site_of(g: &mut Global<'_>, f: &Indexed, call: &SyntaxNode) -> u64 {
+    let next = g.sites.len() as u64 + 1;
+    *g.sites.entry((f.file.clone(), u32::from(call.text_range().start()))).or_insert(next)
+}
+
 struct Emit<'o, W: Write> {
     out: &'o mut Out<W>,
 }
@@ -247,7 +257,13 @@ struct Emit<'o, W: Write> {
 impl<W: Write> Emit<'_, W> {
     #[allow(clippy::too_many_arguments)]
     fn edge(&mut self, kind: EdgeKind, subkind: Option<&str>, from: &str, to: &str, resolution: Resolution, f: &Indexed, role: &str, r: TextRange) -> Result<()> {
+        self.edge_at(None, kind, subkind, from, to, resolution, f, role, r)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn edge_at(&mut self, site: Option<u64>, kind: EdgeKind, subkind: Option<&str>, from: &str, to: &str, resolution: Resolution, f: &Indexed, role: &str, r: TextRange) -> Result<()> {
         self.out.emit(Record::Edge(EdgeFact {
+            site,
             kind,
             subkind: subkind.map(String::from),
             from: from.to_string(),
@@ -261,12 +277,18 @@ impl<W: Write> Emit<'_, W> {
     /// Value edges into a state (`assign`), a parameter (`binds`) or a returning function (`return`).
     #[allow(clippy::too_many_arguments)]
     fn flow(&mut self, srcs: Vec<Src>, to: &str, into: Into, mode: &str, f: &Indexed, role: &str, r: TextRange) -> Result<()> {
+        self.flow_at(None, srcs, to, into, mode, f, role, r)
+    }
+
+    /// `site`: the call whose arguments these are (for `binds`).
+    #[allow(clippy::too_many_arguments)]
+    fn flow_at(&mut self, site: Option<u64>, srcs: Vec<Src>, to: &str, into: Into, mode: &str, f: &Indexed, role: &str, r: TextRange) -> Result<()> {
         for s in srcs {
             match (s, into) {
-                (Src::Result(fun), _) => self.edge(EdgeKind::ValueFlow, Some("result"), &fun, to, Resolution::Exact, f, role, r)?,
+                (Src::Result(fun, inner), _) => self.edge_at(Some(inner), EdgeKind::ValueFlow, Some("result"), &fun, to, Resolution::Exact, f, role, r)?,
                 (Src::State(st), Into::Function) => self.edge(EdgeKind::ValueFlow, Some("return"), &st, to, Resolution::Exact, f, role, r)?,
                 (Src::Fn(_), Into::Function) => {}
-                (Src::State(x) | Src::Fn(x), Into::Param) => self.edge(EdgeKind::Binds, Some(mode), &x, to, Resolution::Exact, f, role, r)?,
+                (Src::State(x) | Src::Fn(x), Into::Param) => self.edge_at(site, EdgeKind::Binds, Some(mode), &x, to, Resolution::Exact, f, role, r)?,
                 (Src::State(x) | Src::Fn(x), Into::State) => self.edge(EdgeKind::ValueFlow, Some("assign"), &x, to, Resolution::Exact, f, role, r)?,
             }
         }
@@ -400,6 +422,7 @@ pub(crate) fn data_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &In
                 (CallNode::Method(m), func)
             };
             let from = fn_of(r);
+            let site = site_of(g, f, &n);
             let (to_ext, ps) = match params(g, func) {
                 Some(p) => (None, Some(p)),
                 None => (target_of(g, func).0, None),
@@ -447,7 +470,7 @@ pub(crate) fn data_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &In
                     }
                 }
                 let srcs: Vec<Src> = if ps.is_none() { srcs.into_iter().filter(|s| !matches!(s, Src::Fn(_))).collect() } else { srcs };
-                em.flow(srcs, &to, Into::Param, mode, f, "arg", ar)?;
+                em.flow_at(Some(site), srcs, &to, Into::Param, mode, f, "arg", ar)?;
             }
         }
     }

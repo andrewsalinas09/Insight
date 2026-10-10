@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-const FACT_SCHEMA_VERSION = 4;
+const FACT_SCHEMA_VERSION = 5;
 const EXTRACTOR = "ts@0.1.0";
 
 function parseArgs(argv) {
@@ -360,10 +360,18 @@ function receipt(n, role, container) {
     container,
   };
 }
-function edge(kind, subkind, from, to, resolution, group, receipts) {
-  emit({ type: "edge", kind, subkind, from, to, resolution, group, receipts });
+function edge(kind, subkind, from, to, resolution, group, receipts, site = null) {
+  emit({ type: "edge", kind, subkind, from, to, resolution, group, site, receipts });
   counts.edges++;
 }
+// One id per call expression (by position), shared by its argument bindings and the
+// edge carrying its result.
+const sites = new Map();
+const siteOf = (n) => {
+  const k = posKey(n);
+  if (!sites.has(k)) sites.set(k, sites.size + 1);
+  return sites.get(k);
+};
 
 for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
   if (!parsed) continue;
@@ -613,7 +621,7 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
     }
     if (ts.isCallExpression(e) || ts.isNewExpression(e)) {
       const r = resolveCallee(e.expression, ts.isNewExpression(e));
-      if (r && (r.kind === "exact" || r.kind === "external") && r.to) out.push(["result", r.to]);
+      if (r && (r.kind === "exact" || r.kind === "external") && r.to) out.push(["result", r.to, siteOf(e)]);
       return out;
     }
     if (ts.isElementAccessExpression(e)) return sources(e.expression, out);
@@ -630,12 +638,12 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
   }
   // Value edges from `srcs` into a state (`assign`/`result`), a parameter (`binds`), or a
   // function returning them (`return`/`result`).
-  function flowInto(srcs, to, into, rc) {
-    for (const [k, id] of srcs) {
-      if (k === "result") edge("value_flow", "result", id, to, "exact", null, [rc]);
+  function flowInto(srcs, to, into, rc, site = null) {
+    for (const [k, id, resultSite] of srcs) {
+      if (k === "result") edge("value_flow", "result", id, to, "exact", null, [rc], resultSite);
       else if (into === "fn") {
         if (k === "state") edge("value_flow", "return", id, to, "exact", null, [rc]);
-      } else if (into === "param") edge("binds", "value", id, to, "exact", null, [rc]);
+      } else if (into === "param") edge("binds", "value", id, to, "exact", null, [rc], site);
       else edge("value_flow", "assign", id, to, "exact", null, [rc]);
     }
   }
@@ -713,7 +721,7 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
           ct = checker.getContextualType(n.parent);
         } catch {}
         const target = propState(ct, nameText(n.name) ?? n.name.getText());
-        if (target) flowInto(sources(n.initializer.expression), target, "param", receipt(n, "arg", ctr));
+        if (target) flowInto(sources(n.initializer.expression), target, "param", receipt(n, "arg", ctr), siteOf(n.parent.parent));
       } else if (ts.isReturnStatement(n) && n.expression && from !== file) {
         flowInto(sources(n.expression), from, "fn", receipt(n, "return", ctr));
       } else if ((ts.isIdentifier(n) || ts.isPropertyAccessExpression(n)) && !writePos.has(n) && !(n.parent && n.parent.name === n)) {
@@ -736,14 +744,15 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
           if (sd && !ts.isJSDocSignature?.(sd) && isProjectDecl(sd) && sd.parameters) {
             const p = sd.parameters[Math.min(i, sd.parameters.length - 1)];
             const ps = p && (i < sd.parameters.length || p.dotDotDotToken) ? stateIds.get(posKey(p)) : undefined;
-            if (ps) flowInto(sources(a), ps, "param", rc);
+            if (ps) flowInto(sources(a), ps, "param", rc, siteOf(n));
           } else if (r && r.kind === "external") {
-            flowInto(sources(a).filter(([k]) => k !== "fn"), r.to, "param", rc);
+            flowInto(sources(a).filter(([k]) => k !== "fn"), r.to, "param", rc, siteOf(n));
           }
         });
-        if (!r) edge("call", null, from, null, "unresolved", null, [call]);
+        const site = siteOf(n);
+        if (!r) edge("call", null, from, null, "unresolved", null, [call], site);
         else if (r.kind === "exact" || r.kind === "external") {
-          edge("call", null, from, r.to, "exact", null, [call]);
+          edge("call", null, from, r.to, "exact", null, [call], site);
           if (r.kind === "external")
             for (const a of n.arguments ?? []) for (const id of fnValues(a)) edge("value_flow", "handoff", from, id, "exact", null, [receipt(a, "arg", ctr)]);
         } else {
@@ -753,10 +762,10 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
             for (const id of w.ids) {
               if (seen.has(id)) continue;
               seen.add(id);
-              edge("call", null, from, id, "possible", group, [call, receipt(w.site, "value", undefined)]);
+              edge("call", null, from, id, "possible", group, [call, receipt(w.site, "value", undefined)], site);
             }
-          if (n.questionDotToken || r.optional) edge("call", null, from, null, "possible", group, [call]);
-          else if (seen.size === 0) edge("call", null, from, null, "unresolved", group, [call]);
+          if (n.questionDotToken || r.optional) edge("call", null, from, null, "possible", group, [call], site);
+          else if (seen.size === 0) edge("call", null, from, null, "unresolved", group, [call], site);
         }
       } else if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
         // JSX hands the component (or, for an intrinsic tag, its function-valued

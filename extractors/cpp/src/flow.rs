@@ -30,6 +30,8 @@ pub(crate) enum Ref {
 }
 
 pub(crate) struct PendingData {
+    /// The call site of a `binds` or `result` edge.
+    pub site: Option<u64>,
     pub kind: EdgeKind,
     pub subkind: Option<String>,
     pub from: Ref,
@@ -41,7 +43,8 @@ pub(crate) struct PendingData {
 enum Src {
     State(Ref),
     FnValue(Ref),
-    Result(Ref),
+    /// A call's result, with the call's site.
+    Result(Ref, Option<u64>),
 }
 
 fn is_state(k: EntityKind) -> bool {
@@ -103,7 +106,19 @@ impl Extractor {
     }
 
     fn data(&mut self, kind: EdgeKind, subkind: Option<&str>, from: Ref, to: Ref, receipt: Receipt) {
-        self.data_edges.push(PendingData { kind, subkind: subkind.map(String::from), from, to, receipt });
+        self.data_at(None, kind, subkind, from, to, receipt);
+    }
+
+    fn data_at(&mut self, site: Option<u64>, kind: EdgeKind, subkind: Option<&str>, from: Ref, to: Ref, receipt: Receipt) {
+        self.data_edges.push(PendingData { site, kind, subkind: subkind.map(String::from), from, to, receipt });
+    }
+
+    /// One id per call expression (by position), shared by its argument bindings and the
+    /// edge carrying its result.
+    pub(crate) fn site_of(&mut self, call: Entity) -> Result<Option<u64>> {
+        let Some((rel, s, _)) = self.range_in(call.get_range())? else { return Ok(None) };
+        let next = self.sites.len() as u64 + 1;
+        Ok(Some(*self.sites.entry((rel, s)).or_insert(next)))
     }
 
     fn receipt_of(&mut self, e: Entity, role: &str, ctx: &Ctx) -> Result<Option<Receipt>> {
@@ -137,7 +152,8 @@ impl Extractor {
                     }
                 }
                 Some(r) if is_fn(r.get_kind()) => {
-                    out.push(Src::Result(self.fn_ref(r)?));
+                    let site = self.site_of(e)?;
+                    out.push(Src::Result(self.fn_ref(r)?, site));
                     // A one-argument function returning a reference (`std::move`, `std::forward`,
                     // identity helpers) hands back a reference, by its type to its argument:
                     // the argument's value passes through.
@@ -205,7 +221,7 @@ impl Extractor {
                 Src::State(st) => self.data(EdgeKind::ValueFlow, Some("assign"), st, to.clone(), receipt.clone()),
                 Src::FnValue(f) if into_function => self.data(EdgeKind::ValueFlow, Some("returns"), to.clone(), f, receipt.clone()),
                 Src::FnValue(f) => self.data(EdgeKind::ValueFlow, Some("assign"), f, to.clone(), receipt.clone()),
-                Src::Result(f) => self.data(EdgeKind::ValueFlow, Some("result"), f, to.clone(), receipt.clone()),
+                Src::Result(f, site) => self.data_at(site, EdgeKind::ValueFlow, Some("result"), f, to.clone(), receipt.clone()),
             }
         }
     }
@@ -305,6 +321,7 @@ impl Extractor {
         }
         let params = callee.get_arguments().unwrap_or_default();
         let Ref::Fn { usrs, ext } = self.fn_ref(callee)? else { return Ok(()) };
+        let site = self.site_of(e)?;
         for (i, a) in args.iter().enumerate() {
             let Some(receipt) = self.receipt_of(*a, "arg", ctx)? else { continue };
             let pty = params.get(i).and_then(|p| p.get_type());
@@ -329,10 +346,10 @@ impl Extractor {
                         if mode == "ref" || (mode == "pointer" && address_of) {
                             self.data(EdgeKind::Access, None, Ref::Node(ctx.func.clone()), st.clone(), receipt.clone());
                         }
-                        self.data(EdgeKind::Binds, Some(mode), st, to.clone(), receipt.clone());
+                        self.data_at(site, EdgeKind::Binds, Some(mode), st, to.clone(), receipt.clone());
                     }
-                    Src::FnValue(f) => self.data(EdgeKind::Binds, Some(mode), f, to.clone(), receipt.clone()),
-                    Src::Result(f) => self.data(EdgeKind::ValueFlow, Some("result"), f, to.clone(), receipt.clone()),
+                    Src::FnValue(f) => self.data_at(site, EdgeKind::Binds, Some(mode), f, to.clone(), receipt.clone()),
+                    Src::Result(f, inner) => self.data_at(inner, EdgeKind::ValueFlow, Some("result"), f, to.clone(), receipt.clone()),
                 }
             }
         }

@@ -14,7 +14,7 @@ pub use rusqlite;
 use rusqlite::{Connection, params};
 
 /// Bumped whenever the table layout changes; recorded in `meta`.
-pub const DB_LAYOUT_VERSION: u32 = 5;
+pub const DB_LAYOUT_VERSION: u32 = 6;
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -48,7 +48,8 @@ CREATE TABLE edges (
     from_nid INTEGER NOT NULL REFERENCES nodes(nid),
     to_nid INTEGER REFERENCES nodes(nid),
     resolution TEXT NOT NULL,
-    group_id INTEGER
+    group_id INTEGER,
+    site INTEGER
 );
 CREATE TABLE receipts (
     eid INTEGER NOT NULL REFERENCES edges(eid),
@@ -215,11 +216,17 @@ impl SnapshotWriter {
 
     /// Inserts an edge between known nodes; returns its eid.
     pub fn edge(&mut self, kind: &str, subkind: Option<&str>, from: i64, to: Option<i64>, resolution: &str, group: Option<i64>) -> Result<i64> {
+        self.edge_at(kind, subkind, from, to, resolution, group, None)
+    }
+
+    /// An edge with its call site (for `binds` and `value-flow/result`, SCHEMA.md §5).
+    #[allow(clippy::too_many_arguments)]
+    pub fn edge_at(&mut self, kind: &str, subkind: Option<&str>, from: i64, to: Option<i64>, resolution: &str, group: Option<i64>, site: Option<i64>) -> Result<i64> {
         let eid = self.next_eid;
         self.next_eid += 1;
         self.conn.execute(
-            "INSERT INTO edges(eid, kind, subkind, from_nid, to_nid, resolution, group_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![eid, kind, subkind, from, to, resolution, group],
+            "INSERT INTO edges(eid, kind, subkind, from_nid, to_nid, resolution, group_id, site) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![eid, kind, subkind, from, to, resolution, group, site],
         )?;
         Ok(eid)
     }

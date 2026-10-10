@@ -145,8 +145,9 @@ fn run() -> Result<()> {
     let mut externals = BTreeSet::new();
     let mut states = HashMap::new();
     let mut next_group = 0u64;
+    let mut sites = HashMap::new();
     for (ix, db) in dbs.iter().enumerate() {
-        let mut g = Global { fns, paths, externals, states, db, ix, next_group };
+        let mut g = Global { fns, paths, externals, states, db, ix, next_group, sites };
         // Type inference (method resolution) needs the database attached to this thread.
         ra_ap_hir::attach_db(db, || -> Result<()> {
             let mine: Vec<&Indexed> = indexed.iter().filter(|f| f.sema.is_some_and(|(i, _)| i == ix)).collect();
@@ -160,7 +161,7 @@ fn run() -> Result<()> {
             }
             Ok(())
         })?;
-        (fns, paths, externals, states, next_group) = (g.fns, g.paths, g.externals, g.states, g.next_group);
+        (fns, paths, externals, states, next_group, sites) = (g.fns, g.paths, g.externals, g.states, g.next_group, g.sites);
     }
     for id in externals {
         let name = id.rsplit(':').next().unwrap_or(&id).to_string();
@@ -385,6 +386,8 @@ struct Global<'a> {
     externals: BTreeSet<String>,
     /// Extractor-local group ids for `possible` candidates.
     next_group: u64,
+    /// Call sites by (file, start): ids for `binds` and `result` edges.
+    sites: HashMap<(String, u32), u64>,
     /// (file, start, end) of a declaration -> state node id.
     states: HashMap<(String, u32, u32), String>,
     db: &'a RootDatabase,
@@ -429,6 +432,11 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
             }
             let from = f.innermost(cs, ce, true);
             let receipt = f.receipt("call", cs, ce);
+            // The call's site, shared with its `binds` and `result` edges (keyed by position).
+            let site = {
+                let next = g.sites.len() as u64 + 1;
+                Some(*g.sites.entry((f.file.clone(), cs)).or_insert(next))
+            };
             match resolve_call(sema, &call) {
                 Callee::Fn(func) => {
                     let (to, external) = target_of(g, func);
@@ -446,6 +454,7 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
                                 to: Some(t),
                                 resolution: Resolution::Possible,
                                 group: Some(g.next_group),
+                                site,
                                 receipts: vec![receipt.clone()],
                             }))?;
                         }
@@ -458,6 +467,7 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
                         to: to.clone(),
                         resolution: if to.is_some() { Resolution::Exact } else { Resolution::Unresolved },
                         group: None,
+                        site,
                         receipts: vec![receipt],
                     }))?;
                     if external {
@@ -469,6 +479,7 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
                                 to: Some(arg_fn),
                                 resolution: Resolution::Exact,
                                 group: None,
+                                site: None,
                                 receipts: vec![f.receipt("arg", as_, ae)],
                             }))?;
                         }
@@ -479,7 +490,7 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
                     // the functions that reach it). Otherwise unresolved.
                     let to = flow::called_state(sema, g, &call);
                     let resolution = if to.is_some() { Resolution::Exact } else { Resolution::Unresolved };
-                    out.emit(Record::Edge(EdgeFact { kind: EdgeKind::Call, subkind: None, from, to, resolution, group: None, receipts: vec![receipt] }))?
+                    out.emit(Record::Edge(EdgeFact { kind: EdgeKind::Call, subkind: None, from, to, resolution, group: None, site, receipts: vec![receipt] }))?
                 }
                 Callee::NotACall => {}
             }

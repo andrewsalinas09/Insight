@@ -367,6 +367,8 @@ struct PendingCall {
     constructor: bool,
     /// A call through a variable, parameter or field: the state called.
     via: Option<flow::Ref>,
+    /// The call expression's site (shared with its `binds` and `result` edges).
+    site: Option<u64>,
     receipt: Receipt,
 }
 
@@ -406,6 +408,8 @@ struct Extractor {
     /// Expressions in a write position (not reads): (file, offset).
     skip_read: HashSet<(String, usize)>,
     externals: BTreeMap<String, String>,
+    /// Call sites by (file, offset of the call): ids for `binds` and `result` edges.
+    sites: HashMap<(String, usize), u64>,
     /// Type definitions already walked: (file, start, end).
     types_seen: HashSet<(String, usize, usize)>,
     /// Every node id emitted (ids are unique per snapshot).
@@ -778,6 +782,7 @@ impl Extractor {
         use EntityKind as K;
         let Some((rel, s, en)) = self.range_in(e.get_range())? else { return Ok(()) };
         let receipt = self.receipt("call", &rel, s, en, &ctx.parent);
+        let site = self.site_of(e)?;
         let callee = e.get_reference();
         let fn_kinds = [K::FunctionDecl, K::Method, K::Constructor, K::Destructor, K::ConversionFunction, K::FunctionTemplate];
         let Some(callee) = callee.filter(|c| fn_kinds.contains(&c.get_kind())) else {
@@ -789,7 +794,7 @@ impl Extractor {
                 _ => None,
             };
             if callee.is_some() || e.get_name().is_some() {
-                self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via, receipt });
+                self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via, site, receipt });
             }
             return Ok(());
         };
@@ -822,11 +827,11 @@ impl Extractor {
         if name == "operator()" {
             if let Some(obj) = e.get_children().into_iter().find_map(|c| callable_object(c).filter(|r| matches!(r.get_kind(), K::VarDecl | K::ParmDecl | K::FieldDecl))) {
                 if let Some(via) = self.state_ref(obj)? {
-                    self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via: Some(via), receipt: receipt.clone() });
+                    self.calls.push(PendingCall { from: ctx.func.clone(), usrs: Vec::new(), external: None, dynamic: false, implicit: false, constructor: false, via: Some(via), site, receipt: receipt.clone() });
                 }
             }
         }
-        self.calls.push(PendingCall { from: ctx.func.clone(), usrs, external, dynamic: e.is_dynamic_call(), implicit, constructor, via: None, receipt });
+        self.calls.push(PendingCall { from: ctx.func.clone(), usrs, external, dynamic: e.is_dynamic_call(), implicit, constructor, via: None, site, receipt });
         Ok(())
     }
 
@@ -998,16 +1003,16 @@ impl Extractor {
             if let Some(via) = &c.via {
                 let to = self.resolve(via);
                 let res = if to.is_some() { Resolution::Exact } else { Resolution::Unresolved };
-                self.edge(EdgeKind::Call, None, &c.from, to, res, None, c.receipt)?;
+                self.edge_at(c.site, EdgeKind::Call, None, &c.from, to, res, None, c.receipt)?;
                 continue;
             }
             if c.usrs.is_empty() && c.external.is_none() {
-                self.edge(EdgeKind::Call, None, &c.from, None, Resolution::Unresolved, None, c.receipt)?;
+                self.edge_at(c.site, EdgeKind::Call, None, &c.from, None, Resolution::Unresolved, None, c.receipt)?;
                 continue;
             }
             if let Some((id, name)) = &c.external {
                 self.external(id, name);
-                self.edge(EdgeKind::Call, subkind, &c.from, Some(id.clone()), Resolution::Exact, None, c.receipt)?;
+                self.edge_at(c.site, EdgeKind::Call, subkind, &c.from, Some(id.clone()), Resolution::Exact, None, c.receipt)?;
                 continue;
             }
             let overrides: Vec<String> = if c.dynamic {
@@ -1023,15 +1028,15 @@ impl Extractor {
                 cands.sort();
                 cands.dedup();
                 for t in cands {
-                    self.edge(EdgeKind::Call, subkind.clone(), &c.from, Some(t), Resolution::Possible, Some(g), c.receipt.clone())?;
+                    self.edge_at(c.site, EdgeKind::Call, subkind.clone(), &c.from, Some(t), Resolution::Possible, Some(g), c.receipt.clone())?;
                 }
                 continue;
             }
             match target {
-                Some(t) => self.edge(EdgeKind::Call, subkind, &c.from, Some(t), Resolution::Exact, None, c.receipt)?,
+                Some(t) => self.edge_at(c.site, EdgeKind::Call, subkind, &c.from, Some(t), Resolution::Exact, None, c.receipt)?,
                 // Compiler-generated constructors and operators have no code to point at.
                 None if c.constructor || c.implicit => {}
-                None => self.edge(EdgeKind::Call, subkind, &c.from, None, Resolution::Unresolved, None, c.receipt)?,
+                None => self.edge_at(c.site, EdgeKind::Call, subkind, &c.from, None, Resolution::Unresolved, None, c.receipt)?,
             }
         }
         let handoffs = std::mem::take(&mut self.handoffs);
@@ -1041,7 +1046,7 @@ impl Extractor {
                 None => self.fn_by_usr.get(&h.target).cloned(),
             };
             if let Some(to) = to {
-                let mut e = EdgeFact { kind: EdgeKind::ValueFlow, subkind: Some("handoff".into()), from: h.from, to: Some(to), resolution: Resolution::Exact, group: None, receipts: vec![h.receipt] };
+                let mut e = EdgeFact { kind: EdgeKind::ValueFlow, subkind: Some("handoff".into()), from: h.from, to: Some(to), resolution: Resolution::Exact, group: None, site: None, receipts: vec![h.receipt] };
                 e.receipts.dedup();
                 self.emit(Record::Edge(e))?;
             }
@@ -1060,13 +1065,13 @@ impl Extractor {
                     targets.sort();
                     targets.dedup();
                     for t in targets {
-                        self.edge(d.kind, d.subkind.clone(), &from, Some(t), Resolution::Possible, Some(g), d.receipt.clone())?;
+                        self.edge_at(d.site, d.kind, d.subkind.clone(), &from, Some(t), Resolution::Possible, Some(g), d.receipt.clone())?;
                     }
                     continue;
                 }
             }
             let Some(to) = self.resolve(&d.to) else { continue };
-            self.edge(d.kind, d.subkind, &from, Some(to), Resolution::Exact, None, d.receipt)?;
+            self.edge_at(d.site, d.kind, d.subkind, &from, Some(to), Resolution::Exact, None, d.receipt)?;
         }
         // External leaves after the edges that name them is fine: the solver inserts edges last.
         for (id, name) in std::mem::take(&mut self.externals) {
@@ -1080,8 +1085,8 @@ impl Extractor {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn edge(&mut self, kind: EdgeKind, subkind: Option<String>, from: &str, to: Option<String>, resolution: Resolution, group: Option<u64>, receipt: Receipt) -> Result<()> {
-        self.emit(Record::Edge(EdgeFact { kind, subkind, from: from.to_string(), to, resolution, group, receipts: vec![receipt] }))
+    fn edge_at(&mut self, site: Option<u64>, kind: EdgeKind, subkind: Option<String>, from: &str, to: Option<String>, resolution: Resolution, group: Option<u64>, receipt: Receipt) -> Result<()> {
+        self.emit(Record::Edge(EdgeFact { kind, subkind, from: from.to_string(), to, resolution, group, site, receipts: vec![receipt] }))
     }
 }
 
