@@ -640,7 +640,7 @@ M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The t
 ## R2-B: Before M0 (user-visible)
 
 ### R2-13: What gets installed, and what you double-click — ANSWERED (a)
-**Ruling:** two programs in `%LOCALAPPDATA%\Insight\bin`: console `insight.exe` (CLI, MCP bridge, headless mode) and GUI `insight-app.exe` (the window), plus a Start-menu shortcut named "Insight". The bridge launches `insight-app.exe` when the app isn't running (updates ADR-0031's `Insight.exe` naming).
+**Ruling:** two programs in `%LOCALAPPDATA%\Insight\bin`: console `insight.exe` (CLI, MCP bridge, headless mode) and GUI `insight-app.exe` (the window), plus a Start-menu shortcut named "Insight". The bridge launches `insight-app.exe` when the app isn't running (updates ADR-0031's `Insight.exe` naming). **Connected (user: "we need to connect them"):** both are built from the same backend crates. `insight.exe mcp` forwards every call to the running app over the local named pipe (BQ-42/43). Other `insight.exe` commands (`build`, `path`, `snapshot --after-build`) also go through the running app when it's open, so the window sees results immediately. When it's closed, they run the same backend standalone against the same on-disk snapshot cache (BQ-24), so there's one owner and no duplicate builds.
 `Insight.exe` (app) and `insight` (CLI and bridge) can't share a folder on Windows (case-insensitive). A GUI exe prints nothing in a terminal, and a console exe flashes a window when double-clicked.
 - Options: (a) two binaries in `%LOCALAPPDATA%\Insight\bin`: console `insight.exe` (CLI, bridge, headless) and GUI `insight-app.exe`; (b) one console binary that hides its console on double-click; (c) one GUI binary that attaches to the parent console.
 - Rec: (a).
