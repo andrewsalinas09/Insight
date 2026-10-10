@@ -94,7 +94,10 @@ What's the first thing that runs, and what's its pass condition?
   - (c) One crate until it hurts.
 - Rec: (a).
 
-### BQ-04: What a plugin is physically — DECIDED BY CLAUDE (same delegation as BQ-03)
+### BQ-04: What a plugin is physically — SUPERSEDED → ADR-0034
+**Ruling (user, via BQ-05):** each language is an extractor written in that language, using its official toolchain, emitting the standard representation as versioned NDJSON. The Rust core never parses languages. The Rust extractor runs in-process; link passes stay in Rust.
+
+*(Earlier ruling, superseded:)* DECIDED BY CLAUDE (same delegation as BQ-03)
 **Ruling:** (a) compile-time Rust crates implementing `LanguagePlugin` / `LinkPlugin`, registered in the binary. Revisit only if someone else ever writes plugins. A plugin *may* internally drive an external engine (e.g. the TS checker, BQ-05) without changing this.
 
 ### BQ-04 (original question)
@@ -106,7 +109,10 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 2: Solver front ends
 
-### BQ-05: The TypeScript engine (the agents disagree) — OPEN
+### BQ-05: The TypeScript engine — ANSWERED → ADR-0034
+**Ruling:** the TS compiler API in a Node extractor written in TypeScript (`extractors/ts/`), with `tsgo` swapped in later. The general rule: every language uses its own toolchain.
+
+*(Original question:)*
 - Case: connecting `onto.children.push(node.id)` (`App.tsx:4966`) to `HistNode.children` needs type inference through `Map.get`. Scope analysis alone can't do it, and field-level state (Q-20 ruling) requires it.
 - Options:
   - (a) The real TypeScript checker (compiler API) in a Node sidecar, emitting facts.
