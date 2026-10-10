@@ -163,6 +163,25 @@ What's the first thing that runs, and what's its pass condition?
 
 ## Round 3: The fact schema (the solver's output)
 
+**All of Round 3 was DECIDED BY CLAUDE (user delegated: "decide those yourself, I really don't know"), within ADR-0033/0034.** These are internals of the standard representation and the extractors. The individual questions below are kept for history.
+
+| BQ | Ruling |
+|---|---|
+| 09 | A closed set. **Nodes:** `container{file\|module\|type\|function\|block}`, `state{var\|field\|element\|static\|cell}`, `external`, `unresolved`. **Edges:** `contains`, `call`, `read`, `write`, `access` (may write), `binds`, `value-flow`, `implements`, `link`, `exit`. Each edge carries {id, kind, from, to, resolution: exact\|possible\|unresolved, receipt}. |
+| 10 | IDs are location paths with context names and per-name ordinals (`App.tsx › MainApp › useEffect#14`, `HistoryTree › nodeDown › =>`), scoped internally by (repo, snapshot). The agent may type any unique suffix; ambiguity returns candidates. |
+| 11 | Repo-relative, forward-slash, case-exact git paths. Spans are UTF-8 byte ranges plus 1-based lines, converted to UTF-16 only at the window boundary. |
+| 12 | A receipt = {snapshot, file, byte range, line/col range, minimal expression text, enclosing statement text, innermost container ID}. Spans are exact (immutable snapshots), so there's no quote matching. |
+| 13 | State identity = the declaration symbol the language's checker resolves to (`h.current` ≡ `hist.current.current`). Collection contents are a pseudo-field (`nodes[*]`). Instances of one type merge, marked `possible-instance`. |
+| 14 | Writes come from language semantics: Rust `&mut self` or a mutable deref is a `write`; interior mutability and TS method calls on state (no mutability info in TS types) are `access`. *Visible effect: TS `children.push(…)` reads as "may write".* |
+| 15 | One-hop value flow: an indirect call gets `possible` edges to every function value written to that symbol (assignments, fields, arguments, JSX props), plus an "absent" candidate. Returned function literals are followed one level, which handles curried handlers. *Visible effect: `onGraft?.(…)` shows main / pop-out / none.* |
+| 16 | JSX is language syntax (TSX desugaring), so `<C p={v}/>` is a `render` call to `C` and binds `v` to `p`. Callbacks handed to external code get a `value-flow` into the external leaf. Who calls them later is for the model. |
+| 17 | Names destructured from one call share one `cell` (`[histVersion, setHistVersion]`, `(tx, rx)`). Calling a function sibling is `access`; reading another sibling is `read`. |
+| 18 | Every `if`/`else`/`switch` case/`match` arm/ternary/`&&` JSX guard/loop/`try`/`catch` is a `block` container with its condition text. `return`/`?`/`throw` are `exit` edges (ADR-0008). |
+| 19 | Dynamic dispatch = one edge to the trait or interface method plus `implements` edges, expanded at query time. Narrowing comes later. |
+| 20 | Analyze all git-tracked source in the TS projects and Cargo members, tests included. One external leaf per referenced symbol; external globals are state. `std` counts as a library (ADR-0033). |
+| 21 | The Tauri link is command level: the `invoke` string = the `#[tauri::command]` fn name, flagged if it's missing from `generate_handler!`. Argument-name mapping (camelCase) is for the model. |
+| 22 | Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* |
+
 ### BQ-09: The closed set of node and edge kinds — OPEN
 - Options:
   - (a) Nodes: `container{file|module|type|function|block}`, `state{var|field|element|static|cell}`, `external`, `unresolved`. Edges: `contains`, `call`, `read`, `write`, `access` (may write), `binds`, `value-flow`, `implements`, `link`, `exit`. Each edge carries {id, kind, from, to, resolution: exact|possible|unresolved, receipt}.
