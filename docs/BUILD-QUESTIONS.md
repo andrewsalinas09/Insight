@@ -610,7 +610,12 @@ The UI is deferred (ADR-0027) and the "question box" is the terminal (ADR-0025).
 - Options: (a) mark it deferred, keeping only "no curated landing page"; (b) keep it: the window opens on a top-level overview; (c) the window is blank until Claude calls `show`.
 - Rec: (a).
 
-### R2-10: Live mode: build on save, on request, or never? — OPEN (vis)
+### R2-10: Live mode: build on save, on request, or never? — ANSWERED (direction), mechanism in R2-10b
+**Ruling (user):** "when things are built it uses that. It does it together. You don't really ask questions until you see the software anyway." Insight snapshots **together with the project's own successful builds**, which also satisfy the ADR-0036 build check. Plus on demand. Not on every save.
+
+### R2-10b: How Insight notices your build — OPEN (vis)
+See the chat proposal: a Claude Code hook after build commands, a wrapper command, or watching build outputs.
+
 VISION says "shows structure instantly as you work". BQ-07 says builds are on demand only. ADR-0036 makes builds non-instant (`cargo check`).
 - Options: (a) on request only, and "re-run on every change" becomes "on each new snapshot"; (b) opt-in auto-build of the working copy on save; (c) on every commit.
 - Rec: (a), with (b) via the wish rule if real use wants it.

@@ -27,3 +27,4 @@ It's the user's own approved taste, and it already reads as an instrument rather
 - Mockups and the eventual UI start from Fletcher's `App.css` tokens and `design/` artboards.
 - The terminal isn't drawn inside Insight. The agent speaks into the bottom bar, mirroring what it says in the terminal (ADR-0025).
 - Changing the language later means superseding this ADR.
+- **UI direction (user, R2-10):** "it should be very much out of the way. I like menus and popups and stuff very much. Multiple windows etc." The model is Fletcher's (and the user's other apps'): menus, popups, pop-out satellite windows. Study Fletcher's patterns when UI work starts; take only generic patterns from proprietary apps.
