@@ -780,7 +780,8 @@ Working copies are analyzed in place, so `source` later reads today's disk, not 
   - (1) Copy the snapshot's source files into a content-addressed store at snapshot time (Fletcher's is ~0.7 MB), so the snapshot's text never changes.
   - (2) Each extractor reports the hash of every file it read. **The snapshot is exactly those files**, so doc edits don't discard it, and a mid-read change is caught exactly.
 
-### R3-06: Which Fletcher snapshot M0/M1 test against — OPEN (vis)
+### R3-06: Which Fletcher snapshot M0/M1 test against — ANSWERED (a)
+**Ruling:** M0 and M1 run on `--commit cd5d6ff`, so commit export from git is part of M0.
 The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncommitted edits.
 - Rec: build commit export in M0 and run both milestones on `--commit cd5d6ff`, a fixed, immutable target.
 
