@@ -826,48 +826,48 @@ The pop-out wiring needs a hop *into* a callback handed to `listen("hist-cmd", �
   - "May call nothing" is shown for absent props.
   - Correct the BQ-22 note.
 
-### R3-14: Three places "a call finishes before the next line" is false — OPEN (vis)
+### R3-14: Three places "a call finishes before the next line" is false — ANSWERED (recommendation accepted; user: "yes these are all good")
 `invoke(...)` returns immediately while Rust runs; an un-awaited async function runs its rest later; JSX hands the component to React.
 - Rec: three more mechanical order breaks: every `link` hop, un-awaited async calls, JSX render edges. Plus: the race-candidate query also pairs a region with itself (rapid repeated grafts).
 
 ## R3-E: Scale, cache, robustness
 
-### R3-15: Memory and big repos — OPEN (vis)
+### R3-15: Memory and big repos — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: size Node's heap from free RAM, one extractor process per tsconfig/workspace, streamed output. Out-of-memory is a distinct "resource limit" refusal with peak memory. Before M2, keep a warm rust-analyzer helper per project between snapshots.
 
-### R3-16: Cache growth — OPEN (vis)
+### R3-16: Cache growth — ANSWERED (recommendation accepted; user: "yes these are all good")
 A private cargo target per *lockfile* is 2–4 GB each, and vibe coding changes lockfiles constantly.
 - Rec: one private target per (project, toolchain); lockfile-keyed targets only for historical commits; keep the last N working-copy snapshots per project; "ask first" applies only to explicit loads, never to after-build snapshots.
 
-### R3-17: The active snapshot mustn't change under Claude — OPEN (vis)
+### R3-17: The active snapshot mustn't change under Claude — ANSWERED (recommendation accepted; user: "yes these are all good")
 An after-build snapshot arriving mid-conversation would silently change what `FROM nodes` returns.
 - Rec: the active snapshot is pinned per Claude session and changes only on explicit load/switch; `status` reports newer ones. Plus a `body_hash` per node, so "same name, different body" is visible as a fact.
 
-### R3-18: Windows paths, line endings, encodings — OPEN (vis)
+### R3-18: Windows paths, line endings, encodings — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: short cache roots plus long-path support; `compare` normalizes line endings and reports "line endings only" separately; per-file encoding and EOL recorded and spans transcoded to UTF-8; Git LFS pointer files trigger a smudge or a refusal.
 
-### R3-19: Old snapshots after an Insight update changes the schema — OPEN (vis)
+### R3-19: Old snapshots after an Insight update changes the schema — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: refuse queries on a schema mismatch. Commits rebuild on load; working copies rebuild at the next build, or from the frozen copy (R3-05).
 
 ## R3-F: Projects and later
 
-### R3-20: One repo of a multi-repo project fails its build — OPEN (vis)
+### R3-20: One repo of a multi-repo project fails its build — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: keep that repo's last good snapshot, rebuild links over the mix, and show each repo's snapshot in `status`.
 
-### R3-21: Git worktrees — OPEN (vis)
+### R3-21: Git worktrees — ANSWERED (recommendation accepted; user: "yes these are all good")
 An agent working in a worktree builds and fires the hook.
 - Rec: repo identity = `git rev-parse --git-common-dir`; a worktree is a second working copy, snapshotted separately and labeled with its path and branch.
 
-### R3-22: "Must build" for Python/plain JS (post-MVP) — OPEN (vis)
+### R3-22: "Must build" for Python/plain JS (post-MVP) — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: the language's own syntax and import check (`python -m compileall`, `node --check`), with a configured check as override.
 
-### R3-23: Looking inside a dependency — OPEN (vis)
+### R3-23: Looking inside a dependency — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: Claude reads dependency source with its own tools now; indexing a dependency as its own snapshot comes via the wish rule.
 
-### R3-24: Updating `insight.exe` while bridges hold it open — OPEN (vis, before first release)
+### R3-24: Updating `insight.exe` while bridges hold it open — ANSWERED (recommendation accepted; user: "yes these are all good")
 - Rec: versioned install folders behind a tiny stable launcher, old versions cleaned up when unused; checksum-verify any fetched toolchains.
 
-## R3-G: Internal (delegable)
+## R3-G: Internal — ACCEPTED as written (user: "yes these are all good"), amended by ADR-0048 (no framework-specific kinds: `link/tauri` → the generic `names` link; JSX → handoff via the TS extractor; "`link` hops are order breaks" → "`names` hops are order-unknown")
 1. **Node ID grammar:** repo-relative file › lexical containers; anonymous = `<callee|prop|=>>#<1-based ordinal>`; Rust by file and lexical nesting, with module paths as aliases.
 2. **Schema additions:** `edges.subkind` (`call/render`, `link/tauri`, `link/literal`), a `literal` node kind, and `await` as an `order-break` row.
 3. **Locals and parameters are state nodes.**

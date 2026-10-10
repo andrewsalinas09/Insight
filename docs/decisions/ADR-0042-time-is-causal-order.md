@@ -1,6 +1,6 @@
 # ADR-0042: Time is causal order. The solver knows what's ordered and where order breaks; race candidates are a query
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0048 (programming concepts only; the generic `names` link replaces framework links; `names` hops are order-unknown)
 - **Date:** 2026-10-09
 - **Source:** user, R2-04 ("I think I meant time as in causal. Aka ordered code is ordered. Async shows it's ambiguous / there's a way to show race conditions are possible. (Maybe Claude can use this tool even to find race conditions, idk)")
 - **Refines:** ADR-0018 (time is explicit), replacing the "timing kinds" idea with causal order
