@@ -654,7 +654,13 @@ M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The t
 - Options: (a) `insight init` runs `claude mcp add -s user insight -- <absolute path>\insight.exe mcp`, so it works in every repo, with no PATH guessing; (b) a per-repo `.mcp.json`; (c) user scope relying on PATH.
 - Rec: (a).
 
-### R2-15: Node and TypeScript for the TS extractor — OPEN (vis)
+### R2-15: Node and TypeScript for the TS extractor — ANSWERED (general rule)
+**Ruling (user):** "it uses whatever you used to build the program in question / whatever you need in case it's not there." For every language, the extractor and build check use **the project's own toolchain, resolved the way the project resolves it**:
+- TS: `.nvmrc` / `.node-version` / Volta / fnm settings plus the repo's `node_modules/typescript`;
+- Rust: rustup in the repo dir, honoring `rust-toolchain.toml`;
+- others: their equivalents.
+
+Always probed by execution, never trusted from PATH. If it's missing, Insight fetches the matching version into its cache (asking first if big, BQ-07).
 - Options: (a) your Node on PATH (probed) and the repo's own `node_modules/typescript`, so facts come from the same compiler as the build check; (b) a self-contained extractor exe with a bundled TypeScript, with no Node needed but a different TS version than the repo's; (c) the repo's own TS, run by a bundled Node.
 - Rec: the agents split: dry run (b), workflow (a). My pick is (c): no PATH dependency, *and* the same compiler as your build.
 
