@@ -10,7 +10,17 @@ Status key: **OPEN** · **ANSWERED → ADR-XXXX / ruling**
 
 ## Round 1: Shape of the system
 
-### BQ-01: Process layout and how Claude Code connects — OPEN
+### BQ-01: Process layout and how Claude Code connects — ANSWERED → ADR-0031
+**Ruling:** a standalone app (double-click `.exe`) that owns the graphs and the window. You or Claude load repos. Claude drives 100% of it via MCP. The backend crates stay UI-free (ADR-0030).
+
+### BQ-01b: How Claude Code reaches the running app — OPEN
+- Options:
+  - (a) The app hosts a local MCP endpoint over HTTP on 127.0.0.1 (`claude mcp add --transport http insight http://127.0.0.1:<port>/mcp`). Claude can only connect while the app is running.
+  - (b) A tiny `insight mcp` stdio bridge, registered once with `claude mcp add insight -- insight mcp`. It forwards to the running app, and **launches the app if it isn't running**.
+  - (c) Both.
+- Rec: (b). It's the default transport every agent supports (Claude Code and Codex), and "Claude opens the app for me" falls out for free. (a) can be added later if useful.
+
+*(Original options, kept for history:)*
 Is the backend a headless `insight` program, separate from the window? And how does Claude Code reach it?
 - Case: `claude` in Fletcher calls `focus(graftNode)`. If the backend lives inside the Tauri app, calls fail unless the window is open. Two sessions (Claude Code + Codex) must not each build the graph.
 - Options:
