@@ -9,9 +9,9 @@ A personal desktop tool for seeing and checking code. Insight builds a complete,
 
 ## Current status
 
-**Build phase, starting M0.** The design and both backend question rounds are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. Stack:
+**Build phase, starting M0.** The design and all three backend question rounds (BQ, R2, R3) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
 - a Rust Cargo workspace (BQ-03);
-- per-language extractors on each project's own native toolchain (ADR-0034, R2-15);
+- per-language extractors on each project's own native toolchain (ADR-0034, R2-15), run against a frozen source copy (R3-05);
 - one read-only SQLite file per codebase snapshot (ADR-0038);
 - `insight.exe` (CLI and MCP bridge) plus `insight-app.exe` (the window), connected over a local named pipe (ADR-0031, R2-13);
 - Tauri 2 as the window shell.
@@ -30,7 +30,7 @@ The graph rendering library is still open (Q-08).
 | `docs/TESTBED.md` | Every known edge case (TB-IDs); the design acceptance suite | Before AND after any design change |
 | `docs/examples/` | Worked examples tracing real code through the design | When applying or testing a pattern |
 | `docs/research/` | Research reports (tooling, LLM providers, rendering) | When a question needs evidence |
-| `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ- and R2-IDs), asked one at a time | Before any backend design or code |
+| `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-, R2- and R3-IDs), asked one at a time | Before any backend design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |
 | `docs/archive/` | Original raw notes, verbatim | Almost never (history only) |

@@ -1,6 +1,6 @@
 # ADR-0045: Install once, init per project. A project is a named set of one or more repos
 
-- **Status:** Accepted
+- **Status:** Accepted; only init'ed projects are built, with fingerprinted command approval (R3-01); CLI is `insight build <project> [--commit <rev>]` (R3-09)
 - **Date:** 2026-10-09
 - **Source:** user, R2-14b ("I think it's install once, init per repo, however 'per repo' is more like 'per project', since a single project can have multiple repos")
 

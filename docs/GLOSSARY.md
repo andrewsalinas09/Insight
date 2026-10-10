@@ -3,46 +3,55 @@
 Domain terms used across docs, code, and conversations. Keep alphabetical. `SCHEMA.md` becomes the authority for graph terms once it exists (M0).
 
 - **Abstraction node**: a view element: one box standing for a set of real nodes, with Claude's pseudocode, expandable to the real nodes (ADR-0040).
-- **Annotation**: an `@insight <keyword>: <value>` doc comment parsed mechanically; `tag` is the first keyword (ADR-0032, ADR-0043). Optional (ADR-0024). Free-text comments aren't annotations; they're code the model reads.
+- **Annotation**: an `@insight <keyword>: <value>` doc comment parsed mechanically; `tag` is the first keyword, and unknown keywords become diagnostics (ADR-0032, ADR-0043, R3-G #12). Optional (ADR-0024). Free-text comments aren't annotations; they're code the model reads.
+- **Approval fingerprint**: a hash of a project's approved build commands. If the commands change, Insight refuses over MCP until you approve the diff in the window or with `insight approve <project>` (R3-01).
 - **Assurance trace**: the answer to "how do we know X is correct?". The solver returns everything connected to the value; the model sorts it into validation, fallbacks, tests and gaps (ADR-0019, ADR-0023, Q-31).
 - **Block**: a container for one branch arm, loop body, or `try`/`catch`, carrying its condition text (BQ-18).
-- **Bridge (MCP bridge)**: `insight.exe mcp`, the stdio process an agent launches. It forwards calls to the running app over a named pipe and launches the app if needed (ADR-0031, R2-13).
+- **Bridge (MCP bridge)**: `insight.exe mcp`, the stdio process an agent launches. It forwards calls to the running app over a hardened named pipe and launches the app if needed (ADR-0031, R2-13, R3-G #6).
 - **Bubble**: informal name for a container node drawn in the window.
-- **Causal order**: whether one thing definitely happens before another. Ordered within a function by position; broken at `await` and at functions handed to external code (*may interleave*) (ADR-0042).
+- **Causal order**: whether one thing definitely happens before another. Ordered within a function by position. Order-unknown (*may interleave*) at `await`, handoffs, `names` hops, un-awaited async calls and JSX handoffs (ADR-0042, R3-14, ADR-0048).
 - **Cell**: the shared state node for names destructured from one call, e.g. `[histVersion, setHistVersion]` (BQ-17).
+- **Check / install command**: the two declared kinds of build command in project settings. Install-type commands (installs, fetches, codegen, formatters, anything that rewrites) run only where Insight owns the dependencies (R3-02).
 - **Collapse**: a view element: a container folded to "+N hidden", expandable (ADR-0040).
+- **Compare**: the tool that gives an exact diff of two functions, files or snapshots. It normalizes line endings and reports EOL-only changes separately (ADR-0041, R3-18).
 - **Compiler**: historical term for annotation checking. Now: anything a compiler could do (parsing, keyword grammars, structural checks) is allowed in the tool (ADR-0043). Claim checking itself is deprioritized (ADR-0024).
+- **Concept vocabulary**: the standard representation's language-agnostic programming concepts (module, type, function, closure, call, handoff, await, state, branch, literal…). Extractors translate each language into it; Insight has no framework knowledge (ADR-0048).
 - **Container**: a node that is one of the code's own constructs: file, module, type, function, or block (ADR-0008, BQ-09).
 - **Example data**: a view element: a table or small diagram of illustrative values, optionally linked to the fields it illustrates (ADR-0040).
 - **Exit edge**: an early exit (`return`, `?`, `throw`) out of a function or block (BQ-18).
 - **Expectation** *(post-MVP)*: a saved SQL query describing required behavior, re-run on each new snapshot (Q-26).
 - **Explanation**: the agent's answer, usually plain text in the terminal (R2-07), pinned to its snapshot (ADR-0029).
 - **External leaf**: one node per dependency or standard-library symbol the project uses; its internals aren't indexed (BQ-20).
-- **Extractor**: a per-language program built on that language's native toolchain that emits the standard representation as NDJSON (ADR-0033, ADR-0034, R2-28).
-- **INSIGHT.md**: Insight's equivalent of CLAUDE.md. Prose for Claude (knowledge notes, preferences, wishes) plus parsed ```` ```insight ```` settings blocks (ADR-0044).
+- **Extractor**: a per-language program built on that language's native toolchain. It translates the language into the concept vocabulary and emits NDJSON, including hashes of the files it read (ADR-0033, ADR-0034, ADR-0048, R2-28, R3-05).
+- **Frozen source store**: the content-addressed copy of a snapshot's source files taken at snapshot time. `source` reads it and Insight's commands run against it (R3-05, R3-02).
+- **Handoff**: a function or value given to other code to run or use later (a callback to `listen`, a JSX element, a spawned closure). It's a `value-flow` into an external leaf, and it breaks causal order (ADR-0042, ADR-0048).
+- **INSIGHT.md**: Insight's equivalent of CLAUDE.md, in the project folder. Prose for Claude (knowledge notes, preferences, wishes) plus all settings as TOML ```` ```insight ```` blocks with per-repo tables (ADR-0044, R3-07).
 - **Intelligence principle**: the tool does what's trivial; the moment there's a question, it's the model's (ADR-0035).
 - **Knowledge profile**: free-form notes on what you already know, kept in `INSIGHT.md` and interpreted by the model (ADR-0004, ADR-0044).
 - **Learning journal** *(post-MVP)*: the personal record of questions and answers, each pinned to its snapshot (Q-22).
-- **Link edge**: a cross-language or same-string connection: the Tauri command link (BQ-21), or a same-literal link via a literal node (BQ-22, R2-30).
-- **Observed edge** *(post-MVP)*: an edge seen happening in a recorded run; a self-check tool for the model (ADR-0003, ADR-0037).
+- **Literal link**: a same-literal connection via one `literal` node per string. Every literal is linked, with no cutoff, and its occurrence count is a fact (BQ-22, R2-30, ADR-0047).
+- **`names` link**: a literal that exactly equals a symbol's name, e.g. `invoke("set_fletcher_chain")` → `fn set_fletcher_chain`. Generic; it replaces the Tauri link. Its hops are order-unknown, and whether the match is real is Claude's call (ADR-0048).
+- **Observed edge** *(post-MVP)*: an edge seen happening in a recorded run; a self-check tool for the model, kept as an overlay that never mutates a snapshot (ADR-0003, ADR-0037).
 - **Oversight**: Insight's second purpose (~40%): inspecting and verifying AI-written code at the system level (ADR-0012).
 - **Oversight loop**: prompt → system diff → spot a gap → query → direct the agent → system diff → save an expectation (ADR-0012; worked example in `docs/examples/`).
-- **Path tool**: deterministic pathfinding between nodes. It visits each node once and reports cycles and recursion to the caller (R2-12).
+- **Path tool**: `path(from, to, follow=[…])`, deterministic pathfinding where Claude chooses the hop kinds. Hops are labeled, cycles and recursion reported, and output capped (R2-12, R3-13, ADR-0047).
 - **Possible edge**: one of several candidates static analysis can't narrow down, e.g. each value an optional callback prop might hold, plus "absent" (BQ-15).
 - **Prime directive**: Insight's own facts may be incomplete, but never wrong (ADR-0002, scoped by ADR-0041).
 - **Probe** *(post-MVP)*: a tagged log statement the model inserts in a scratch copy to observe a run (ADR-0015).
-- **Project**: Insight's unit: a named set of one or more repos, set up with `insight init` and loaded together (ADR-0045).
-- **Race candidate**: two code regions with unknown relative order that touch the same state, at least one writing. A query; the model judges (ADR-0042).
+- **Project**: Insight's unit: a named set of one or more repos, set up with `insight init` and loaded together. Only init'ed projects are built (ADR-0045, R3-01).
+- **Race candidate**: two code regions with unknown relative order that touch the same state, at least one writing, including a region paired with itself. A query; the model judges (ADR-0042, R3-14).
 - **Read-coverage reminder**: a quiet note to Claude when a view or comparison references code it hasn't fully read (ADR-0041).
-- **Receipt**: the exact location of an edge's evidence: snapshot, file, byte and line range, expression and statement text, and the innermost container (BQ-12, R2-30). Exact within an immutable snapshot (ADR-0029).
+- **Receipt**: the exact location of an edge's evidence: snapshot, file, byte and line spans, and the innermost container. The text is computed from the stored file bytes, and macro output points at the macro call site (BQ-12, R2-30, R3-G #4/#8).
 - **Resolution**: how certain an edge is: `exact`, `possible`, or `unresolved` (BQ-09, R2-03).
-- **Snapshot**: an immutable graph of a project at a commit, or at the working copy that just built successfully. It must build (ADR-0029, ADR-0036, R2-17).
-- **Solver**: the deterministic backend. It connects everything using full language semantics from the extractors, and never interprets library or domain meaning (ADR-0023, ADR-0033).
-- **State node**: a variable, field, collection element, static or cell, identified by its declaration symbol (BQ-13).
+- **Snapshot**: an immutable graph of a project at a commit, or at the working copy that just passed Insight's check, frozen at that moment. It's exactly the files the extractors read (ADR-0029, ADR-0036, R3-04, R3-05).
+- **Snapshot trigger**: the after-build hook, **Snapshot now**, or an on-demand build. Coalesced: one at a time per project, newest wins, a 10 s quiet period (R2-10b, R3-04).
+- **Solver**: the deterministic backend. It connects everything using full language semantics from the extractors, and never interprets library or domain meaning (ADR-0023, ADR-0033, ADR-0048).
+- **State node**: a variable (locals and parameters included), field, collection element, static or cell, identified by its declaration symbol (BQ-13, R3-G #3).
 - **Step-through**: the Steps view element: an ordered list of view states, driven by Next/Back or played as a walkthrough. Values may be examples (ADR-0040, BQ-39, ADR-0037).
 - **Tag**: a declared label on a symbol (`@insight tag: disk-write`), parsed as data, never inferred. Written inline by default; opt-in per project (ADR-0032).
 - **Teaching view**: a view the model composes from the nine ADR-0040 elements. The window styles each element by kind; only elements that stand in for code must resolve (ADR-0026, R2-02).
+- **Tripwire**: if any file in your repo changes while an Insight command runs, Insight stops and reports which files and which command (R3-02).
 - **Vibe-coded software**: software produced largely by AI with little line-by-line human reading. The primary target.
 - **View element**: one of the nine kinds a view can contain (ADR-0040).
-- **Wire link** *(later)*: a send in one repo matched to a receive in another. Exact same-literal facts plus model-declared pairs that cite them (ADR-0014, R2-38).
+- **Wire link** *(later)*: a send in one repo matched to a receive in another. Exact literal and `names` facts plus model-declared pairs that cite them (ADR-0014, R2-38, ADR-0048).
 - **Wish rule**: when Claude wishes Insight could do something, it says so and records it in `INSIGHT.md`; you decide (ADR-0039, ADR-0044).

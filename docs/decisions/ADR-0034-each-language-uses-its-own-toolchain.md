@@ -1,6 +1,6 @@
 # ADR-0034: Each language is analyzed by its best native toolchain, through that tooling's own API, emitting the standard representation
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by R3-05 (extractors report hashes of every file read; the snapshot is exactly those files), R3-15 (memory sized from free RAM, one process per project part, out-of-memory refusal) and ADR-0048 (extractors translate into the programming-concept vocabulary; no framework knowledge)
 - **Date:** 2026-10-09
 - **Source:** user, BQ-05 ("each language can have its own checker and have bindings into Rust. That way the language parsing isn't something I _ever_ need to solve. And this is the power of AI. Each language can be done in its own language with APIs / whatever for Insight to get what it needs")
 - **Supersedes:** the BQ-04 ruling (plugins as compile-time Rust crates)

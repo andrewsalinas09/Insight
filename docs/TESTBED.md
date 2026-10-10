@@ -6,7 +6,38 @@ Statuses: **Solved (design)** means a documented mechanism handles it (cite the 
 
 These are design-time tests today. Once code exists, each becomes an executable fixture: a small real codebase plus the expected graph.
 
-## Status update after the R2 round (authoritative, 2026-10-09)
+## Status update after the R3 round (authoritative, 2026-10-09)
+
+Applies the Round 3 TESTBED sweep, the R3 rulings, ADR-0047 (parameters, not defaults; every fact kept, so the literal cutoff is gone) and ADR-0048 (programming concepts only; the generic `names` link replaces the Tauri link; JSX is a handoff). **This table wins over the R2 table below and over per-entry status lines.** New cases TB-107…TB-151 are in sections U–Z at the end.
+
+| TB | Status now |
+|---|---|
+| 002 | Solved (design): one edge to the trait method plus `implements` edges (BQ-19). Candidates come from `path(…, follow=[dispatch])` or SQL, chosen by Claude (ADR-0047). The observed overlay is post-MVP |
+| 007 | Solved (design): generic `names` link, where the literal `"save_file"` equals `fn save_file` (ADR-0048). JSX props are handoffs mapped by the TS extractor (ADR-0048) |
+| 008 | OPEN, post-MVP: route strings link through literal and `names` links (BQ-22, ADR-0048) |
+| 009 | Partial: every literal is linked, with no cutoff (ADR-0047). Claude follows `literal`/`handoff` hops when it wants them; what a listener means is the model's (ADR-0023) |
+| 020 | Partial: checked-in vendored and generated code is in the snapshot. Build-generated code in ignored outputs is outside it (TB-113). Macro output is receipted at the macro call site (R3-G #4) |
+| 022 | Solved (design): CLI derive macros are expanded on code that builds (BQ-06, ADR-0036); subcommand arms are blocks with condition text (BQ-18). Mapping a command line to an arm is the model's (Q-05) |
+| 030 | Solved (design) as a view edge: bad references return errors (BQ-36). As an inline annotation, `calls:` isn't a keyword, so it becomes a diagnostic to Claude and is never parsed as a fact (R3-G #12, ADR-0043) |
+| 034 | Partial, post-MVP: *observed* is an overlay keyed to a snapshot and never mutates it (ADR-0029, ADR-0038). Storage open (Q-17) |
+| 035 | Partial, post-MVP: as TB-034 |
+| 039 | Out of scope as a two-user case (ADR-0025). Invariant kept: INSIGHT.md prose never changes facts. Parsed settings may, and are recorded in `meta` and the cache key (R3-08) |
+| 044 | Solved (design): an unknown keyword (`calls:`) becomes a diagnostic to Claude, never a fact (R3-G #12). Tags are declared, not checked (ADR-0032, ADR-0043) |
+| 045 | Partial, post-MVP: `possible` edges for untyped calls (ADR-0002). The build check is the language's own syntax and import check (R3-22) |
+| 054 | Solved (design): the tagging mode is a setting in the project's INSIGHT.md (R3-07, ADR-0032), opt-in |
+| 067 | Post-MVP: labeling a stubbed value "assumed" is Claude's practice (ADR-0037), not an Insight mechanism |
+| 068 | Post-MVP: preferring the executed value is Claude's practice (ADR-0037); Example data carries no enforced provenance |
+| 073 | OPEN, post-MVP: a two-snapshot SQL diff (R2-32) plus `path` shows new calls into new external leaves (`fetch`, `reqwest::…`) reachable from Save. Calling that "network" is Claude's reading, or a tag (ADR-0023, ADR-0032). Baseline from R2-34 |
+| 081 | Solved (design): BQ-15 gives `onGraft?.()` main / pop-out / none. The pop-out route is followed when Claude passes `follow=[literal, handoff]` (ADR-0047), and both routes into `graftNode` are shown (R3-13) |
+| 083 | Solved (design): `names` link from the `invoke("set_fletcher_chain")` literal to `fn set_fletcher_chain` (ADR-0048), then the call/write path to `fsx::write_atomic` (R2-12) |
+| 087 | OPEN, post-MVP (Q-28, Q-29); lenses are views (ADR-0040) |
+| 088 | Post-MVP: `"ax"` is now linked like every literal (ADR-0047). `msg.accelX` is a member access, so no link. "Dangling" is Claude's finding, not an Insight fact (R2-38) |
+| 089 | OPEN, later: exact facts only (a shared header means the same declaration symbol, BQ-13). A layout match is a model-declared pair in a note (R2-38); no inferred tier (R2-03) |
+| 094 | Post-MVP: probes are model self-check tools (ADR-0015, ADR-0037) |
+| 099 | Solved (design): causal order (ADR-0042). `await`, handoffs, `names` hops, un-awaited async calls and JSX handoffs are *order-unknown* (R3-14, ADR-0048) |
+| 100 | OPEN (MVP acceptance): the answer covers **causal order** (which hops may interleave, ADR-0042), not timing kinds. The gate is the required-hop list, with the Tauri step as a **`names` hop** (R3-12, ADR-0048), run on `--commit cd5d6ff` (R3-06) |
+
+## Status update after the R2 round (2026-10-09; overridden by the R3 table above where they differ)
 
 The cases below keep their original text and answers as history. **Where a case's own Status line disagrees with this table, this table wins.** Cases not listed are unchanged.
 
@@ -555,3 +586,168 @@ Fletcher's undo tree is a flat `Map<number, HistNode>` whose tree shape exists o
 ### TB-050: The LLM wants a node for an inline chunk of logic
 Forty lines of validation inline in a handler. The LLM thinks it's a distinct step.
 **Answer (ADR-0026):** in a teaching view it may create an authored "validation" node mapped to those lines. The fact layer is unchanged. **Status:** Solved (design). *Earlier answer, kept for history:* no invented node. It can be a *block* if it's a control block, or the LLM suggests extracting it into a function, which then appears deterministically).
+
+## U. Builds and snapshots (ADR-0036, R2-10, R2-17, R3-01…R3-05)
+
+### TB-107: The Rust check needs the frontend built first
+Fletcher's `generate_context!` needs `frontendDist: "../dist"`. `app/dist` is ignored and absent in an exported commit tree, so a plain `cargo check --workspace` fails.
+**Answer:** project settings `[repo."Fletcher"] install = ["npm ci", "npm run build"]`, `check = ["cargo check --workspace"]` (R3-07). Install steps run only in Insight-owned trees (R3-02). On "needs settings", Claude fills them in (R2-05), and the change is approved by fingerprint (R3-01). **Status:** Solved (design).
+
+### TB-108: Insight's own check writes into the working copy
+`tsc -b --noEmit` on `app/tsconfig.json` builds the referenced `tsconfig.node.json` (`composite: true`) and would write a `.tsbuildinfo` into `app/`.
+**Answer:** Insight's commands run against its frozen copy with outputs in its cache (R3-02, R3-05); the tripwire stops if any repo file changes. **Status:** Solved (design).
+
+### TB-109: A partial or non-type-checking build fires the hook
+`npm run tauri dev` runs Vite (no type check); `cargo test -p fletcher-core` builds one crate.
+**Answer:** the hook is only a trigger; Insight runs the project's own check as the gate (R3-04). **Status:** Solved (design).
+
+### TB-110: Files change during the build, mid-extraction, or unrelated docs change after
+**Answer:** triggers are coalesced (R3-04). The snapshot is exactly the files the extractors read, each hashed (R3-05), so an A→B→A change mid-read is caught and a `WORKLOG.md` edit doesn't discard it. **Status:** Solved (design).
+
+### TB-111: The working-copy text has moved on when `source` or an excerpt is used
+**Answer:** a frozen, content-addressed source store is taken at snapshot time; `source` reads it (R3-05). **Status:** Solved (design).
+
+### TB-112: A missing toolchain makes the other side look dead
+Node is missing, so TS is skipped, and all 85 `#[tauri::command]`s then have no incoming link; a dead-code query would list them.
+**Answer:** Insight fetches the toolchain first (R2-15) and skips the language only if the fetch fails or is declined (R2-05). `status` and `meta` list skipped languages so Claude accounts for them. **Status:** Partial.
+
+### TB-113: Build-generated code outside the snapshot
+`include!(concat!(env!("OUT_DIR"), …))`, macro-generated items, Tauri's ignored `gen/schemas`.
+**Answer:** receipts never point outside the snapshot. Macro output is receipted at the macro call site (R3-G #4); OUT_DIR files are path-named leaves. **Status:** Partial.
+
+### TB-114: cfg- or feature-gated code
+A `#[cfg(target_os = "linux")]` item isn't compiled on Windows; the user's features may differ from Insight's defaults.
+**Answer:** absent code is incomplete, not wrong. Target and features are recorded in `meta` and the cache key (R3-G #10). **Status:** Partial.
+
+### TB-115: An old commit needs an old toolchain
+**Answer:** refuse with details (R2-05). Claude sets a one-off toolchain in project settings, which is recorded in `meta` (R2-29). **Status:** Partial.
+
+### TB-116: Two builds ten seconds apart
+**Answer:** coalesced: one snapshot at a time, newest pending wins, 10 s quiet period (R3-04). **Status:** Solved (design).
+
+### TB-117: The hook fires in a repo with no project, or after a failed build
+**Answer:** the hook is a silent no-op with exit code 0; `status` notes that the working copy differs from the loaded snapshot. **Status:** Solved (design).
+
+### TB-118: A git submodule compiled by the parent repo
+**Answer:** it's analyzed only if added as its own repo in the project (R3-G #11, ADR-0045); otherwise it's a leaf, with its gitlink SHA in the key. **Status:** Solved (design).
+
+## V. Read coverage and `compare` (ADR-0041)
+
+### TB-119: Claude reads the working copy while a different snapshot is loaded
+Fletcher's `App.tsx` is modified versus `cd5d6ff`; Claude's Read of lines 4923–4972 sees different text.
+**Answer:** a read counts only if the file's bytes at read time hash-equal the snapshot's file (R3-05); grep hits count for the returned lines only. **Status:** Solved (design).
+
+### TB-120: A view collapses `MainApp` (~1,100 functions)
+**Answer:** the reminder covers only spans the view shows as code or maps line by line, never collapsed contents. **Status:** Solved (design).
+
+### TB-121: `compare` across a rename
+`graftNode` in `fletcher_cd5d6ff` vs. `graftOnto` in `fletcher_wc`.
+**Answer:** `compare` takes snapshot-qualified references (R2-32); identity is never inferred (ADR-0028). **Status:** Solved (design).
+
+### TB-122: `compare` where only line endings differ
+**Answer:** line endings are normalized and "line endings only" is reported as one fact (R3-18). **Status:** Solved (design).
+
+## W. Causal order and races (ADR-0042, R3-14, ADR-0048)
+
+### TB-123: An IPC hop
+`send` → `invoke("set_fletcher_chain")` vs. `setHistVersion` → `history_save`.
+**Answer:** the `names` hop is order-unknown (ADR-0048), so Insight never claims the APO file is written first. **Status:** Solved (design).
+
+### TB-124: An un-awaited async call
+`onClick={popOutHistory}` with `popOutHistory = async () =>`; a Rust async fn called without `.await`.
+**Answer:** the extractor maps it to "callee continues later", which is order-unknown (R3-14, ADR-0048). **Status:** Solved (design).
+
+### TB-125: Ordering of a JSX render
+`<HistoryTree onGraft={graftNode}/>`.
+**Answer:** JSX is a handoff (TS extractor mapping), so it's order-unknown (ADR-0048). **Status:** Solved (design).
+
+### TB-126: A region races with itself
+Rapid grafts each `invoke("set_fletcher_chain")` → two runs of `fsx::write_atomic(…"fletcher.txt")`.
+**Answer:** the standard race query self-pairs any region entered through an order break (R3-14). Whether the framework serializes it is Claude's judgment. **Status:** Solved (design).
+
+### TB-127: Cross-window race candidates
+`ghost` and `dragStart` in `HistoryTree`, mounted in the main window and the pop-out (separate webviews).
+**Answer:** candidates carry `possible-instance` (BQ-13), and Claude judges. **Status:** Solved (design).
+
+### TB-128: A non-function value handed off
+`notify::recommended_watcher(tx)` with a `rx.recv()` loop.
+**Answer:** the `cell` ties `tx` and `rx` (BQ-17); the writer is inside the external. Claude explains. **Status:** Partial.
+
+## X. The `@insight` keyword grammar (ADR-0043)
+
+### TB-129: A tag above `#[tauri::command] fn set_fletcher_chain`
+**Answer:** it attaches to the source fn; macro-generated items get no tag. **Status:** Solved (design).
+
+### TB-130: A tag on the anonymous JSX handler `onGraft={(id, onto) => emitTo(…)}`
+**Answer:** it attaches to the node starting at the next token (the compiler's doc-comment attachment); a tag attached to nothing is a diagnostic. **Status:** Solved (design).
+
+### TB-131: A misspelled or unknown keyword (`@insight tags: disk-write`)
+**Answer:** a diagnostic to Claude; the build never fails (R3-G #12). **Status:** Solved (design).
+
+### TB-132: `@insight tag:` text in strings, line comments or Markdown
+Insight analyzing itself, whose fixtures and docs are full of the syntax.
+**Answer:** only doc comments attached to a symbol are parsed (ADR-0043). **Status:** Solved (design).
+
+### TB-133: Tags added today, old commit loaded
+**Answer:** tags come from the snapshot's own bytes (R2-29), so `cd5d6ff` has none and Claude queries by name. **Status:** Solved (design).
+
+### TB-134: Sidecar `match` against different name forms
+`match = ["std::fs::*"]` vs. TS `@tauri-apps/api/core.invoke` vs. re-exports.
+**Answer:** only canonical external-leaf paths match (BQ-20); an entry that matches nothing is a diagnostic. **Status:** Solved (design).
+
+## Y. INSIGHT.md and projects (ADR-0044, ADR-0045, R3-07, R3-08)
+
+### TB-135: A malformed settings block
+**Answer:** refuse with the parse error for Claude (R3-08). **Status:** Solved (design).
+
+### TB-136: Two repos in one project need different `check` commands
+**Answer:** per-repo tables `[repo."<name>"]` (R3-07). **Status:** Solved (design).
+
+### TB-137: INSIGHT.md edited mid-session or mid-snapshot
+**Answer:** settings are re-read; a fact-affecting change discards the snapshot and rebuilds (R3-08); the next result notes the change and `status` returns the current prose. **Status:** Solved (design).
+
+### TB-138: A settings change served from a stale cache
+**Answer:** fact-affecting settings are hashed into the cache key (R3-08, R3-G #10). **Status:** Solved (design).
+
+### TB-139: `insight init` run in `Fletcher\app`
+**Answer:** the root is the git toplevel (BQ-25), so the project is "Fletcher". **Status:** Solved (design).
+
+### TB-140: One repo in two projects
+**Answer:** the per-repo cache is shared, link layers are per project, and the settings hash is in the key (R3-08). **Status:** Solved (design).
+
+### TB-141: A project-name collision, or a moved repo folder
+**Answer:** refuse and require `--project`; `status` reports a missing repo path and Claude re-adds it. **Status:** Solved (design).
+
+### TB-142: A worktree build fires the hook
+**Answer:** repo identity is `git rev-parse --git-common-dir`; the worktree is a second working copy, snapshotted separately and labeled (R3-21). **Status:** Solved (design).
+
+### TB-143: One repo in a multi-repo project fails its check
+**Answer:** keep its last good snapshot, rebuild links over the mix, and show each repo's snapshot in `status` (R3-20). **Status:** Solved (design).
+
+## Z. Updates and the `path` tool (ADR-0046, R2-12, ADR-0047)
+
+### TB-144: Old-schema snapshots after an update
+**Answer:** refuse queries on a schema mismatch; commits rebuild on load, and working copies rebuild from the frozen copy or at the next build (R3-19). **Status:** Solved (design).
+
+### TB-145: The hook runs `insight.exe` while the installer is replacing it
+**Answer:** the hook always exits 0, logs the failure, and never fails your build; the next build re-triggers. Versioned install folders make it rare (R3-24). **Status:** Solved (design).
+
+### TB-146: A standalone CLI snapshot is running when an update installs
+**Answer:** the idle guard checks a machine-wide backend lock held by any Insight process, not just the app (ADR-0046, R3-G #9). **Status:** Solved (design).
+
+### TB-147: Fan-out through `lit:"main"` (22 sites) and `lit:"hist-cmd"` (15 sites)
+**Answer:** every literal is linked and its occurrence count is a fact (ADR-0047). Claude chooses whether to pass `follow=[literal]`, and literal hops are labeled, never shown as calls. **Status:** Solved (design).
+
+### TB-148: A path into `source.fill(&mut fbuf)`'s three impls
+**Answer:** `follow=[dispatch]` expands the `implements` edges (BQ-19, ADR-0047). **Status:** Solved (design).
+
+### TB-149: `--via-state` through a widely read `[state, setState]` cell explodes
+**Answer:** `path` output is capped like `sql` ("truncated, N nodes"), and Claude narrows. **Status:** Solved (design).
+
+### TB-150: The "absent" candidate
+`onGraft?.(id, target)` where one mount passes no `onGraft`.
+**Answer:** `path` prints "may call nothing", with the mount receipt (R3-13; `to_nid NULL`, R2-30). **Status:** Solved (design).
+
+### TB-151: An ambiguous endpoint
+`cmd` is both the bus's no-op initializer and the real bus.
+**Answer:** candidates come back and Claude narrows (R2-18). **Status:** Solved (design).

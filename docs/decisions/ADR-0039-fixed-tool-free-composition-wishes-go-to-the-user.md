@@ -1,6 +1,6 @@
 # ADR-0039: A fixed tool with a fixed style; free composition inside views; new capabilities go through the user
 
-- **Status:** Accepted; tool list amended by ADR-0041 (+ `compare`) and R2-12 (+ `path`: algorithmic pathfinding that reports cycles and recursion); wishes are appended to the Wishes section of INSIGHT.md (ADR-0044)
+- **Status:** Accepted; tool list amended by ADR-0041 (+ `compare`) and R2-12 (+ `path`: algorithmic pathfinding that reports cycles and recursion); wishes are appended to the Wishes section of INSIGHT.md (ADR-0044); `path` takes `follow=[…]` chosen by Claude (ADR-0047)
 - **Date:** 2026-10-09
 - **Source:** user, BQ-27 ("I kind of want this to be a fixed tool where the style is fixed and not constantly changing. I could see myself simply having 'if there's something you wish Insight could do, please let the user know and they will add it and then push to main'. Like everything you have here is good. I more imagine saying 'Claude, show me the flow from source to consumer of this data' and it on the fly builds the hierarchy and what's displayed etc. Simply, the edges and nodes are defined with logical stuff, but what's added and removed from a view and what's grouped can be changed however. If Claude is like 'I want to be able to do X', it tells me, I see if I like it, and then add it")
 - **Rejects:** Claude's proposal of hot-loaded "mods" (Claude-written view and tool code inside Insight)

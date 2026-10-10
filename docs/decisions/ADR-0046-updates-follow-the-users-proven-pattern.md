@@ -1,6 +1,6 @@
 # ADR-0046: Updates follow the user's proven desktop-app pattern
 
-- **Status:** Accepted
+- **Status:** Accepted; versioned install folders behind a stable launcher, checksum-verified downloads (R3-24)
 - **Date:** 2026-10-09
 - **Source:** user, R2-24 ("follow what [the user's other desktop app] does here"). The pattern was read from the user's own proprietary Tauri app and is recorded here only in generic form.
 

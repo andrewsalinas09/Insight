@@ -181,8 +181,8 @@ What's the first thing that runs, and what's its pass condition?
 | 18 | Every `if`/`else`/`switch` case/`match` arm/ternary/`&&` JSX guard/loop/`try`/`catch` is a `block` container with its condition text. `return`/`?`/`throw` are `exit` edges (ADR-0008). |
 | 19 | Dynamic dispatch = one edge to the trait or interface method plus `implements` edges, expanded at query time. Narrowing comes later. |
 | 20 | Analyze all git-tracked source in the TS projects and Cargo members, tests included. One external leaf per referenced symbol; external globals are state. `std` counts as a library (ADR-0033). |
-| 21 | The Tauri link is command level: the `invoke` string = the `#[tauri::command]` fn name, flagged if it's missing from `generate_handler!`. Argument-name mapping (camelCase) is for the model. |
-| 22 | Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* |
+| 21 | **SUPERSEDED → ADR-0048** (no framework links; the generic `names` link, where a literal exactly equals a symbol's name, covers `invoke("x")` → `fn x`). *Was:* The Tauri link is command level: the `invoke` string = the `#[tauri::command]` fn name, flagged if it's missing from `generate_handler!`. Argument-name mapping (camelCase) is for the model. |
+| 22 | Same-literal links between identical strings in argument, property or comparison positions, workspace-wide. Literals with more than 25 occurrences, or shorter than 3 characters, are recorded as counts, not edges. *Visible effect: `"hist-cmd"` links, `"main"` doesn't.* **Corrected:** the cutoff is removed by ADR-0047. Every literal is linked (`"main"` has 22 occurrences in Fletcher and would have linked anyway), and occurrence counts are facts Claude uses to skip noise. |
 
 ### BQ-09: The closed set of node and edge kinds — DECIDED BY CLAUDE (Round 3 table)
 - Options:
@@ -279,7 +279,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) Index dependency source too.
 - Rec: (a). Tests are needed for "what reaches X" (Q-31).
 
-### BQ-21: The Tauri link — DECIDED BY CLAUDE (Round 3 table)
+### BQ-21: The Tauri link — SUPERSEDED → ADR-0048 (generic `names` link)
 - Case: `invoke<EqState>("set_fletcher_chain", { filters: own })` (`App.tsx:4724`) ↔ `fn set_fletcher_chain(filters: Vec<FilterIn>)` (`lib.rs:272`); `rename_all = "camelCase"` maps `fc_hz` to `fcHz`.
 - Options:
   - (a) Tauri-bridge plugin: `invoke` string = `#[tauri::command]` fn name, at command level, flagging fns missing from `generate_handler!`.
@@ -287,7 +287,7 @@ What's the first thing that runs, and what's its pass condition?
   - (c) (a) plus argument-field links through `rename_all`.
 - Rec: (a). camelCase mapping is a transform, so it's the model's job.
 
-### BQ-22: Generic same-string links (events, bus dispatch) — DECIDED BY CLAUDE (Round 3 table)
+### BQ-22: Generic same-string links (events, bus dispatch) — DECIDED BY CLAUDE (Round 3 table); cutoff removed by ADR-0047
 - Case: `"hist-cmd"` in TS `emitTo`, TS `listen` and Rust `emit_to`; `{ type: "graft" }` ↔ `p.type === "graft"`; `"main"` appears everywhere (noise).
 - Options:
   - (a) None: plugin rules only.
@@ -720,7 +720,7 @@ Windows locks a running exe, and open Claude sessions keep their old bridge (and
 | 28 | **Extractor protocol and cache keys:** `extract --root <dir> --project <cfg>… --schema <N>`. The NDJSON stream starts with a `header` record {schema, extractor build hash, toolchain version}, then facts, then an `end` record {counts} that detects truncation. Progress and diagnostics go to stderr, then to log files. **Cache key** = (repo, snapshot content hash, fact-schema version, each extractor's build hash); the link layer adds the link-pass hash. UI-only Insight updates don't invalidate snapshots. |
 | 29 | **Where settings come from for old commits:** in-repo `@insight` tags and any in-repo `.insight/` files come from the snapshot's own bytes (they describe that code). Build settings come from today's project folder (they describe how to process it). The snapshot's `meta` table records which were used. |
 | 30 | **SQLite tables:** `nodes(nid INTEGER PK, path TEXT UNIQUE, parent_nid, kind, subkind, name, lang, file, byte_start, byte_end, line_start, line_end)`; `edges(eid, kind, from_nid, to_nid, resolution, group_id)`, one row per occurrence, with `group_id` tying a call's `possible` candidates together and "absent" as `to_nid NULL`; `receipts(eid, role, snapshot, file, byte_start, byte_end, line, col, end_line, end_col, text, statement, container_nid)`, one per edge (two for `link` edges, distinguished by `role`); `tags`, `diagnostics`, `meta`. Same-literal links use one node per literal (`lit:"hist-cmd"`) with edges from each enclosing function, so there are no N² links. |
-| 31 | **Tauri link:** a `link` edge from the innermost function containing `invoke("x")` to `#[tauri::command] fn x`. Receipts on both sides (the TS string literal, and the Rust fn plus its `generate_handler!` entry); a `diagnostics` row if the command isn't registered. Never linked from the generic `invoke` leaf, so paths stay exact. |
+| 31 | **SUPERSEDED → ADR-0048:** replaced by the generic `names` link (literal → symbol with that exact name; receipts on both sides; order-unknown hop). *Was:* **Tauri link:** a `link` edge from the innermost function containing `invoke("x")` to `#[tauri::command] fn x`. Receipts on both sides (the TS string literal, and the Rust fn plus its `generate_handler!` entry); a `diagnostics` row if the command isn't registered. Never linked from the generic `invoke` leaf, so paths stay exact. |
 | 32 | **Snapshots in SQL:** each loaded snapshot is attached under an alias shown by `status` (e.g. `fletcher_wc`, `fletcher_cd5d6ff`); the active snapshot is also unqualified, so a simple `FROM nodes` works. Every result names its snapshot. `unload` is refused while another session is using that snapshot. |
 | 33 | **Dev next to installed:** two channels, `release` and `dev`, each with its own pipe (`\\.\pipe\insight-<user>-<channel>`), its own folders (`%LOCALAPPDATA%\Insight` vs `Insight-dev`) and its own registration (`insight` vs `insight-dev`). The bridge opens with a `hello{protocol, build hash}` handshake (ADR-0046). An app the bridge launched headless exits after 10 minutes with no clients; an app you launched stays. |
 
@@ -810,7 +810,7 @@ Rust macros generate functions with no source text; closures sit inside `format!
 - Rec: count function syntax *written in the source*, with a completely separate parser (tree-sitter). Macro-generated functions are excluded. The rules go in SCHEMA.md, and mismatches are printed per file.
 
 ### R3-12: The M1 gate as a list of required hops — ANSWERED
-**Ruling:** M1's gate is a list of required function→function hops with edge kind (e.g. `nodeUp → onGraft`, `onGraft → graftNode`, `graftNode → applySnap`, Tauri link `invoke("set_fletcher_chain") → set_fletcher_chain`…), each checked exactly. Lines inside functions are found by Claude via `sql`/`source`. User's framing: "the solver gives what it knows (and to Claude) and then Claude can do whatever it thinks it needs to do to answer your question and display it to you… this is really Claude's way to show you something it can't easily do itself."
+**Ruling:** M1's gate is a list of required function→function hops with edge kind (e.g. `nodeUp → onGraft`, `onGraft → graftNode`, `graftNode → applySnap`, and the Tauri step as a **`names` hop**: the literal `"set_fletcher_chain"` → `fn set_fletcher_chain` (ADR-0048)…), each checked exactly. Lines inside functions are found by Claude via `sql`/`source`. User's framing: "the solver gives what it knows (and to Claude) and then Claude can do whatever it thinks it needs to do to answer your question and display it to you… this is really Claude's way to show you something it can't easily do itself."
 Several "receipts" in the walkthrough are a comment, a local or an object field. They can never be hops on a path.
 - Rec: rewrite the gate as required function→function hops (with edge kind). Interesting lines inside a function are found with `sql`/`source`.
 

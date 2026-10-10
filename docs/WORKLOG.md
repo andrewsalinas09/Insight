@@ -12,6 +12,43 @@ Template:
 
 ---
 
+## 2026-10-09 (cont.) — Round 3: dry run, red team, TESTBED sweep; ADR-0041…0048
+**Done:**
+- **Three reviews against the cleaned-up docs:**
+  - a fresh-session M0 dry run (13 stop points);
+  - a red team (17 findings: running repo code without a trust boundary, `npm ci` wiping the live `node_modules`, pipe/SQL hardening, receipt-text DB blow-up, hook storms, cache growth…);
+  - a TESTBED sweep (broken cases, gaps, ~45 missing edge cases).
+- **Merged into R3 in BUILD-QUESTIONS:** 24 user-visible questions plus 15 internal items; all answered or accepted. Key rulings:
+  - R3-01: only init'ed projects build; build commands come only from the project folder, with a fingerprint and an approval diff.
+  - R3-02: Insight never mutates the live working copy (frozen copy, install/check kinds, tripwire).
+  - R3-03: secrets (input-set-only `source`, mirrored deny rules, purge).
+  - R3-04: the hook is only a trigger; Insight runs the check; triggers are coalesced.
+  - R3-05: frozen source store; a snapshot is exactly the files read.
+  - R3-06: milestones on `cd5d6ff`.
+  - R3-07/08: all settings in INSIGHT.md TOML blocks; bad settings refuse; settings in the cache key.
+  - R3-09/10: init-then-build; asking via exit code plus `--yes`.
+  - R3-11: an independent tree-sitter function counter.
+  - R3-12: the M1 gate as required hops.
+  - R3-13 → ADR-0047.
+  - R3-14…24: accepted as recommended.
+- **New ADRs:**
+  - ADR-0047: Claude chooses at query time; parameters, not defaults; every fact kept; the BQ-22 cutoff removed.
+  - ADR-0048: the solver speaks programming concepts; language knowledge only in extractors; no framework knowledge; the generic `names` link replaces the Tauri link (BQ-21/R2-31 superseded).
+- **Applied the sweep:**
+  - TESTBED gained an authoritative R3 status table and sections U–Z with TB-107…TB-151.
+  - ARCHITECTURE and GLOSSARY were rewritten to current state.
+  - ADR status lines were updated.
+  - ROADMAP focus = build M0.
+- Also recorded: the "maximally correct when cheap" corollary (ADR-0035).
+
+**Learned:** Two recurring Claude errors, now recorded as rules:
+- asking the user to choose *defaults* for relevance the model judges at query time (ADR-0047);
+- letting framework knowledge creep into the solver (ADR-0048).
+
+The red team's strongest point was the trust boundary: building means running repo code, so an agent must never be able to approve its own builds.
+
+**Next:** Build M0: scaffold the workspace (BQ-03), write SCHEMA.md (BQ-09 + R2-30 + R3-G + ADR-0048), export `cd5d6ff`, run the extractors, write SQLite, and pass the independent function count.
+
 ## 2026-10-09 (cont.) — Docs consistency cleanup after the R2 round
 **Done:** Applied the consistency audit's stale-text list (approved by the user), reconciled with every R2 ruling (ADR-0041…0046 and R2-01…R2-33).
 - **Rewrote the living docs to describe now:** CLAUDE.md/AGENTS.md (build phase, stack, doc map, SCHEMA.md created at M0), README, VISION (goals updated; "What this is not" filled in), ARCHITECTURE (usage, pipeline, division of labor, graph model, snapshots, post-MVP, stack), GLOSSARY (re-sorted; superseded terms replaced; new terms such as snapshot, project, tag, receipt, extractor, causal order, view element), ROADMAP (M0→M2, Phase 0 done).

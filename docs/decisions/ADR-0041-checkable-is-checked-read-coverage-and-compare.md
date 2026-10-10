@@ -1,6 +1,6 @@
 # ADR-0041: "Never wrong" covers Insight's facts; Claude's words are interpretation; what's checkable gets a tool (read-coverage reminder and `compare`)
 
-- **Status:** Accepted
+- **Status:** Accepted; `compare` normalizes line endings (R3-18); reads count only when bytes match the snapshot (TB-119)
 - **Date:** 2026-10-09
 - **Source:** user, R2-01 ("I would say a, but mark what Claude says as interpretation, but let Claude use tools to prove it… anything that is checkable is already checked. We trust Claude is reasoning correctly. We don't question its knowledge… I ask Claude 'how do these two codes differ', it says one thing, and then it's like 'I made a mistake, I didn't read the full context'. How can we prevent that? … Can we actually write an algo for this?" then: "yes… a helpful reminder to say hey, did you really check all these lines, they may not be important but they may be… I don't want to make it start saying why it doesn't matter… I trust what it says mainly")
 - **Amends:** ADR-0002 (scope), ADR-0039 (tool list)
