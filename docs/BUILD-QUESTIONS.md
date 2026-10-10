@@ -568,7 +568,8 @@ ADR-0026 says styling is enforced and unmapped elements are rejected (TB-105). A
 - Options: (a) the renderer styles by element *kind* (abstraction, example data and excerpts always look authored); a mapping is required only for kinds that stand for code (group, collapse, abstraction, excerpt), and optional for notes and example data; (b) no styling or mapping rules at all; (c) keep ADR-0026 in full.
 - Rec: (a). Styling by kind is trivial rendering and polices no content.
 
-### R2-03: Can the model draw an edge the solver didn't find? What line styles exist? — OPEN (vis)
+### R2-03: Can the model draw an edge the solver didn't find? What line styles exist? — ANSWERED (a)
+**Ruling:** no model-added connections. Edge resolutions are **exact / possible / unresolved** (plus *observed* later, from runs). Claude picks among `possible` edges by highlighting one and noting it, or describes an unseen connection in a note or group. The "inferred" tier is retired (ADR-0013 rules 3–4 and ADR-0015 #2 superseded on this point). **Known limit (user asked "is this possible?"):** connections invisible to static analysis (computed string lookups, runtime-loaded code, file/env IPC, reflection) stay `unresolved` and appear only as notes. Remedies: a wish to teach an extractor a language-level pattern, and later observed runs. The BQ-46 resolution report measures how often it happens.
 ADR-0013/0015/0019 promise an "inferred" tier (LLM additions with receipts). BQ-09 has only exact / possible / unresolved. ADR-0040 and the tool list have no way to add an edge.
 - Options: (a) drop "inferred": the model voices a suspicion in a note or step, or picks one of the solver's `possible` edges; the vocabulary is exact / possible / unresolved, plus "observed" later with probes; (b) add an "authored edge" element, unverified; (c) build the receipt checker.
 - Rec: (a).
