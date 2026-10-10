@@ -1,6 +1,6 @@
 # ADR-0044: INSIGHT.md: one Markdown file that shapes both Claude (prose) and Insight (parsed settings)
 
-- **Status:** Accepted
+- **Status:** Accepted; per-repo additions become per-project (ADR-0045)
 - **Date:** 2026-10-09
 - **Source:** user, R2-08 ("I think this could be a doc you write like an md file that's Insight specific that you can modify / tell Claude to modify on your behalf, and it's read in and Claude uses it to change how the compiler behaves / solver solves")
 - **Amends:** ADR-0004 (the knowledge profile now lives here) and ADR-0039 (wishes are recorded here)

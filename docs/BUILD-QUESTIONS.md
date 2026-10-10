@@ -648,7 +648,8 @@ M1 is `insight path … --to …`. ADR-0038 says paths are recursive CTEs. The t
 ### R2-14: Registering with Claude Code — ANSWERED (a); command split in R2-14b
 **Ruling:** register once at user scope with an absolute path (`claude mcp add -s user insight -- %LOCALAPPDATA%\Insight\bin\insight.exe mcp`), plus other agents found and the after-build hook. User: "insight init yes, like git init".
 
-### R2-14b: `insight setup` (per machine) + `insight init` (per repo, like git), or one command? — OPEN (vis)
+### R2-14b: `insight setup` (per machine) + `insight init` (per repo, like git), or one command? — ANSWERED → ADR-0045
+**Ruling:** install once (`insight setup`), init per **project** (`insight init`; `--project <name>` adds a repo). A project is a named set of repos; link passes run only within a project.
 `claude mcp add` defaults to *local* scope, which only works in that one folder.
 - Options: (a) `insight init` runs `claude mcp add -s user insight -- <absolute path>\insight.exe mcp`, so it works in every repo, with no PATH guessing; (b) a per-repo `.mcp.json`; (c) user scope relying on PATH.
 - Rec: (a).
@@ -712,6 +713,6 @@ Windows locks a running exe, and open Claude sessions keep their old bridge (and
 
 - **R2-34:** the baseline for "what did this prompt change". Rec: a Claude Code hook records the working tree as a git tree object when you submit a prompt, and it's built only if you ask for a diff. *(vis, oversight)*
 - **R2-35 (DEFERRED to the frontend session):** can one view show two snapshots (added/removed styling for a system diff)? Rec: yes, with styling computed by Insight. A vocabulary change, through you. *(vis, oversight)*
-- **R2-36:** named workspaces (e.g. "sensor-system" = firmware + app), with link passes only within one. *(vis, multi-repo)*
+- **R2-36 (ANSWERED by ADR-0045: workspaces = projects):** named workspaces (e.g. "sensor-system" = firmware + app), with link passes only within one. *(vis, multi-repo)*
 - **R2-37:** what "must build" means for firmware: an explicit build command and environment (PlatformIO env, ESP-IDF, maybe WSL), with the environment and Rust features as part of the snapshot key. *(vis, before TB-101)*
 - **R2-38:** cross-repo wire links: exact same-literal facts, plus model-declared "same message" pairs citing them. Runtime evidence (serial logs) is read by Claude first, with an ingest tool only if a wish asks. *(internal)*
