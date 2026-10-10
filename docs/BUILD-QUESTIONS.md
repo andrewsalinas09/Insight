@@ -773,7 +773,8 @@ An after-build snapshot running `npm ci` in place would delete `node_modules` un
 `tauri dev` runs `vite`, which never type-checks; `cargo test -p x` builds one crate; agent edit/check loops fire every 20 s.
 - Rec: the hook is only a **trigger**. Insight runs the project's own check, warm, in its private dirs, as the gate. Triggers are **coalesced**: one snapshot at a time per project, only the newest pending, a 10 s quiet period, skipped if the content hash is unchanged.
 
-### R3-05: Freeze the code at snapshot time — OPEN (vis)
+### R3-05: Freeze the code at snapshot time — ANSWERED
+**Ruling:** at snapshot time Insight copies the snapshot's source files into a content-addressed store (Fletcher ≈ 0.7 MB). Its code never changes, `source` reads the frozen copy, and Insight's commands run against it (R3-02). The snapshot is exactly the files the extractors read, each hashed, so unrelated edits don't discard it and mid-read changes are caught (refines R2-17/R2-25).
 Working copies are analyzed in place, so `source` later reads today's disk, not what was analyzed. An edit-then-revert can slip past the before/after hash. Unrelated doc edits (WORKLOG) discard snapshots needlessly.
 - Rec:
   - (1) Copy the snapshot's source files into a content-addressed store at snapshot time (Fletcher's is ~0.7 MB), so the snapshot's text never changes.
