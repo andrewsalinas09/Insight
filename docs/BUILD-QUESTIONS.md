@@ -740,7 +740,11 @@ Merged from three reviews against the cleaned-up docs. User-visible questions ar
 
 ## R3-A: Security and safety (before M0)
 
-### R3-01: Which code Insight is allowed to run — OPEN (vis)
+### R3-01: Which code Insight is allowed to run — ANSWERED (yes, all three guards)
+**Ruling:**
+- (1) Only projects you `insight init`'d get built. Other loads over MCP are refused until you approve them in the window or CLI.
+- (2) Executable settings come only from the project folder.
+- (3) **How a change is noticed (user asked):** Insight stores a fingerprint (hash) of the approved command list. Before every build it re-reads INSIGHT.md and compares fingerprints. A mismatch means someone edited them (who doesn't matter), so it refuses with the exact diff until you approve via the window's Settings or `insight approve <project>`. Edits made through Insight's own settings UI count as approved.
 Building runs the repo's code (npm scripts, `build.rs`, Rust macros). A README prompt injection could get Claude to `load` a hostile repo and run it. Separately, build commands could come from repo files (`.insight/config.toml`) or be changed by Claude on its own via INSIGHT.md.
 - Rec:
   - (1) Insight builds only projects **you** ran `insight init` on; anything else loaded over MCP is refused until you approve it in the window/CLI.
