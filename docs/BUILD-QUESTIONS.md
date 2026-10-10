@@ -804,7 +804,8 @@ The worked example is at commit `cd5d6ff`; your Fletcher working copy has uncomm
 **Ruling:** a distinct exit code, the size estimate in the log, and re-run with `--yes`. Over MCP, Claude gets "needs confirmation" with the numbers and asks you.
 - Rec: a distinct exit code, the estimate in the log, and re-run with `--yes`. MCP returns "needs confirmation" to Claude.
 
-### R3-11: What counts as "a function" for M0's exact-count pass — OPEN (vis)
+### R3-11: What counts as "a function" for M0's exact-count pass — ANSWERED
+**Ruling (user: "the rule is maximally correct. If we can do it and it's cheap and not hard, we should do it"):** a fully separate tree-sitter counter of function syntax written in the source (anonymous callbacks and closures included, macro-call closures re-parsed). Macro-generated functions are excluded from the count but stay in the graph. Counting rules go in SCHEMA.md; mismatches print per file.
 Rust macros generate functions with no source text; closures sit inside `format!(…)`.
 - Rec: count function syntax *written in the source*, with a completely separate parser (tree-sitter). Macro-generated functions are excluded. The rules go in SCHEMA.md, and mismatches are printed per file.
 
