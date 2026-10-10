@@ -687,7 +687,7 @@ Predicting a build's time or size isn't trivial.
 - Rec: (a). It's exact, not a guess.
 
 ### R2-20: What M0 prints, and when it passes — ANSWERED (a), output to log files
-**Ruling:** M0 records per-language files, nodes and edges by kind, resolved vs. unresolved, and time per stage (check / extract / link). **Pass = the function count matches an independent count exactly.** **Output goes to log files, never directly to the terminal (user):** each CLI run writes a human-readable log plus a machine-readable stats file under `%APPDATA%\Insight\projects\<name>\logs\`. The terminal shows only the log's path and the exit code. MCP results go to Claude as tool responses, as usual.
+**Ruling:** M0 records per-language files, nodes and edges by kind, resolved vs. unresolved, and time per stage (check / extract / link). **Pass = the function count matches an independent count exactly.** **Output goes to log files, never directly to the terminal (user):** each CLI run writes a human-readable log plus a machine-readable stats file under `%APPDATA%\Insight\projects\<name>\logs\`. The terminal shows only the log's path (user: "the file path can be put there") and the exit code. MCP results go to Claude as tool responses, as usual.
 - Options: (a) per language: files, nodes by kind, edges by kind and resolution, the unresolved rate, and time (check / extract / link). Pass = both extractors run *and* the function count matches an independent count exactly, which catches silently dropped anonymous functions; (b) it runs without error; (c) it matches a hand count for one file.
 - Rec: (a).
 
@@ -695,7 +695,8 @@ Predicting a build's time or size isn't trivial.
 - Options: (a) the view document (Claude's) and your interaction state (step, expansions, selection) are separate, so Claude's patches keep your place, and `selection` tells Claude where you are; (b) your clicks make new versions, and Claude's stale patches are rejected; (c) Claude's patch resets you.
 - Rec: (a).
 
-### R2-22: What comes back the next day — PARTLY DEFERRED: restoring the last view and step goes to the frontend session; the backend part (which snapshots are loaded) stays OPEN
+### R2-22: What comes back the next day — backend part ANSWERED (a); view/step restore DEFERRED to the frontend session
+**Ruling:** on restart Insight reopens the projects that were loaded, from their cached snapshots (instant). `status` tells a new Claude conversation what's loaded and which snapshot it's on, so it can continue.
 - Options: (a) restore the loaded snapshots plus the last view and its step, and `status` lists the last few views (title, when, which session) so a new Claude conversation can say "continue where we left off"; (b) nothing persists; (c) full per-repo view history.
 - Rec: (a).
 
