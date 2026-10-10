@@ -12,6 +12,45 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — Validation on private projects; call-site matching; `insight install`
+**Done:**
+- **Two-device firmware pair** (private validation set, C++):
+  - The gateway builds against the installed ESP-IDF 5.5.3 with a small compatibility header (C++ only, one component compiled). The user chose this because the code is for testing.
+  - Setup used only project settings: an install step that generates a header the build needs, toolchain packages, and a literal-path check command.
+  - A "where is sensor data created, sent, and stored" question was answered from the graph alone, end to end across both repos.
+- **C/C++ extractor:**
+  - A call through an object's `operator()` is a call to that object (callable objects).
+  - `operator=` is an assignment.
+  - A one-argument function returning a reference passes its argument through.
+- **Indirect calls:** the candidate walk is one shared `IndirectWalk` used by the solver and the `indirect_why` example, which explains a candidate hop by hop. Aliasing follows only the callee's own assignments.
+- **Snapshot key** includes the `insight` binary itself. A stale snapshot had kept an old extractor's over-merged candidates.
+- **Cross-repo `path`:** the name and `same` links use hash maps instead of SQL suffix joins (388 s → about 1 s).
+- **Private TypeScript + Rust desktop app** (validation): "how does clicking Start lead to a saved CSV, highlighting the binary format and its decoding" was answered with routes. It found three gaps, now fixed:
+  - TS: a `catch` clause was walked twice (count mismatch).
+  - Rust: calls through `dyn Trait` now list every implementing method as a `possible` candidate.
+  - Settings: per-repo `env K=V` for build scripts that need an environment variable. It is approved like any command; a placeholder value is used for validation.
+- **Call-site matching** (fact schema 5, DB layout 6):
+  - `call`, `binds` and `value-flow/result` edges carry their call's `site`.
+  - In `path`, data that enters a function at one call leaves only through that call's result.
+  - The search stops at `max_depth`.
+  - On the private app, the Start → CSV query went from 1,897 nodes in 114 s to 285 nodes in 3 s.
+  - Test: `call_sites.rs`.
+- **`insight install`:**
+  - copies the binaries to Insight's own `bin` folder;
+  - checks Node.js, cargo and libclang by running them;
+  - registers the MCP server with Claude Code at user scope (as `insight-dev` for debug builds), or prints the command.
+
+  The README has a quick start.
+- **MCP:** every loaded repo has its own deny rules and frozen-source folder. `source` takes a `<schema>:` prefix.
+- **Docs:** the view proposal (cross-device flow, focusing on a step in between) is recorded as unconfirmed in `docs/research/view-proposal-cross-device-flow.md`.
+
+**Learned:**
+- A shared helper (here an IPC wrapper) joins every caller's data to every other caller's until results are matched to their call.
+- Snapshot reuse must be keyed on every program that produced it, the CLI included.
+- Real projects need small per-repo environment and install steps, not extractor changes. Claude does this setup quickly from `status`.
+
+**Next:** with the backend usable from Claude Code, either API-description nodes (Q-38) or start the window (frontend questions).
+
 ## 2026-10-10 (cont.) — Multi-repo projects: submodule export, cross-repo `path`
 **Done:**
 - **Export:** each submodule is exported at the commit its parent records, from local git data (`.git/modules/<path>` or a checkout's `.git`). Nothing is fetched. A missing submodule is listed as "not on this machine; run `git submodule update --init --recursive`". This is a proposed amendment to R3-G #11 and awaits the user.
