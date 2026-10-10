@@ -228,14 +228,13 @@ impl Extractor {
             K::UnaryOperator if kids.len() == 1 => {
                 let toks: Vec<String> = e.get_range().map(|r| r.tokenize().iter().map(|t| t.get_spelling()).collect()).unwrap_or_default();
                 let step = |t: Option<&String>| t.is_some_and(|t| t == "++" || t == "--");
-                if step(toks.first()) || step(toks.last()) {
-                    if let Some((target, sub, at)) = self.write_target(kids[0])? {
+                if (step(toks.first()) || step(toks.last()))
+                    && let Some((target, sub, at)) = self.write_target(kids[0])? {
                         let p = self.pos(at)?;
                     self.skip_read.insert(p);
                         self.data(EdgeKind::Read, None, from.clone(), target.clone(), receipt.clone());
                         self.data(EdgeKind::Write, sub, from, target, receipt);
                     }
-                }
             }
             _ => {}
         }

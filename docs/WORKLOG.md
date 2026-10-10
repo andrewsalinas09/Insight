@@ -12,6 +12,36 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — Data flow for TypeScript and Rust; external leaves are never passed through
+**Done:**
+- **TS extractor:**
+  - **State:** variables, destructured bindings, parameters, class fields and interface/type-literal members, so props are fields. They're named after the file's containers, so functions keep their names.
+  - **Reads and writes:** `++`/`--` and compound assignments count as both.
+  - **`assign`:** includes destructuring from a property, and object literals into their contextual type's fields.
+  - **`binds`:** arguments to parameters, JSX attributes to prop fields, and data to external callees.
+  - **`return`/`result`**, including arrow expression bodies.
+- **Rust extractor (`flow.rs`):**
+  - **State:** `let`/parameter/match bindings and `self`, struct fields, statics and consts. A binding only counts if rust-analyzer resolves it to a local, so `None` in a pattern is not state.
+  - **Reads and writes:** including `*p` (pointee) and `a[i]`.
+  - **`assign`:** from `let` and assignments, and from struct literal fields.
+  - **`binds`:** to parameters (`&mut` = ref) or to external callees.
+  - **`return`:** tail expressions and `return`.
+  - **Calls through locals and fields** point at the state; the solver's indirect-call pass resolves them (42 in Fletcher, 59 in Insight).
+- **`path`:** an external leaf can start or end a route but is never passed through. It stands for every call site of a symbol, so passing through it joined unrelated code.
+- **C/C++ firmware build** (private sensor, ARM gcc):
+  - `-std` now reaches the gcc query;
+  - gcc's extended-float macros are dropped and `__clang__` kept;
+  - nested type definitions are walked once;
+  - diagnostics carry `file:line`.
+
+  Result: 178 files, 0 clang errors, 0 count mismatches.
+
+**Learned:**
+- **Function and variable names can collide** when a function is named after its variable. State has to be named after all of a file's containers, never interleaved with them.
+- **External leaves join unrelated call sites.** A `data` route through `Promise.catch` connected two unrelated functions, so leaves must be terminal.
+
+**Next:** multi-repo projects (link layer across repos), validated on the private sensor and gateway. The gateway's build needs its submodules.
+
 ## 2026-10-10 (cont.) — Data flow (C/C++), indirect calls, `path` data tokens
 **Done:**
 - **Fact schema 4.**

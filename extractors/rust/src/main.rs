@@ -12,6 +12,8 @@
 //!
 //! Usage: insight-extract-rust --root <dir> --package <dir> [--package …] --schema <N>
 
+mod flow;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -141,16 +143,23 @@ fn run() -> Result<()> {
         }
     }
     let mut externals = BTreeSet::new();
+    let mut states = HashMap::new();
     for (ix, db) in dbs.iter().enumerate() {
-        let mut g = Global { fns, paths, externals, db, ix };
+        let mut g = Global { fns, paths, externals, states, db, ix };
         // Type inference (method resolution) needs the database attached to this thread.
         ra_ap_hir::attach_db(db, || -> Result<()> {
-            for f in indexed.iter().filter(|f| f.sema.is_some_and(|(i, _)| i == ix)) {
+            let mine: Vec<&Indexed> = indexed.iter().filter(|f| f.sema.is_some_and(|(i, _)| i == ix)).collect();
+            // State nodes first: edges in one file name state declared in another.
+            for f in &mine {
+                flow::state_nodes(&semas[ix], f, &mut g, &mut out)?;
+            }
+            for f in &mine {
                 edges_for_file(&semas[ix], f, f.sema.expect("filtered").1, &mut g, &mut out)?;
+                flow::data_for_file(&semas[ix], f, f.sema.expect("filtered").1, &mut g, &mut out)?;
             }
             Ok(())
         })?;
-        (fns, paths, externals) = (g.fns, g.paths, g.externals);
+        (fns, paths, externals, states) = (g.fns, g.paths, g.externals, g.states);
     }
     for id in externals {
         let name = id.rsplit(':').next().unwrap_or(&id).to_string();
@@ -243,6 +252,8 @@ struct Ctr {
     end: u32,
     id: String,
     is_fn: bool,
+    /// A path segment (not a block): state is named under the nearest one.
+    scope: bool,
 }
 
 /// What pass 2 needs for one file.
@@ -299,7 +310,7 @@ impl<W: Write> FileCx<'_, W> {
     }
 
     fn node(&mut self, id: String, parent: &str, kind: NodeKind, name: String, span: Span, anonymous: bool) -> Result<String> {
-        self.containers.push(Ctr { start: span.byte_start as u32, end: span.byte_end as u32, id: id.clone(), is_fn: kind == NodeKind::Function });
+        self.containers.push(Ctr { start: span.byte_start as u32, end: span.byte_end as u32, id: id.clone(), is_fn: kind == NodeKind::Function, scope: kind != NodeKind::Block });
         self.out.emit(Record::Node(NodeFact { id: id.clone(), parent: Some(parent.to_string()), kind, name, span: Some(span), anonymous, generated: false }))?;
         Ok(id)
     }
@@ -352,7 +363,7 @@ fn extract_file<W: Write>(
         }
     };
     let mut cx = FileCx { out, lines, ordinals: HashMap::new(), macro_fns, containers: Vec::new() };
-    cx.containers.push(Ctr { start: 0, end: bytes.len() as u32, id: file.clone(), is_fn: false });
+    cx.containers.push(Ctr { start: 0, end: bytes.len() as u32, id: file.clone(), is_fn: false, scope: true });
     for child in tree.children() {
         visit(&mut cx, &child, &file, &file)?;
     }
@@ -371,6 +382,8 @@ struct Global<'a> {
     /// (database index, FileId) -> repo-relative path.
     paths: HashMap<(usize, FileId), String>,
     externals: BTreeSet<String>,
+    /// (file, start, end) of a declaration -> state node id.
+    states: HashMap<(String, u32, u32), String>,
     db: &'a RootDatabase,
     ix: usize,
 }
@@ -382,12 +395,11 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
         let r = tok.text_range();
         let (ts, te) = (u32::from(r.start()), u32::from(r.end()));
         if tok.kind() == SyntaxKind::STRING {
-            if let Some(s) = ast::String::cast(tok.clone()) {
-                if let Ok(v) = s.value() {
+            if let Some(s) = ast::String::cast(tok.clone())
+                && let Ok(v) = s.value() {
                     let from = f.innermost(ts, te, true);
                     out.emit(Record::Literal(LiteralFact { value: v.to_string(), number: false, from, receipt: f.receipt("literal", ts, te) }))?;
                 }
-            }
             continue;
         }
         if tok.kind() == SyntaxKind::INT_NUMBER {
@@ -440,15 +452,13 @@ fn edges_for_file<W: Write>(sema: &Semantics<'_, RootDatabase>, f: &Indexed, id:
                         }
                     }
                 }
-                Callee::Indirect | Callee::Unknown => out.emit(Record::Edge(EdgeFact {
-                    kind: EdgeKind::Call,
-                    subkind: None,
-                    from,
-                    to: None,
-                    resolution: Resolution::Unresolved,
-                    group: None,
-                    receipts: vec![receipt],
-                }))?,
+                Callee::Indirect | Callee::Unknown => {
+                    // Through a local, field or static: a call to that state (the solver finds
+                    // the functions that reach it). Otherwise unresolved.
+                    let to = flow::called_state(sema, g, &call);
+                    let resolution = if to.is_some() { Resolution::Exact } else { Resolution::Unresolved };
+                    out.emit(Record::Edge(EdgeFact { kind: EdgeKind::Call, subkind: None, from, to, resolution, group: None, receipts: vec![receipt] }))?
+                }
                 Callee::NotACall => {}
             }
             break;
@@ -672,11 +682,7 @@ fn visit<W: Write>(cx: &mut FileCx<W>, n: &SyntaxNode, scope: &str, parent: &str
         Some((NodeKind::Type, s.name().map(|x| x.text().to_string()).unwrap_or_default(), false))
     } else if let Some(e) = ast::Enum::cast(n.clone()) {
         Some((NodeKind::Type, e.name().map(|x| x.text().to_string()).unwrap_or_default(), false))
-    } else if let Some(u) = ast::Union::cast(n.clone()) {
-        Some((NodeKind::Type, u.name().map(|x| x.text().to_string()).unwrap_or_default(), false))
-    } else {
-        None
-    };
+    } else { ast::Union::cast(n.clone()).map(|u| (NodeKind::Type, u.name().map(|x| x.text().to_string()).unwrap_or_default(), false)) };
     if let Some((kind, name, anon)) = seg {
         let segname = cx.name(&scope, &name, anon);
         let id = format!("{scope} › {segname}");
@@ -741,27 +747,22 @@ fn impl_name(i: &ast::Impl) -> String {
 /// Closures: named by their `let` binding, else by the call they're passed to, else `|…|`.
 fn closure_name(c: &ast::ClosureExpr) -> (String, bool) {
     let Some(parent) = c.syntax().parent() else { return ("|…|".into(), true) };
-    if let Some(l) = ast::LetStmt::cast(parent.clone()) {
-        if let Some(ast::Pat::IdentPat(p)) = l.pat() {
-            if let Some(n) = p.name() {
+    if let Some(l) = ast::LetStmt::cast(parent.clone())
+        && let Some(ast::Pat::IdentPat(p)) = l.pat()
+            && let Some(n) = p.name() {
                 return (n.text().to_string(), false);
             }
-        }
-    }
-    if parent.kind() == SyntaxKind::ARG_LIST {
-        if let Some(call) = parent.parent() {
-            if let Some(mc) = ast::MethodCallExpr::cast(call.clone()) {
-                if let Some(n) = mc.name_ref() {
+    if parent.kind() == SyntaxKind::ARG_LIST
+        && let Some(call) = parent.parent() {
+            if let Some(mc) = ast::MethodCallExpr::cast(call.clone())
+                && let Some(n) = mc.name_ref() {
                     return (n.text().to_string(), true);
                 }
-            }
-            if let Some(ce) = ast::CallExpr::cast(call) {
-                if let Some(e) = ce.expr() {
+            if let Some(ce) = ast::CallExpr::cast(call)
+                && let Some(e) = ce.expr() {
                     let t = e.syntax().text().to_string();
                     return (t.rsplit("::").take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("::"), true);
                 }
-            }
         }
-    }
     ("|…|".into(), true)
 }

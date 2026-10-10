@@ -256,8 +256,20 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     let (fwd, bwd) = (!starts.is_empty(), !targets.is_empty());
     let is_target: BTreeSet<i64> = targets.iter().copied().collect();
     // Forward from the starts (a route ends at its target, never continues through it); backward from the targets.
-    let depth = if fwd { bfs(&g.out, &starts, &is_target) } else { HashMap::new() };
-    let to_target = if bwd { bfs(&g.rev, &targets, &BTreeSet::new()) } else { HashMap::new() };
+    // An external leaf is one node for every call site of a symbol: a route may start or
+    // end there, but never passes through it (that would join unrelated call sites).
+    let externals: BTreeSet<i64> = {
+        let mut stmt = conn.prepare("SELECT nid FROM nodes WHERE kind = 'external'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, i64>(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    // Hops out of an external leaf only where a route can begin there: it is a start, or
+    // (reverse reachability) the open end the search reached.
+    let pass_through = |n: &i64| !externals.contains(n) || starts.contains(n) || !fwd;
+    let fwd_stop: BTreeSet<i64> = is_target.iter().copied().chain(externals.iter().copied().filter(|n| !starts.contains(n))).collect();
+    let bwd_stop: BTreeSet<i64> = externals.iter().copied().filter(|n| !is_target.contains(n)).collect();
+    let depth = if fwd { bfs(&g.out, &starts, &fwd_stop) } else { HashMap::new() };
+    let to_target = if bwd { bfs(&g.rev, &targets, &bwd_stop) } else { HashMap::new() };
     let limit = opts.max_depth.unwrap_or(usize::MAX);
     let route_len = |n: &i64| -> Option<usize> {
         match (fwd, bwd) {
@@ -270,7 +282,7 @@ pub fn path(conn: &Connection, from: &[String], to: &[String], opts: &Options) -
     let keep: BTreeSet<i64> = reached.into_iter().filter(|n| route_len(n).is_some_and(|l| l <= limit)).collect();
 
     let mut hops: BTreeMap<(i64, i64, &str), Vec<i64>> = BTreeMap::new();
-    for n in keep.iter().filter(|n| !is_target.contains(n)) {
+    for n in keep.iter().filter(|n| !is_target.contains(n) && pass_through(n)) {
         for (m, label, eid) in g.out.get(n).into_iter().flatten() {
             if !keep.contains(m) {
                 continue;

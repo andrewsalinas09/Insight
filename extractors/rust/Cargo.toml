@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+either = "1.19.0"
 insight-model.workspace = true
 ra_ap_hir = "=0.0.345"
 ra_ap_ide_db = "=0.0.345"

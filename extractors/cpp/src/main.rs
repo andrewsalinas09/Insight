@@ -731,7 +731,11 @@ impl Extractor {
         let (seg, name, anon) = if e.get_kind() == K::LambdaExpr {
             let base = ctx.lambda_name.clone().unwrap_or_else(|| "[]".into());
             // Lambdas are named by where they appear, always with an ordinal (BQ-10).
-            let seg = self.next_name(&ctx.scope, &base, true);
+            let mut seg = self.next_name(&ctx.scope, &base, true);
+            // A lambda named after its variable never takes that variable's id (`f#2`).
+            while self.ids.contains(&format!("{} › {seg}", ctx.scope)) {
+                seg = self.next_name(&ctx.scope, &base, true);
+            }
             (seg.clone(), seg, true)
         } else {
             let name = e.get_name().unwrap_or_else(|| "(unnamed)".into());

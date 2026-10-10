@@ -451,7 +451,7 @@ None yet: nothing lean-by-default is withheld today (standard-library origin, im
 sql: max_rows <= {max_rows}, timeout_ms <= {timeout}; one read-only statement; no ATTACH/PRAGMA writes/extensions.
 
 ## Not built yet (see SCHEMA.md)
-reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; state and data edges for TS and Rust (built for C/C++); implements, exits, timing.
+reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; implements, exits, timing; multi-repo link layer.
 ";
 
 fn tools() -> Value {

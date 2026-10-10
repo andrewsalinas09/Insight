@@ -145,6 +145,17 @@ const isFunctionLike = (n) =>
   ts.isFunctionExpression(n) ||
   ts.isArrowFunction(n) ||
   ((ts.isMethodDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n) || ts.isConstructorDeclaration(n)) && n.body);
+/** The state kind a declaration introduces (`var` / `static` / `field`), or null. */
+function stateKind(n) {
+  const named = n.name && (ts.isIdentifier(n.name) || ts.isPrivateIdentifier(n.name));
+  if (!named) return null;
+  const inFunction = () => !!ts.findAncestor(n.parent, isFunctionLike);
+  if (ts.isVariableDeclaration(n) || ts.isBindingElement(n)) return inFunction() ? "var" : "static";
+  if (ts.isParameter(n)) return isFunctionLike(n.parent) ? "var" : null;
+  if (ts.isPropertyDeclaration(n)) return n.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ? "static" : "field";
+  if (ts.isPropertySignature(n)) return "field";
+  return null;
+}
 const isType = (n) => ts.isClassDeclaration(n) || ts.isClassExpression(n) || ts.isInterfaceDeclaration(n) || ts.isEnumDeclaration(n);
 function typeName(n) {
   if (n.name) return { name: n.name.text, anon: false };
@@ -192,6 +203,8 @@ const ctxByFile = new Map(); // rel -> { sf, file, u8, shift }
 const fnIds = new Map();
 const typeIds = new Map();
 const blockIds = new Map();
+const stateIds = new Map(); // posKey(declaration) -> state node id
+const usedIds = new Set();
 const posKey = (n) => {
   const sf = n.getSourceFile();
   return `${rel(sf.fileName)}@${n.getStart(sf)}@${n.end}@${n.kind}`;
@@ -237,6 +250,7 @@ for (const abs of fileOrder) {
   };
   const node = (id, parent, kind, name, sp, anonymous = false) => {
     emit({ type: "node", id, parent, kind, name, span: sp, anonymous });
+    usedIds.add(id);
     counts.nodes++;
   };
   node(file, null, "file", path.basename(file), { byte_start: 0, byte_end: bytes.length, line_start: 1, line_end: sf.getLineAndCharacterOfPosition(sf.text.length).line + 1 });
@@ -251,7 +265,16 @@ for (const abs of fileOrder) {
     return anon || k > 1 ? `${name}#${k}` : name;
   }
 
+  // State (SCHEMA.md §2): variables, parameters, class fields and interface/type-literal
+  // fields, with their own ordinals; emitted after the file's containers (below).
+  const pendingState = [];
   function visit(n, scopeId, parentId) {
+    visitContainers(n, scopeId, parentId);
+    const kind = stateKind(n);
+    if (kind) pendingState.push([n, scopeId, parentId, kind]);
+  }
+
+  function visitContainers(n, scopeId, parentId) {
     let nextScope = scopeId;
     let nextParent = parentId;
     if (isFunctionLike(n) || isType(n)) {
@@ -293,6 +316,16 @@ for (const abs of fileOrder) {
     ts.forEachChild(n, (c) => visit(c, nextScope, nextParent));
   }
   ts.forEachChild(sf, (c) => visit(c, file, file));
+  // State nodes last: every function and type in the file already has its name, so a
+  // variable can never take (or shift) a function's id.
+  for (const [n, scopeId, parentId, kind] of pendingState) {
+    const name = n.name.text;
+    let seg = nextName(scopeId + "\u0000state", name, false);
+    while (usedIds.has(`${scopeId} › ${seg}`)) seg = nextName(scopeId + "\u0000state", name, true);
+    const id = `${scopeId} › ${seg}`;
+    node(id, parentId, kind, seg, span(n), false);
+    stateIds.set(posKey(n), id);
+  }
 }
 
 // ================================ pass 2: edges and literals ================================
@@ -516,10 +549,102 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
     return { kind: "indirect", d, optional: !!d.questionToken };
   }
 
+  // ---- Data flow (SCHEMA.md §5): by declaration, not by program point. ----
+  const isStateDecl = (d) => d && (ts.isVariableDeclaration(d) || ts.isBindingElement(d) || ts.isParameter(d) || ts.isPropertyDeclaration(d) || ts.isPropertySignature(d));
+  function dataSym(e) {
+    let sym = symAt(e);
+    if (sym && sym.flags & ts.SymbolFlags.Alias) {
+      try {
+        sym = checker.getAliasedSymbol(sym);
+      } catch {}
+    }
+    return sym;
+  }
+  const declOfSym = (sym) => sym && (sym.valueDeclaration ?? sym.declarations?.[0]);
+  // The state node a declaration is (or its external leaf).
+  function stateOf(d, sym) {
+    if (!isStateDecl(d)) return undefined;
+    if (isProjectDecl(d)) return stateIds.get(posKey(d));
+    return sym ? externalId(d, sym) : undefined;
+  }
+  // The state an lvalue names: `x`, `o.p`, `a[i]` (the array).
+  function stateAt(e) {
+    e = strip(e);
+    if (!e) return undefined;
+    if (ts.isElementAccessExpression(e)) return stateAt(e.expression);
+    if (!(ts.isIdentifier(e) || ts.isPropertyAccessExpression(e))) return undefined;
+    const sym = dataSym(e);
+    return stateOf(declOfSym(sym), sym);
+  }
+  function propState(type, name) {
+    if (!type || !name) return undefined;
+    let p;
+    try {
+      p = checker.getPropertyOfType(type, name) ?? checker.getPropertyOfType(checker.getApparentType(type), name);
+    } catch {}
+    return p ? stateOf(declOfSym(p), p) : undefined;
+  }
+  // Where an expression's value comes from: ["state"|"fn"|"result", id] (arguments of a
+  // call bind to its parameters; they do not flow into its result).
+  function sources(expr, out = []) {
+    const e = strip(expr);
+    if (!e) return out;
+    const own = fnIdOf(e);
+    if (own) {
+      out.push(["fn", own]);
+      return out;
+    }
+    if (ts.isIdentifier(e) || ts.isPropertyAccessExpression(e)) {
+      const sym = dataSym(e);
+      const d = declOfSym(sym);
+      const f = d && fnIdOf(d);
+      if (f) out.push(["fn", f]);
+      else {
+        const s = stateOf(d, sym);
+        if (s) out.push(["state", s]);
+      }
+      return out;
+    }
+    if (ts.isCallExpression(e) || ts.isNewExpression(e)) {
+      const r = resolveCallee(e.expression, ts.isNewExpression(e));
+      if (r && (r.kind === "exact" || r.kind === "external") && r.to) out.push(["result", r.to]);
+      return out;
+    }
+    if (ts.isElementAccessExpression(e)) return sources(e.expression, out);
+    if (ts.isConditionalExpression(e)) {
+      sources(e.whenTrue, out);
+      sources(e.whenFalse, out);
+      return out;
+    }
+    if (ts.isTypeOfExpression(e) || ts.isStringLiteralLike(e) || ts.isNumericLiteral(e) || isFunctionLike(e)) return out;
+    ts.forEachChild(e, (c) => {
+      if (!ts.isTypeNode(c)) sources(c, out);
+    });
+    return out;
+  }
+  // Value edges from `srcs` into a state (`assign`/`result`), a parameter (`binds`), or a
+  // function returning them (`return`/`result`).
+  function flowInto(srcs, to, into, rc) {
+    for (const [k, id] of srcs) {
+      if (k === "result") edge("value_flow", "result", id, to, "exact", null, [rc]);
+      else if (into === "fn") {
+        if (k === "state") edge("value_flow", "return", id, to, "exact", null, [rc]);
+      } else if (into === "param") edge("binds", "value", id, to, "exact", null, [rc]);
+      else edge("value_flow", "assign", id, to, "exact", null, [rc]);
+    }
+  }
+  const isAssignOp = (k) => k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment;
+
   for (const sf of sfs) {
     const file = rel(sf.fileName);
     const fnStack = [file];
     const ctrStack = [file];
+    const writePos = new Set(); // expressions in a write position: not reads
+    const markWrite = (e) => {
+      e = strip(e);
+      if (e && ts.isElementAccessExpression(e)) return markWrite(e.expression);
+      if (e) writePos.add(e);
+    };
     const walk = (n) => {
       const fid = fnIds.get(posKey(n));
       const bid = blockIds.get(posKey(n));
@@ -531,9 +656,85 @@ for (const [cfg, parsed] of [...configs].sort(([a], [b]) => (a < b ? -1 : 1))) {
       const from = fnStack[fnStack.length - 1];
       const ctr = ctrStack[ctrStack.length - 1];
 
+      // ---- data: writes, value edges, reads ----
+      if ((ts.isVariableDeclaration(n) || ts.isBindingElement(n)) && ts.isIdentifier(n.name)) {
+        writePos.add(n.name);
+        const target = stateIds.get(posKey(n));
+        if (target) {
+          const srcs = n.initializer ? sources(n.initializer) : [];
+          if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
+            // Destructuring reads the property it names.
+            let pt;
+            try {
+              pt = checker.getTypeAtLocation(n.parent);
+            } catch {}
+            const ps = propState(pt, n.propertyName ? propName(n.propertyName) : n.name.text);
+            if (ps) srcs.push(["state", ps]);
+          }
+          if (n.initializer || srcs.length) {
+            const rc = receipt(n, "write", ctr);
+            edge("write", null, from, target, "exact", null, [rc]);
+            flowInto(srcs, target, "state", rc);
+          }
+        }
+      } else if (ts.isBinaryExpression(n) && isAssignOp(n.operatorToken.kind)) {
+        const target = stateAt(n.left);
+        if (target) {
+          markWrite(n.left);
+          const rc = receipt(n, "write", ctr);
+          edge("write", null, from, target, "exact", null, [rc]);
+          if (n.operatorToken.kind !== ts.SyntaxKind.EqualsToken) edge("read", null, from, target, "exact", null, [rc]);
+          flowInto(sources(n.right), target, "state", rc);
+        }
+      } else if ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(n.operator)) {
+        const target = stateAt(n.operand);
+        if (target) {
+          markWrite(n.operand);
+          const rc = receipt(n, "write", ctr);
+          edge("read", null, from, target, "exact", null, [rc]);
+          edge("write", null, from, target, "exact", null, [rc]);
+        }
+      } else if ((ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) && ts.isObjectLiteralExpression(n.parent)) {
+        let ct;
+        try {
+          ct = checker.getContextualType(n.parent);
+        } catch {}
+        const target = propState(ct, propName(n.name));
+        if (target) flowInto(sources(ts.isPropertyAssignment(n) ? n.initializer : n.name), target, "state", receipt(n, "write", ctr));
+      } else if (ts.isJsxAttribute(n) && n.initializer && ts.isJsxExpression(n.initializer) && n.initializer.expression) {
+        let ct;
+        try {
+          ct = checker.getContextualType(n.parent);
+        } catch {}
+        const target = propState(ct, nameText(n.name) ?? n.name.getText());
+        if (target) flowInto(sources(n.initializer.expression), target, "param", receipt(n, "arg", ctr));
+      } else if (ts.isReturnStatement(n) && n.expression && from !== file) {
+        flowInto(sources(n.expression), from, "fn", receipt(n, "return", ctr));
+      } else if ((ts.isIdentifier(n) || ts.isPropertyAccessExpression(n)) && !writePos.has(n) && !(n.parent && n.parent.name === n)) {
+        const s = stateAt(n);
+        if (s) edge("read", null, from, s, "exact", null, [receipt(n, "read", ctr)]);
+      }
+      if (fid && ts.isArrowFunction(n) && !ts.isBlock(n.body)) flowInto(sources(n.body), fid, "fn", receipt(n.body, "return", fid));
+
       if (ts.isCallExpression(n) || ts.isNewExpression(n)) {
         const r = resolveCallee(n.expression, ts.isNewExpression(n));
         const call = receipt(n, "call", ctr);
+        // Arguments bind to the resolved signature's parameters, or to the external callee.
+        let sig;
+        try {
+          sig = checker.getResolvedSignature(n);
+        } catch {}
+        const sd = sig?.declaration;
+        (n.arguments ?? []).forEach((a, i) => {
+          const rc = receipt(a, "arg", ctr);
+          if (sd && !ts.isJSDocSignature?.(sd) && isProjectDecl(sd) && sd.parameters) {
+            const p = sd.parameters[Math.min(i, sd.parameters.length - 1)];
+            const ps = p && (i < sd.parameters.length || p.dotDotDotToken) ? stateIds.get(posKey(p)) : undefined;
+            if (ps) flowInto(sources(a), ps, "param", rc);
+          } else if (r && r.kind === "external") {
+            flowInto(sources(a).filter(([k]) => k !== "fn"), r.to, "param", rc);
+          }
+        });
         if (!r) edge("call", null, from, null, "unresolved", null, [call]);
         else if (r.kind === "exact" || r.kind === "external") {
           edge("call", null, from, r.to, "exact", null, [call]);
