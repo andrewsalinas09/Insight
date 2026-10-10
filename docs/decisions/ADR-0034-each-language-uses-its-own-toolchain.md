@@ -1,4 +1,4 @@
-# ADR-0034: Each language is analyzed by its own native toolchain, written in its own language, emitting the standard representation
+# ADR-0034: Each language is analyzed by its best native toolchain, through that tooling's own API, emitting the standard representation
 
 - **Status:** Accepted
 - **Date:** 2026-10-09
@@ -9,7 +9,7 @@
 BQ-05 asked how to read TypeScript: the real TS checker in a Node sidecar, or a Rust-native parser without types. Field-level state (Q-20) and ADR-0033 need real language semantics, and every language has an official toolchain that already has them.
 
 ## Decision
-- **Each language plugin is an extractor written in that language, using its official tooling:**
+- **Each language plugin is an extractor built on the best official or native tooling for that language, written in whatever language that tooling's API is exposed in.** (User clarification: "if Python's parser is C++ native it should be C++.") Often that's the language itself, sometimes not. C/C++ uses clang's C/C++ API. Python's best semantic tools live in other languages (`pyright` in TypeScript, Astral's `ty`/`ruff` in Rust, CPython's own `ast` in Python), so the extractor follows whichever is chosen. The rule is "best tooling, its native API", not "same language".
 
   | Language | Tooling |
   |---|---|
