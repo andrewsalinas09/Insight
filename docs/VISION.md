@@ -8,6 +8,8 @@ A new kind of IDE: instead of reading code file by file, you see the **execution
 
 The prime directive (ADR-0002): **the graph may be incomplete, but never wrong.**
 
+The intelligence principle (ADR-0035): **the tool does what's trivial (deterministic, by algorithm), and the second there's a question it defers to the model.** "We don't need to write intelligence when it already exists. Tracing a call stack is not intelligent. Explaining how it works is." Insight is a fancy, visual UI for a frontier model to use when explaining code to you, showing how it architected something, and letting you check it matches what you want, fast enough to keep up.
+
 **What Insight is (ADR-0024):** the model already understands the code (it wrote it) and explains it well in text. Insight is the *instrument* that lets you see it: a graph of the real code, a UI you can navigate and hold in your head, and tools the model uses to highlight, focus, and step through as it explains, so you can trace and follow what it says.
 
 **The first thing it must do well (ADR-0019):** load the software, ask about an algorithm, and get back how it works, the data structures it uses and where they live, and *how we know it's correct*.

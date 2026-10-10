@@ -2,6 +2,11 @@
 
 An LLM-powered tool for understanding any codebase visually and interactively. You point it at a codebase and a trigger (a UI click, a CLI command, a function, or a plain-language prompt); it finds every branch of execution that trigger can reach, builds a hierarchical graph of it, has an LLM label the graph in human terms ("validation", "error handling", "retry"), and lets you explore and learn from it in conversation with an AI. Built for a world where most software is vibe coded and the person responsible for it didn't write it line by line. Two purposes on one engine (ADR-0012): **learning** (~60%) and **system-level oversight of AI-written code** (~40%), meaning the IDE and debugger for AI-first development.
 
+## The two principles every proposal must pass
+
+1. **Never wrong, only incomplete** (ADR-0002).
+2. **The intelligence principle** (ADR-0035): the tool does what's trivial (deterministic, by algorithm); the second there's a question, it's the model's. "Tracing a call stack is not intelligent. Explaining how it works is."
+
 ## Current status
 
 **Discovery phase.** There is no code and no committed stack (Tauri 2 is proposed — see Q-08). The work right now is the long design conversation: getting the whole idea out of the user's head into docs, decisions, and open questions before building.
