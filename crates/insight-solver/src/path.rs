@@ -319,14 +319,12 @@ fn load(conn: &Connection, opts: &Options) -> Result<Graph> {
                 }
                 // Across repos: a string in one repo equal to a declared name in another.
                 for (i, lits) in strings.iter().enumerate() {
-                    for (j, ds) in decls.iter().enumerate().filter(|(j, _)| *j != i) {
-                        let _ = j;
+                    for (_, ds) in decls.iter().enumerate().filter(|(j, _)| *j != i) {
                         for (name, d) in ds {
-                            if let Some(lit) = lits.get(name) {
-                                if count.contains_key(lit) && allowed(lit) {
+                            if let Some(lit) = lits.get(name)
+                                && count.contains_key(lit) && allowed(lit) {
                                     add(*lit, *d, "names", -1);
                                 }
-                            }
                         }
                     }
                 }
