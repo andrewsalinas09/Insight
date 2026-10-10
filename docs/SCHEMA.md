@@ -6,7 +6,7 @@ Sources: BQ-09 (kinds), BQ-10/R3-G #1 (IDs), BQ-11 (spans), BQ-12 (receipts), BQ
 
 Each item has a **Status**:
 - **Built**: emitted and stored today.
-- **Planned (Mn)**: specified here, arriving with milestone *n*. Until then the database simply has no rows of that kind; nothing is guessed in their place.
+- **Planned**: specified here, not built yet. Until it is built, the database simply has no rows of that kind; nothing is guessed in their place.
 
 ## 1. Principles the schema obeys
 
@@ -25,14 +25,14 @@ Every node is one row in `nodes`. Containment (what is lexically inside what) is
 | `container` | `type` | struct, class, enum, union, interface, trait, and Rust `impl` blocks (named `impl T` / `impl Tr for T`). | Built |
 | `container` | `function` | Every function with a body, named or anonymous: functions, methods, accessors, constructors, arrows, closures, and functions written inside macro-call arguments (§6). Signatures without bodies are not nodes. | Built |
 | `container` | `block` | A control-flow region: `if`/`else` arm, `switch` case/default, `match` arm, loop body, `try`/`catch`/`finally`, ternary arm (BQ-18). | Built |
-| `container` | `init` | Module initialization code, with init order where the language defines it (P11). | Planned (M1) |
-| `state` | `var` / `field` / `element` / `static` / `cell` | Storage. Locals and parameters are `var` state (R3-G #3). | Planned (M1) |
-| `literal` | | One node per distinct literal value (`lit:"hist-cmd"`), so same-literal links are not N² (R2-30). | Planned (M1) |
-| `external` | | A referenced symbol outside the analyzed code, one leaf per symbol, carrying package/module/version (BQ-20, R4-B). | Planned (M1) |
-| `unresolved` | | A reference the compiler could not resolve. | Planned (M1) |
-| `macro` | | A macro definition; expansions link to it with `expand` (P9). | Planned (M1) |
+| `container` | `init` | Module initialization code, with init order where the language defines it (P11). | Planned |
+| `state` | `var` / `field` / `element` / `static` / `cell` | Storage. Locals and parameters are `var` state (R3-G #3). | Planned |
+| `literal` | | One node per distinct string value, id `lit:<JSON string>` (`lit:"hist-cmd"`), so same-literal links are not N² (R2-30). Created by the solver's link pass from every extractor's literal occurrences, across languages. | Built (strings) |
+| `external` | | A referenced symbol outside the analyzed code, one leaf per symbol (BQ-20): `ext:ts:<package or lib>:<Owner.name>`, `ext:rust:<crate>:<module::path::Type::name>`. Package version: Planned. | Built |
+| `unresolved` | | A reference the compiler could not resolve. Today this is an edge with `resolution='unresolved'` and `to_nid NULL` instead of a node. | Planned |
+| `macro` | | A macro definition; expansions link to it with `expand` (P9). | Planned |
 
-Planned node columns: `origin` (`project` / `dependency` / `stdlib`, ADR-0049), `body_hash` (R3-17: "same name, different body" is visible), `generated` (1 for macro-generated, R4-B).
+Node column `anonymous` (Built): 1 when the name is positional (`map#1`, `=>#2`, blocks), so `names` links only match declared names. Planned node columns: `origin` (`project` / `dependency` / `stdlib`, ADR-0049), `body_hash` (R3-17: "same name, different body" is visible), `generated` (1 for macro-generated, R4-B).
 
 ## 3. Node IDs (`nodes.path`)
 
@@ -59,23 +59,45 @@ Implements BQ-10 / R3-G #1.
 
 ## 5. Edges and receipts
 
-| `kind` | Subkinds | Meaning | Status |
+| `kind` | `subkind` | Meaning | Status |
 |---|---|---|---|
-| `call` | `implicit` (operators, accessors, conversions, Deref, Index, iteration, destructors; P3) | A function calls a function. | Planned (M1) |
-| `read` / `write` | | A function reads / writes state. | Planned (M1) |
-| `access` | | May write (e.g. through `&self` with interior mutability, R3-G #13); `via_eid` names the method. | Planned (M1) |
-| `binds` | modes: value / move / ref / mut-ref / out / inout / pointer; closure captures | Argument → parameter, prop → field (JSX via contextual typing, R4-B). | Planned (M1) |
-| `value-flow` | `handoff` | A value (often a function) flows somewhere; `handoff` = passed to external code that may call it later. | Planned (M1) |
-| `implements` | overrides, structural conformance, default methods (P7) | Type ↔ interface/trait; dispatch is expanded at query time (BQ-19). | Planned (M1) |
-| `link` | `literal` (same literal, BQ-22), `names` (a literal equals a declaration's name, ADR-0048) | Order-unknown hops (R3-14 as amended). | Planned (M1) |
-| `exit` | kinds and targets: return, `?`, throw, break/continue, diverges; catch types (P5) | | Planned (M1) |
-| `suspend` / `resume` | `await` / `yield` (P2) | | Planned (M1) |
-| `imports`, `has-type`, `instantiates`, `expand`, `annotates` | (P8–P11) | | Planned (M1) |
+| `call` | | A function calls a function (or an external leaf). **TS:** resolved by the project's own checker; a call through a variable, parameter, property or prop gets `possible` edges to every function value written to that declaration (one-hop value flow, BQ-15), tied by `group_id`, plus an absent candidate (`to_nid NULL`) when the call is optional (`?.`) or the declaration is optional. Writes counted: variable initializers, assignments, object-literal properties and JSX attributes (matched through contextual typing), and call arguments (matched to the resolved signature's parameters). **Rust:** resolved by rust-analyzer through macro expansions (attribute macros included). | Built |
+| `call` | `implicit` | Operators, accessors, conversions, Deref, Index, iteration, destructors (P3). | Planned |
+| `value-flow` | `handoff` | A function value passed to external code (an argument of an external call; for JSX, the component, or the function-valued attributes of an intrinsic element). Who calls it later is the model's question. | Built |
+| `value-flow` | `returns` | A function returns this function literal, one level (BQ-15; curried path starts, R3-G #5). | Built (TS) |
+| `link` | `literal` | From a function (or file) to a `literal` node, one edge per occurrence (BQ-22). Order-unknown hop (R3-14 as amended). | Built |
+| `link` | `names` | From a `literal` node to every named function, type or module whose declared name equals the string (ADR-0048). | Built |
+| `read` / `write` / `access` | | State reads and writes; `access` = may write (R3-G #13); `via_eid` names the method. | Planned |
+| `binds` | modes: value / move / ref / mut-ref / out / inout / pointer; closure captures | Argument → parameter, prop → field (P6). Today these bindings are used internally for one-hop value flow but not stored as edges. | Planned |
+| `implements` | overrides, structural conformance, default methods (P7) | Type ↔ interface/trait; dispatch is expanded at query time (BQ-19). Rust calls through `dyn Trait` are `unresolved` until then. | Planned |
+| `exit` | kinds and targets: return, `?`, throw, break/continue, diverges; catch types (P5) | | Planned |
+| `suspend` / `resume` | `await` / `yield` (P2) | | Planned |
+| `imports`, `has-type`, `instantiates`, `expand`, `annotates` | (P8–P11) | | Planned |
 
-Each edge row is one occurrence (R2-30): `resolution` is `exact` / `possible` / `unresolved`; `group_id` ties one call's `possible` candidates together; an absent target is `to_nid NULL`. Planned edge columns: `timing` (inline / eager-start / deferred-create / concurrent / scope-exit / load / build / unsequenced; P1), `call_eid` + `arg_index` (edges inside argument lists), `base_nid` (which object a state access is on), `via_eid`, `generated`.
+Each edge row is one occurrence (R2-30):
+- `resolution` is `exact`, `possible` or `unresolved`.
+- `group_id` ties one call's `possible` candidates together.
+- `to_nid NULL` is an absent candidate (`possible`) or an unknown target (`unresolved`).
 
-**Receipts** (BQ-12, R3-G #4, #8): one per edge (two for `link`, by `role`): file, byte range, line/col range, and the innermost `container_nid`. Macro-generated facts carry the macro call site with `role='macro'`.
+Rust calls through locals, fields and other function values are `unresolved` until Rust gets one-hop value flow (Planned).
 
+Planned edge columns:
+- `timing` (P1);
+- `call_eid` + `arg_index`;
+- `base_nid`;
+- `via_eid`;
+- `generated`.
+
+**Receipts** (BQ-12, R3-G #4, #8). Each receipt records the role, file, byte range, line/col range and the innermost `container_nid` (blocks included). Roles:
+- `call`: the call expression;
+- `value`: the write that supplied a `possible` candidate;
+- `arg`: the handed-off argument;
+- `jsx`: the component tag;
+- `returns`: the returning function;
+- `literal`: the literal occurrence;
+- `decl`: the declaration a `names` edge points at.
+
+Macro-generated facts with no source text of their own (role `macro`) are Planned. Calls written inside macro arguments are receipted at their own source text.
 ## 6. Counting rules for the M0 check
 
 The M0 pass (R3-11) compares the extractor's function count per file against `insight-count`, a separate tree-sitter counter. Mismatches fail the build (exit 7) and are listed per file.
@@ -91,7 +113,7 @@ A **function** is any function-like syntax **with a body** written in the source
     3. else the bracketed groups inside the piece, recursively.
 - **Not counted:** `macro_rules!` bodies (templates), and functions a macro generates from its own template. Those stay in the graph with `generated=1` once that column lands.
 
-## 7. Tables (layout version 2)
+## 7. Tables (layout version 4)
 
 Built today, as created by `insight-engine`:
 
@@ -101,7 +123,7 @@ CREATE TABLE files (path TEXT PRIMARY KEY, lang TEXT NOT NULL, sha256 TEXT NOT N
                     bytes INTEGER NOT NULL, content BLOB NOT NULL);
 CREATE TABLE nodes (nid INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
                     parent_nid INTEGER REFERENCES nodes(nid), kind TEXT NOT NULL, subkind TEXT,
-                    name TEXT NOT NULL, lang TEXT, file TEXT,
+                    name TEXT NOT NULL, anonymous INTEGER NOT NULL DEFAULT 0, lang TEXT, file TEXT,
                     byte_start INTEGER, byte_end INTEGER, line_start INTEGER, line_end INTEGER);
 CREATE TABLE edges (eid INTEGER PRIMARY KEY, kind TEXT NOT NULL, subkind TEXT,
                     from_nid INTEGER NOT NULL REFERENCES nodes(nid), to_nid INTEGER REFERENCES nodes(nid),
@@ -114,11 +136,13 @@ CREATE TABLE tags (node_nid INTEGER NOT NULL REFERENCES nodes(nid), tag TEXT NOT
 CREATE TABLE diagnostics (file TEXT, severity TEXT NOT NULL, message TEXT NOT NULL);
 ```
 
+Indexes: `nodes(parent_nid)`, `nodes(file)`, `nodes(kind)`, `nodes(name)`, `edges(from_nid)`, `edges(to_nid)`, `receipts(eid)`.
+
 `meta` keys: `project`, `repo`, `commit`, `fact_schema`, `extractor.<lang>` (name and toolchain), `layout_version`, `complete`.
 
 `diagnostics` holds extractor diagnostics and `not analyzed: …` rows for source files that no Cargo package or tsconfig covers. Insight never silently skips a file.
 
-Planned (M1–M2): `entries` and `order_breaks` tables, a `race_candidates` view, and the `reach()` / `nid()` SQL functions (R4-B).
+Planned: `entries` and `order_breaks` tables, a `race_candidates` view, and the `reach()` / `nid()` SQL functions (R4-B).
 
 ## 8. Snapshot lifecycle
 
@@ -132,13 +156,18 @@ Planned (M1–M2): `entries` and `order_breaks` tables, a `race_candidates` view
   Identical keys reuse the existing file.
 - **File name:** `%LOCALAPPDATA%\Insight[-dev]\snapshots\<project>\<repo>-<key>.sqlite`.
 
-## 9. Extractor protocol (R2-28)
+## 9. Extractor protocol (R2-28), fact schema 2
 
 `<extractor> --root <dir> (--project <cfg> | --package <dir>)… --schema <N>` writes NDJSON to stdout. Progress goes to stderr, then to the build log.
 
 1. `{"type":"header","schema":N,"extractor":"<name>@<version>","toolchain":"…"}`
-2. Facts, in this order per file: first `{"type":"file","path","lang","sha256","bytes"}`, then that file's `{"type":"node","id","parent","kind","name","span":{…}}` records, parents before children, plus any `{"type":"diagnostic","file","severity","message"}`.
-3. `{"type":"end","files","nodes","diagnostics"}`. The counts must match what was streamed, which detects truncation.
+2. Facts:
+   - `{"type":"file","path","lang","sha256","bytes"}`, before that file's nodes;
+   - `{"type":"node","id","parent","kind","name","span":{…}|null,"anonymous"}`, parents before children. `kind` is `file` / `module` / `type` / `function` / `block` / `external`; externals have no parent and no span.
+   - `{"type":"edge","kind":"call"|"value_flow","subkind","from","to"|null,"resolution","group"|null,"receipts":[…]}`. Edges may come after all nodes; they may name any node of the same stream.
+   - `{"type":"literal","value","from","receipt"}`: one per string-literal occurrence.
+   - `{"type":"diagnostic","file","severity","message"}`.
+3. `{"type":"end","files","nodes","edges","literals","diagnostics"}`. The counts must match what was streamed, which detects truncation.
 
 Insight rejects any of the following:
 - a schema mismatch;
@@ -146,6 +175,37 @@ Insight rejects any of the following:
 - records after `end`;
 - a missing `end`;
 - `end` counts that don't match;
+- an edge naming an unknown node;
 - a file whose bytes no longer match its `sha256` (R3-05).
 
-In the protocol, `kind` is the container subkind (`file` / `module` / `type` / `function` / `block`); the engine stores it as `kind='container'` with that `subkind`.
+The engine stores a container `kind` as `kind='container'` with that `subkind`, and `value_flow` as `value-flow`. The same external leaf named by two extractors is stored once.
+
+## 10. `path` (R2-12, ADR-0047, R4-B)
+
+`insight path <project> <from> [--to <to>]… --follow <tokens> [--max-occurrences N] [--max-depth N] [--snapshot <file>]`
+
+**Follow tokens** are always explicit; there is no default. Each one is an exact predicate over `edges`:
+- `call`: `kind='call'` with a target. `possible` is labeled `call (possible)`.
+- `handoff`: `kind='value-flow' AND subkind='handoff'`.
+- `literal`: function →`link/literal`→ literal node → every function containing the same literal. The literal node is shown on the route.
+- `names`: function →`link/literal`→ literal node →`link/names`→ the declaration.
+
+**Ends:**
+- **Resolution:** an exact id, or a unique suffix starting at a ` › `, `/` or `:` boundary. An ambiguous suffix returns the candidates.
+- **The start** also includes the functions it returns (`value-flow/returns`, R3-G #5).
+- **Targets** are terminal: a route ends there.
+
+**Constraints:**
+- `max_occurrences`: skips literals that occur more often than N.
+- `max_depth`: keeps only routes of at most N hops (needs `--to`).
+
+**Result:** every hop on some route from a start to a target. The rules:
+- **Progress:** each hop moves further from the start or closer to a target.
+- **Literal round trips:** `F → lit → F` is never a hop.
+- **Pruning:** nodes with no way in or no way out are removed.
+- **Loops:** strongly connected groups and self-loops are reported as cycles or recursion, never followed forever.
+- **Receipts:** each hop lists its receipts with the source text.
+
+The answer goes to stdout; the build-log rule (R2-20) is for builds.
+
+**M1 gate (R3-12):** `crates/insight-solver/tests/m1_gate.rs` checks the drag-and-drop walkthrough's required hops on Fletcher `cd5d6ff`. It covers both windows' routes to `graftNode` and the cross-language route to `fsx::write_atomic` through a `names` hop.

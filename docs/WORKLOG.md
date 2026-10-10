@@ -12,6 +12,28 @@ Template:
 
 ---
 
+## 2026-10-10 — M1: edges, link passes, `insight path`; the gate passes
+**Done:**
+- **Protocol (fact schema 2):** edge, literal and external records, plus the `anonymous` flag. **Engine** layout 4: an `anonymous` column and edge indexes.
+- **TS extractor:**
+  - runs on a real `Program` + checker per tsconfig;
+  - calls resolve exactly; calls through variables, parameters, properties and props get one-hop value flow (BQ-15) with `possible` candidates and an absent candidate;
+  - handoffs to external code and JSX;
+  - `returns` edges for curried starts;
+  - string literals.
+- **Rust extractor:** a second pass on rust-analyzer. Callee tokens are descended into macro expansions, so calls inside attribute macros and macro arguments resolve. External leaves, handoffs of closures and fn items, string literals. It runs on a 256 MB-stack thread with the database attached.
+- **Solver:** the generic `link/literal` and `link/names` passes, across languages.
+- **`insight path`:** explicit follow tokens; `max_occurrences` and `max_depth` constraints; terminal targets; progress rule; no literal round trips; pruning; cycles reported. Specified in SCHEMA.md §10.
+- **M1 gate** (`m1_gate.rs`) passes on Fletcher `cd5d6ff`. Dogfood: Insight on itself passes, and `path` works on its own code.
+- Dev profile optimizes dependencies, which took the Rust extractor from 297 s to 34 s.
+
+**Learned:**
+- With `literal` on, any common string ("main", "") links most of an app. That's true but unreadable, and the R4-B constraints (`max_occurrences`, `max_depth`) plus "targets are terminal" and the progress rule make results compact without any built-in cutoff.
+- The `"graft"` literal links the pop-out's `{type: "graft"}` directly to the bus's `p.type === "graft"`, the connection BQ-22 predicted.
+- The real code has `pushChain` → `send()` → `invoke("set_fletcher_chain")`. The walkthrough summary skipped `send`, so the gate follows the code.
+
+**Next:** M2: the MCP bridge (security review first, per the build plan), and finalize `docs/MCP-INSTRUCTIONS.md`. Then the planned state, read/write and `binds` edges.
+
 ## 2026-10-09 (cont.) — M0 built and passing; SCHEMA.md
 **Done:**
 - **Cargo workspace:**
