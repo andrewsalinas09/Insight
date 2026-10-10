@@ -27,3 +27,7 @@ Shape (ADR-0025): you ask Claude Code in the terminal, and it answers while driv
 
 ## Phase 3+: To be defined
 Breadth (more languages, oversight, multi-repo projects), shaped by real use and the wish list in `INSIGHT.md` (ADR-0044).
+
+## Build rules (user, 2026-10-09)
+- **Spec-drift rule:** code follows the ADRs and BUILD-QUESTIONS rulings. Any place the implementation must deviate (an API doesn't provide something, a ruling turns out impossible or too slow) is reported to the user immediately and recorded (a new ADR or ruling) before the code diverges. Never silently.
+- **Dogfooding:** once Insight has code, Insight analyzes **itself** as a second test target (Rust + the TypeScript extractor), alongside Fletcher at `cd5d6ff`.
