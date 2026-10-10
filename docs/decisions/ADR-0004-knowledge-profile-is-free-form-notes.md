@@ -1,6 +1,6 @@
 # ADR-0004: The knowledge profile is free-form notes the LLM interprets
 
-- **Status:** Accepted
+- **Status:** Accepted; the profile now lives in INSIGHT.md prose (ADR-0044)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 2 (Q-16: "that's the power of LLM, it can choose what to do with your notes")
 

@@ -598,7 +598,8 @@ ADR-0010 says every sentence links, and an unlinked one is a smell (TB-066). ADR
 - Options: (a) prose lives in the terminal, plain; links are available in window notes and steps, never required or flagged; (b) mirror all narration into the window with links required; (c) a `say(text, refs)` tool.
 - Rec: (a).
 
-### R2-08: The knowledge profile and the wish list: inside Insight or outside? — OPEN (vis)
+### R2-08: The knowledge profile and the wish list: inside Insight or outside? — ANSWERED → ADR-0044
+**Ruling (user's idea):** `INSIGHT.md`. Prose (knowledge notes, explanation preferences, a Wishes section) goes to Claude each session; fenced `insight` blocks are parsed settings for the solver and builds. Edited by you or by Claude on your behalf. A global file plus optional per-repo additions (location with R2-16).
 ADR-0004 says Insight stores a knowledge profile, but Insight calls no model (ADR-0025). ADR-0039's wishes are lost when a session ends.
 - Options: (a) both live outside Insight: the profile is your agent's memory or CLAUDE.md, and the MCP instructions tell Claude to append wishes to a `WISHLIST.md` in the Insight repo; (b) Insight stores the profile (returned by `status`) and adds a `wish` tool; (c) chat only.
 - Rec: (a).
