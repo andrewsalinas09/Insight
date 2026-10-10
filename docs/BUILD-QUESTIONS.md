@@ -751,7 +751,13 @@ Building runs the repo's code (npm scripts, `build.rs`, Rust macros). A README p
   - (2) Executable settings (check/install commands) come only from the project folder, never from repo bytes.
   - (3) If the command list changes, Insight refuses over MCP until you confirm the change in the window/CLI. Claude can *propose* settings but not self-approve.
 
-### R3-02: Insight must never mutate your live working copy — OPEN (vis)
+### R3-02: Insight must never mutate your live working copy — ANSWERED
+**Ruling (user: "yes… also remember it's not just npm ci"):** the guard is mechanical, not a list of dangerous commands:
+- (1) Every command Insight runs executes against **Insight's own copy** of the snapshot (R3-05's frozen copy), never your folder. Your live repo is only ever read.
+- (2) Settings declare each command as `install` or `check`. Install-type commands (installs, fetches, codegen, formatters, migrations, cleans, anything that rewrites) run only where Insight owns the dependencies.
+- (3) Tripwire: if any file in your repo changes while an Insight command runs, Insight stops and reports which files and which command.
+
+BQ-07's `--ignore-scripts` claim is dropped; it isn't a security control.
 An after-build snapshot running `npm ci` in place would delete `node_modules` under your running `tauri dev`. Insight's own `tsc -b` would write `.tsbuildinfo` into `app/`.
 - Rec: install steps never run against the live working copy (only in Insight-owned trees), and Insight's own checks write all outputs into its cache. Drop BQ-07's `--ignore-scripts` claim; it isn't a security control.
 
