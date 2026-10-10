@@ -670,7 +670,8 @@ Fletcher at the pinned commit likely fails a plain `cargo check`: Tauri's `gener
 - Options: (a) settings in app data (`%APPDATA%\Insight\repos.toml`, per repo), e.g. `check = ["npm ci", "npm run build", "cargo check --workspace"]`, used for any commit; Insight never writes into your repo; obvious cases need no settings, and ambiguous ones return "needs config" for Claude to fill in; (b) `.insight/config.toml` in the repo, which old commits won't have; (c) Insight auto-writes detected defaults into your repo.
 - Rec: (a). It works for old commits and keeps proprietary repo settings out of repos. Note: it runs the repo's own npm scripts.
 
-### R2-17: Default snapshot and new files — OPEN (vis)
+### R2-17: Default snapshot and new files — ANSWERED
+**Ruling (user):** "it needs everything, but again the build rule." A working-copy snapshot is **exactly the code that just built successfully**: tracked plus untracked-not-ignored files (amends BQ-20's "git-tracked only" for working copies). If anything changes between the successful build and the end of the snapshot, it no longer matches a passing build and is discarded; the next successful build triggers a fresh one. Default = the working copy at its last successful build.
 - Options: (a) `insight build <repo>` defaults to the working copy if dirty and HEAD if clean; a working copy includes **untracked, not-ignored** files (agents add new files), and a build is discarded with "files changed during build, retry" if anything changes mid-build; (b) default HEAD, working copy opt-in; (c) tracked files only.
 - Rec: (a), amending BQ-20's "git-tracked only" for working copies.
 
