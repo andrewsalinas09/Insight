@@ -37,7 +37,10 @@ Is the backend a headless `insight` program, separate from the window? And how d
 ### BQ-02b: Tags: declared meaning, parsed statically — ANSWERED → ADR-0032
 **Ruling:** tags are "the compiler". Claude tags inline by default (`@insight tag: …` above the symbol); the sidecar `.insight/tags.toml` is for dependency symbols, with simple `*` globs; plain names only for now.
 
-### BQ-02c: Making sure Claude remembers to tag — OPEN
+### BQ-02c: Making sure Claude remembers to tag — ANSWERED (a + b + c)
+**Ruling:** (a) a standing instruction (MCP server instructions plus an `insight init` snippet in CLAUDE.md/AGENTS.md); (b) a `/insight-tag` command that tags the current uncommitted diff; (c) a mechanical `tag_coverage` tool listing untagged candidates for Claude to judge. (d) hooks only if needed. Also clarified: tags are extras. Language semantics live in plugins (ADR-0033).
+
+*(Original BQ-02c text, kept for history:)*
 User: "My main worry is Claude won't remember to do this. Or it needs to be _very_ easy to say 'hey Claude, don't forget to annotate this with insight'."
 - Options (they can be combined):
   - (a) **Standing instruction:** Insight's MCP server instructions plus a snippet that `insight init` adds to the repo's CLAUDE.md/AGENTS.md: "when you add or change code that touches the outside world or matters for understanding, add `@insight tag:` comments."

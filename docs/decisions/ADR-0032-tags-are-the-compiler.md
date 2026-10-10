@@ -1,6 +1,6 @@
 # ADR-0032: Tags are the "compiler": meaning is declared (by Claude, inline first) and parsed statically
 
-- **Status:** Accepted
+- **Status:** Accepted; reframed by ADR-0033 (tags are *extras*, declared shortcuts for efficiency and annotation; the main semantics come from language plugins and the model)
 - **Date:** 2026-10-09
 - **Source:** user, BQ-02b ("exactly, this is like the 'compiler / interpreter' I envisioned. Claude simply tags it inline or in a file and that's what generates the logic for the compiler / interpreter to know how to build… I feel like having it inline is good")
 

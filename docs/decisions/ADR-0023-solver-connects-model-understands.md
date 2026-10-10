@@ -1,6 +1,6 @@
 # ADR-0023: The solver connects everything; anything that requires understanding is the model's job
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0033 (language semantics are granted to the language plugin, which parses each language to a standard; library and domain meaning stays with the model)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 8 ("If something can change something it should be connected… The 400 needs semantic reasoning. It's up to the model. Let me be _very_ clear. Anything that requires understanding the code is the model's job. That's why this is even possible. Too many edge cases. The solver's job is to simply connect everything together")
 
