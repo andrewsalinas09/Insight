@@ -889,12 +889,12 @@ An agent working in a worktree builds and fires the hook.
 # Fourth pass (R4): concept coverage, runtime-Claude simulation, leftovers audit (2026-10-09)
 
 ## R4-A: User decisions
-- **R4-01 (vis): Where "the language" ends.** Spec-defined builtins (JS `Array.prototype.map`/`bind`/`then`, Python `len`, Rust's `Iterator`/`Future` items, Go's `append`). Rec: **strict.** Language = syntax plus calls the compiler itself inserts or recognizes. Every library function, standard library and ECMAScript builtins included, stays an external leaf. Never wrong, just noisier, and Claude filters. A per-language builtin table only via the wish rule.
-- **R4-02 (vis): Framework "flavors" in the language set.** ADR-0016 lists Arduino/ESP-IDF/Zephyr/FreeRTOS conventions and Vue/Svelte templates. Rec: drop the conventions. Anything with its own compiler (`.ino` preprocessing, Vue/Svelte compilers) is a language, mapped to concepts with no runtime meaning.
-- **R4-03 (vis): A global INSIGHT.md?** Rec: a global file for **prose only** (knowledge notes, preferences); all settings stay per project (R3-07/R3-01). Wishes go in the global file.
-- **R4-04 (vis): Tagging default.** Rec: `insight init` writes `tagging = "on-request"` explicitly into the project's INSIGHT.md, so there's no hidden default.
+- **R4-01: ANSWERED → ADR-0049** ((a) strict; stdlib-origin facts are default-off detail Claude can request). *Original:* **Where "the language" ends.** Spec-defined builtins (JS `Array.prototype.map`/`bind`/`then`, Python `len`, Rust's `Iterator`/`Future` items, Go's `append`). Rec: **strict.** Language = syntax plus calls the compiler itself inserts or recognizes. Every library function, standard library and ECMAScript builtins included, stays an external leaf. Never wrong, just noisier, and Claude filters. A per-language builtin table only via the wish rule.
+- **R4-02: ANSWERED (yes):** drop the RTOS/SDK conventions; anything with its own compiler (Vue, Svelte, `.ino`) is a language. *Original:* **Framework "flavors" in the language set.** ADR-0016 lists Arduino/ESP-IDF/Zephyr/FreeRTOS conventions and Vue/Svelte templates. Rec: drop the conventions. Anything with its own compiler (`.ino` preprocessing, Vue/Svelte compilers) is a language, mapped to concepts with no runtime meaning.
+- **R4-03: ANSWERED (yes):** a global INSIGHT.md holds prose only (knowledge notes, preferences, wishes); settings are per project. *Original:* **A global INSIGHT.md?** Rec: a global file for **prose only** (knowledge notes, preferences); all settings stay per project (R3-07/R3-01). Wishes go in the global file.
+- **R4-04: ANSWERED (yes):** `insight init` writes `tagging = "on-request"` explicitly. *Original:* **Tagging default.** Rec: `insight init` writes `tagging = "on-request"` explicitly into the project's INSIGHT.md, so there's no hidden default.
 
-## R4-B: Internal (vocabulary, schema, tools); pending explicit delegation
+## R4-B: Internal (vocabulary, schema, tools) — DECIDED BY CLAUDE (user explicitly delegated: "yeah"): all recommendations below accepted, filtered through ADR-0049 (lean by default, pedantic on request). P12–P14 stay "later", and P13's embedded SQL will be asked when SQL is built
 **Concepts (concept-coverage stress test):**
 - P1: a `timing` column (inline / eager-start / deferred-create / concurrent / scope-exit / load / build / unsequenced) for lazy futures, Drop/`defer`/`finally`/RAII, decorators, module load and unsequenced operands.
 - P2: `suspend{await|yield}` plus `resume` edges for generators.
@@ -932,7 +932,7 @@ An agent working in a worktree builds and fires the hook.
 - Wire "pairs" are view notes/groups only, never edges.
 - Plus the ~280-word MCP instructions draft from the simulation.
 
-## R4-C: Cleanup (mechanical, pending OK)
+## R4-C: Cleanup — APPROVED (user: "yeah")
 - Framework remnants: `insight-link-tauri`/`LinkPlugin` in the BQ-03 crate plan; BQ-16 `render`; "JSX handoffs" and "props" wording; R3-13/R3-14 unlabeled old recs; R3-G #2 subkinds; Status notes on ADR-0007/0016/0018/0019/0034; Q-28 "protocol plugins"; a header note on the drag-graft example (the key's effects and timing are the model's answer); scope ADR-0048 to *analysis* (Insight's own Tauri shell is fine).
 - ADR-0047 defaults: BQ-22 positional filter; ADR-0044's "same-literal limit"; the 200-row cap everywhere; `path` caps; R2-12 implicit hop set; `tag_coverage` heuristic; ADR-0021/0022 auto-collapse; Q-19 relevance classifier; Q-25 "refactors collapse".
 - Re-anchor the drag-graft example's line numbers to `cd5d6ff` (they're ~18 lines off; they were traced on the dirty working tree).

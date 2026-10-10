@@ -1,6 +1,6 @@
 # ADR-0016: The supported language set and build order
 
-- **Status:** Accepted; tooling per language decided by ADR-0034 and R2-15
+- **Status:** Accepted; tooling per language decided by ADR-0034 and R2-15; amended by R4-02 (no RTOS/SDK conventions; anything with its own compiler, e.g. Vue/Svelte/.ino, is a language) and ADR-0048 (no Tauri bridge)
 - **Date:** 2026-10-09
 - **Source:** user, discovery session 7. The core list is the user's; additions were proposed by Claude and accepted ("yes I agree with everything you said, add them")
 

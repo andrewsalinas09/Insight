@@ -1,6 +1,6 @@
 # ADR-0047: Claude chooses at query time. Tools take parameters, not defaults; the solver keeps every fact unfiltered
 
-- **Status:** Accepted
+- **Status:** Accepted; refined by ADR-0049 (lean by default, pedantic on request)
 - **Date:** 2026-10-09
 - **Source:** user, R3-13 ("we need a way to simply let Claude answer these questions on the fly in whatever way it needs / wants to. Remember Claude can 100%… know what counts / what is important. Our job is to give it the context as cheaply and easily as possible")
 

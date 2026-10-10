@@ -6,7 +6,7 @@ A personal desktop tool for seeing and checking code. Insight builds a complete,
 
 1. **Never wrong, only incomplete** (ADR-0002), for Insight's own facts. What Claude says is interpretation, and checkable claims get tools (ADR-0041).
 2. **The intelligence principle** (ADR-0035): the tool does what's trivial (deterministic, by algorithm); the second there's a question, it's the model's. "Tracing a call stack is not intelligent. Explaining how it works is." Practical test: if a compiler could do it, it's allowed (ADR-0043).
-3. **Programming concepts only** (ADR-0048): zero framework or library knowledge anywhere. Language knowledge lives only in each language's extractor; everything else is in generic programming-concept terms. User: "0 framework anywhere besides the language itself." Runtime relevance choices are Claude's, as tool parameters (ADR-0047).
+3. **Programming concepts only** (ADR-0048): zero framework or library knowledge anywhere. Language knowledge lives only in each language's extractor; everything else is in generic programming-concept terms. User: "0 framework anywhere besides the language itself." Runtime relevance choices are Claude's, as tool parameters (ADR-0047). Lean by default, pedantic on request (ADR-0049).
 
 ## Current status
 
