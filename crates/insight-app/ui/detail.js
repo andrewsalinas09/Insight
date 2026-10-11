@@ -69,6 +69,8 @@ function usesOf(F) {
 function detailFor(n) {
   const d = { kind: KIND[n.k] ?? n.k, name: n.n, where: [pathText(n), n.f ? `${n.f}:${n.a}${n.b && n.b !== n.a ? "–" + n.b : ""}` : ""].filter(Boolean).join(" · ") };
   let h = "";
+  const terms = termsOf.get(n) ?? [];
+  if (terms.length) h += section("glossary", terms.map((t) => `<p><b>${esc(t.name)}</b>: ${prose(t.means)}</p>`).join(""));
   if (n.f && n.a && files.has(n.f)) {
     const above = linesAbove(n);
     if (above.length) h += section("written above it", pre(above));

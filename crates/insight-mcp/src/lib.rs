@@ -12,6 +12,7 @@
 
 pub mod bridge;
 mod deny;
+mod glossary;
 mod view;
 mod window;
 
@@ -126,6 +127,11 @@ impl Server {
     /// The loaded snapshot as boxes and lines, for the window.
     pub fn graph(&self) -> Result<Value> {
         window::graph(self.loaded()?)
+    }
+
+    /// The project glossary with its names resolved in the loaded snapshot (ADR-0056).
+    pub fn glossary(&self) -> Result<Value> {
+        glossary::for_window(self.loaded()?)
     }
 
     /// One file of the loaded snapshot, for the window's code view.
@@ -247,6 +253,13 @@ impl Server {
             "path" => self.path(a),
             "source" => self.source(a),
             "show" => self.show(a),
+            "glossary" => {
+                let (text, changed) = glossary::tool(self.loaded()?, a)?;
+                if changed {
+                    self.push("glossary", json!(null));
+                }
+                Ok(text)
+            }
             "selection" => Ok(if self.selection.is_null() { "nothing selected".to_string() } else { serde_json::to_string_pretty(&self.selection)? }),
             other => bail!("unknown tool `{other}`"),
         }
@@ -765,6 +778,14 @@ fn tools() -> Value {
                     }}
                 }},
                 "step": {"type": "integer", "minimum": 1}
+            }}
+        },
+        {
+            "name": "glossary",
+            "description": "The project glossary (ADR-0056): terms for this codebase, each a plain definition plus the code it names. It's stored with the project and shown in the window whenever the user hovers one of those names, so it gives everyday reading your understanding. No arguments lists it. `set` adds or replaces terms ({name, means, names: [code refs]}; every ref must resolve); `remove` deletes by name. Write a term the first time you explain a project-specific word (a type, a variable, a concept), and cite it in notes as [label](term:name).",
+            "inputSchema": {"type": "object", "properties": {
+                "set": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "means": {"type": "string"}, "names": {"type": "array", "items": {"type": "string"}}}, "required": ["name", "means"]}},
+                "remove": {"type": "array", "items": {"type": "string"}}
             }}
         },
         {

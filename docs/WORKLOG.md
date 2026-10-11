@@ -12,6 +12,19 @@ Template:
 
 ---
 
+## 2026-10-11 (cont.) — Glossary and hover cards; condensed-view and aside fixes; excerpts
+**Done:**
+- **Glossary (ADR-0056):** a per-project `insight-glossary` block in INSIGHT.md, kept by Claude with the new `glossary` tool (every name must resolve). The window shows a card when you hover any name in code (kind, place, glossary terms, declaration, the comment above it), notes cite terms as `[label](term:name)`, and the details panel lists a thing's terms. First use: 14 terms for a private firmware project and a 16-step crash course, one word per step.
+- Citations of lines outside any code (a file's header comment) open an **excerpt**: the lines, highlighted, in the code panel (ADR-0040 code excerpts, from a citation).
+- **Condensed views:** every box opens and closes (as drawn → everything → folded); the inspector's button follows; Back restores folds and reveals.
+- **Asides:** an aside re-sent with the same title revises the one on screen instead of stacking (ADR-0055).
+- **C/C++ extractor:** `-iprefix`/`-iwithprefix` include paths kept; headers found through a relative `-I` resolved against the command's directory.
+- Docs: ADR-0056, ADR-0055 (revision), FRONTEND-QUESTIONS (FQ-14), MCP-INSTRUCTIONS, ARCHITECTURE, ROADMAP.
+
+**Learned:** synthetic mouse tests fight a user who is using the window at the same time (a test hover landed while the user was stepping through it). Test when the user is away, or ask.
+
+**Next:** the user's verdict on hover cards and the crash course; `has-type` so type names resolve exactly.
+
 ## 2026-10-11 (cont.) — An ESP-IDF firmware project: two extractor fixes
 **Done:** the user asked about a private microcontroller firmware repo (Arduino on ESP-IDF, PlatformIO). Setting it up: PlatformIO Core installed and pinned to the version the platform expects. The check is a real build followed by `-t compiledb`: with HybridCompile, `compiledb` alone only describes a placeholder lib-builder project until the framework is built. Two generic C/C++ extractor bugs, fixed: GCC `-iprefix`/`-iwithprefix` include paths were dropped, and headers found through a relative `-I` were classed as external. Then a cited, condensed walkthrough on the window.
 **Learned:** a build system can write a compile database for a different project than the one you asked for (HybridCompile). Check that the database names the project's own sources before trusting a snapshot.

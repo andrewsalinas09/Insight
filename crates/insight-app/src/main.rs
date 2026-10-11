@@ -47,6 +47,11 @@ async fn current_view(s: State<'_, Shared>) -> Result<Option<Value>, String> {
 }
 
 #[tauri::command]
+async fn glossary(s: State<'_, Shared>) -> Result<Value, String> {
+    lock(&s).glossary().map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
 async fn restore_view(s: State<'_, Shared>, view: Value) -> Result<(), String> {
     lock(&s).set_view(view);
     Ok(())
@@ -101,7 +106,7 @@ fn main() {
     let server: Shared = Arc::new(Mutex::new(Server::default()));
     tauri::Builder::default()
         .manage(server.clone())
-        .invoke_handler(tauri::generate_handler![projects, load, graph, file, current_view, restore_view, select])
+        .invoke_handler(tauri::generate_handler![projects, load, graph, file, current_view, restore_view, glossary, select])
         .setup(move |app| {
             let handle = app.handle().clone();
             lock(&server).attach_window(Box::new(move |event, payload| {

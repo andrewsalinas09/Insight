@@ -402,6 +402,7 @@ let drawnBoxes = [];
 function draw(p) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = T.paper; ctx.fillRect(0, 0, W, Hh);
+  codeRects = [];
   if (TR) { drawTrace(); return; }
   if (!L.boxes.size) return;
   const mono = monoFont();
@@ -525,6 +526,7 @@ function text(s, x, y, maxW) {
 }
 // The deepest level: the function's code. Blocks (branches, loops) are bands in the gutter.
 function drawCode(n, x, y, w, h) {
+  codeRects.push([n, x, y, w, h]); // for the name under the pointer (glossary.js)
   const src = codeOf(n), lh = LH * cam.k, top = y + 30 * cam.k, left = x + 12 * cam.k;
   ctx.save(); ctx.beginPath(); ctx.rect(x, y + 24 * cam.k, w, h - 24 * cam.k); ctx.clip();
   (function bands(c, lvl) { for (const k of c.children) { if (k.k !== "block") continue; ctx.fillStyle = rgba(T.ink, 0.07 + 0.05 * lvl); ctx.fillRect(x + (5 + lvl * 3) * cam.k, top + (k.a - n.a) * lh, 2.2 * cam.k, (k.b - k.a + 1) * lh); bands(k, lvl + 1); } })(n, 0);
@@ -669,13 +671,20 @@ function citedLines(n) {
 const citeTarget = () => citeHover?.target ?? null;
 function citeAt(el) { const s = el.closest?.(".cite"); return s ? V?.cites?.[+s.dataset.c] ?? null : null; }
 function bindCites(el) {
-  el.addEventListener("mouseover", (e) => { const c = citeAt(e.target); if (!c) return; citeHover = { ...c, target: citeNode(c) ?? fnAt(c.file, c.a) ?? nodeAt(c.file, c.a) }; kick(); });
-  el.addEventListener("mouseout", (e) => { if (citeAt(e.target)) { citeHover = null; kick(); } });
+  el.addEventListener("mouseover", (e) => {
+    const c = citeAt(e.target);
+    if (!c) return;
+    const target = c.term != null ? termCite(c, e.target.closest(".cite")) : citeNode(c) ?? fnAt(c.file, c.a) ?? nodeAt(c.file, c.a);
+    citeHover = { ...c, target };
+    kick();
+  });
+  el.addEventListener("mouseout", (e) => { if (citeAt(e.target)) { citeHover = null; if (citeAt(e.target).term != null) hideCard(); kick(); } });
   el.addEventListener("click", (e) => {
     const c = citeAt(e.target);
     if (!c) return;
     e.preventDefault();
     citeHover = null;
+    if (c.term != null) { hideCard(); const t = termByName.get(String(c.term).toLowerCase()); const go = t && termGo(t); if (go) go(); return; }
     const n = citeNode(c);
     if (n) { jumpTo(n); return; }
     const f = fnAt(c.file, c.a);
@@ -866,6 +875,7 @@ cv.addEventListener("pointermove", (e) => {
     if (drag.moved || Math.hypot(dx, dy) > 3) { drag.moved = true; cv.classList.add("dragging"); camAnim = null; cam.x -= dx / cam.k; cam.y -= dy / cam.k; drag.x = e.offsetX; drag.y = e.offsetY; kick(); }
     return;
   }
+  cardAt(e.offsetX, e.offsetY);
   if (TR) { traceMove(e.offsetX, e.offsetY); return; }
   // A line within a few pixels wins over the box beneath it; inside a function's code,
   // the call on the line under the pointer.
@@ -907,7 +917,7 @@ function up(e) {
   drag = null;
 }
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-cv.addEventListener("pointerleave", () => { if (!drag) { hovered = hoverEdge = mapStop = null; if (TR) traceHover = null; bar(); kick(); } });
+cv.addEventListener("pointerleave", () => { if (!drag) { hideCard(); hovered = hoverEdge = mapStop = null; if (TR) traceHover = null; bar(); kick(); } });
 cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop && !(SUB && subToggle(n))) toggle(n); if (n && n === selected) setTimeout(() => inspect(n), 0); });
 function zoomAt(sx, sy, f) {
   camAnim = null;
@@ -957,6 +967,7 @@ async function loadGraph() {
   $("empty").hidden = false; $("empty").textContent = "reading the snapshot…";
   try { setGraph(await invoke("graph")); }
   catch (err) { $("empty").textContent = String(err); return; }
+  await loadGlossary();
   files.clear();
   $("empty").hidden = true; $("title").hidden = true;
   legend(); inspect(null); transport(); bar(); report();
@@ -965,6 +976,7 @@ async function loadGraph() {
   else { camAfter = (lay) => fit(lay.boxes.get(root), 0.96); relayout(null); }
 }
 listen("loaded", async () => { await fillPicker(); await loadGraph(); });
+listen("glossary", () => { if (G) loadGlossary(); });
 listen("view", (e) => { if (G) applyView(e.payload); });
 listen("step", (e) => { if (G && e.payload < steps().length) { stopPlay(); goStep(e.payload); } });
 

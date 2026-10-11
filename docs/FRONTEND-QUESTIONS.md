@@ -108,6 +108,9 @@ User, on step 4 of a walkthrough: "I think we need a way to pause what we have, 
 ### FQ-13: Condensed views — ANSWERED → ADR-0040 (built)
 User, after an overview on the full map of a large project showed nothing: "I think this is a good time for you to make condenced views … You should eb able to remove stuff temporarily right? I gave you that ability?" Built: `nodes`, `groups` and `collapse`.
 
+### FQ-14: The codebase's vocabulary — ANSWERED → ADR-0056
+User: "I'd be cool if there way a 'crash course' to all the important things and words" and "we should totally add a glosary for the codebase that way you can get intelligence in everyday viewing … And then the hover over thing is linked". Built: a project glossary kept by Claude, hover cards on any name in code, term citations.
+
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic? In condensed views, yes: every box that lost children says so (FQ-13). Still open for the full map.
 - R2-21: the user clicking while Claude updates the view.

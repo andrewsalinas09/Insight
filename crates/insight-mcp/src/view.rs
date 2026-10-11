@@ -248,6 +248,11 @@ impl Resolver<'_> {
             let (a, b) = s.split_once('-').unwrap_or((s, s));
             Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
         };
+        // `term:name`: a glossary term (ADR-0056).
+        if let Some(name) = target.strip_prefix("term:") {
+            anyhow::ensure!(crate::glossary::has(&self.l.project, name.trim())?, "no glossary term `{}`: add it with the `glossary` tool first", name.trim());
+            return Ok(json!({"term": name.trim()}));
+        }
         // `:52` or `:52-60`: lines of the thing the note is about.
         if let Some(rel) = target.strip_prefix(':') {
             let (a, b) = lines(rel).context("`:` is followed by a line or a range, like `:52` or `:52-60`")?;

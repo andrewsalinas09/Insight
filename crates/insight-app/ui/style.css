@@ -113,6 +113,16 @@ body.popout .detail { position: static; height: 100vh; border-top: 0; }
 .bar #detBtn { margin-left: auto; padding: 2px 8px; align-self: center; }
 .cite { color: var(--orange); border-bottom: 1px dotted var(--orange); cursor: pointer; }
 .cite:hover { background: color-mix(in srgb, var(--orange) 18%, transparent); }
+/* The card for a name in code, or a glossary term: facts in ink, Claude's glossary words with an orange rule. */
+.hovercard { position: absolute; z-index: 3; max-width: min(560px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--ink); box-shadow: 4px 4px 0 var(--shadow); padding: 8px 10px; font-size: 12.5px; line-height: 1.45; }
+.hovercard header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.hovercard header b { font: 500 13px var(--mono); }
+.hovercard .dim { color: var(--dim); font: 11px var(--mono); }
+.hovercard .term { box-shadow: inset 3px 0 0 var(--orange); padding: 4px 8px; margin: 4px 0; }
+.hovercard pre { margin: 4px 0; padding: 4px 6px; background: var(--paper); border: 1px solid var(--hair); font: 11.5px/1.4 var(--mono); color: var(--code); white-space: pre-wrap; }
+.hovercard pre.above { color: var(--dim); }
+.hovercard footer { color: var(--dim); font: 10.5px var(--mono); margin-top: 4px; }
+.hovercard code { font: 12px var(--mono); }
 .box-btn.primary { background: var(--ink); color: var(--panel); }
 .bar .dim { color: var(--dim); }
 .trail { left: 50%; transform: translateX(-50%); top: 12px; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 8px; padding: 6px 10px; max-width: calc(100% - 32px); box-shadow: inset 3px 0 0 var(--call), 4px 4px 0 var(--shadow); }
