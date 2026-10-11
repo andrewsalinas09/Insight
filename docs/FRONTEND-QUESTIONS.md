@@ -67,6 +67,7 @@ User: "we need to figure out how we should actually show things … Lots of colo
   - **Lines by kind:** calls are solid ink; possible calls are dashed; handoffs are violet dash-dot; library calls are grey; writes are thick blue; reads are thin blue and drawn from the field to the reader; references taken are dotted blue.
   - **A legend that is also the filter:** tick a line kind to show it, with its total count. Reads and references start hidden.
   - **Closed boxes show their size:** lines, functions (ƒ) and types (◆).
+- **Calls are teal** since the user's first session on the app ("boxes and wires are the same color"), so lines and boxes read apart (ADR-0052).
 - To be judged on the app. One change since v2: "calls into libraries" starts unticked, because its 4,000 lines buried the home view; the hatched library boxes still show how much of each library is used.
 
 ### FQ-02: Edges between levels — OPEN
@@ -83,6 +84,17 @@ Nested boxes, ELK layered, drawn on a canvas: the prototype the user asked to bu
 
 ### FQ-07: Claude steering the layout — ANSWERED → ADR-0050
 User: "claude should be able to control the order a little bit. Maybe an algo it can tweak or do it manually. Like the order of the hierarchy or something in order to show a certain path for example." A view's `layout` has `chain` (sequences laid out left to right in a row, such as a route), `order` (first within their box) and ELK `options`. The user has the same by hand: ▲ Up / ▼ Down in the inspector, and spacing in Settings.
+
+### FQ-08: Seeing where lines go, and the order of calls — ANSWERED → ADR-0052
+User, first session on the app: "If I zoom in i can't see where anything connects. Id' be nice if there was a way to see like hover over a line or something and see where it goes. The ordering is not clear. … it's missing something magic to help anyone understand this." And: "I love the idea of having the code so do'nt get rid of that but maybe a way to connect the lines to the graph by clickign or soemthing."
+- Claude proposed: hover a line; focus on one function with callers left and calls right in code order; tie the code to the graph; step in and out like a debugger. User: "I say yes build everything".
+- Built: hoverable lines with both ends lit, call marks in the code, and the trace view (ADR-0052). Claude can open a trace with `show({view: {trace}})`, also per step.
+- To be judged on the app.
+
+### FQ-09: Which snapshots the picker lists — ANSWERED (Claude's call, reported to the user)
+User: "in projects why are there so many things @ same_commit_here repeated over and over?" Each rebuild of the same commit (working-copy builds, and every change to Insight's database format during development) left its own snapshot file, and the picker listed them all.
+- Now: one entry per repo and commit, the newest build in the current format, labelled with when it was built. A commit with only older-format builds still shows its newest one, marked "older format, rebuild" (user: "now there's no commit under it in the project" when the first fix hid those).
+- `status` still lists every file for Claude.
 
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic?

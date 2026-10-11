@@ -1,5 +1,5 @@
 /* The window: one full-height instrument: header strip, canvas with legend and inspector, docked note bar.
-   Theme and type from Fletcher's "Console" (ADR-0027). Color law: ink = your code's structure and control,
+   Theme and type from Fletcher's "Console" (ADR-0027). Color law: ink = your code's structure, teal = calls,
    blue = data (fields, reads, writes), violet = handoffs (functions passed on to run later),
    grey hatching = library code, orange = only what Claude is showing you. */
 @font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2"); }
@@ -10,7 +10,7 @@
 :root {
   --paper: #f2efe9; --panel: #f9f7f2; --ink: #14171a; --dim: #8b8578;
   --hair: #e5dfd1; --hair2: #c9c2b0; --hair3: #b3ac9c;
-  --orange: #c85a13; --data: #2f6aa8; --handoff: #7b4fb0; --lib: #8d887d;
+  --orange: #c85a13; --call: #1f7a68; --data: #2f6aa8; --handoff: #7b4fb0; --lib: #8d887d;
   --k-package: #ece7dd; --k-file: #f7f4ee; --k-type: #e3ebe2; --k-type-edge: #7f9a84; --k-function: #fffefb; --k-block: #f3efe6; --k-lib: #e4e1da;
   --code: #2f3439; --shadow: #14171a;
   --sans: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
@@ -18,13 +18,13 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --paper: #16181b; --panel: #1d2024; --ink: #e9e5dc; --dim: #8f8a80;
   --hair: #2a2e33; --hair2: #3b4047; --hair3: #4c525a;
-  --orange: #e8823c; --data: #6fa3e0; --handoff: #b08ae0; --lib: #7d7a73;
+  --orange: #e8823c; --call: #4fb8a0; --data: #6fa3e0; --handoff: #b08ae0; --lib: #7d7a73;
   --k-package: #1b1e22; --k-file: #212429; --k-type: #1f2b24; --k-type-edge: #5f8a6a; --k-function: #2a2f35; --k-block: #24282d; --k-lib: #26262a;
   --code: #cfcabf; --shadow: #000; color-scheme: dark } }
 :root[data-theme="dark"] {
   --paper: #16181b; --panel: #1d2024; --ink: #e9e5dc; --dim: #8f8a80;
   --hair: #2a2e33; --hair2: #3b4047; --hair3: #4c525a;
-  --orange: #e8823c; --data: #6fa3e0; --handoff: #b08ae0; --lib: #7d7a73;
+  --orange: #e8823c; --call: #4fb8a0; --data: #6fa3e0; --handoff: #b08ae0; --lib: #7d7a73;
   --k-package: #1b1e22; --k-file: #212429; --k-type: #1f2b24; --k-type-edge: #5f8a6a; --k-function: #2a2f35; --k-block: #24282d; --k-lib: #26262a;
   --code: #cfcabf; --shadow: #000; color-scheme: dark }
 * { box-sizing: border-box; }
@@ -82,4 +82,14 @@ canvas.dragging { cursor: grabbing; }
 .settings output { font: 12px var(--mono); }
 .settings input[type=range] { width: 100%; accent-color: var(--ink); }
 .settings p { margin: 0; color: var(--dim); font-size: 11.5px; line-height: 1.4; }
+.box-btn.primary { background: var(--ink); color: var(--panel); }
+.bar .dim { color: var(--dim); }
+.trail { left: 50%; transform: translateX(-50%); top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; max-width: calc(100% - 32px); box-shadow: inset 3px 0 0 var(--call), 4px 4px 0 var(--shadow); }
+.trail .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font: 12px var(--mono); min-width: 0; }
+.trail .crumb { padding: 2px 4px; color: var(--dim); text-decoration: underline; text-decoration-color: var(--hair3); }
+.trail .crumb:hover { color: var(--ink); }
+.trail .sep { color: var(--dim); }
+.trail .here { font-weight: 500; color: var(--call); padding: 2px 4px; }
+.trail .count { font: 11px var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; min-width: 8ch; text-align: center; }
+.trail .box-btn { padding: 3px 8px; }
 @media (max-width: 640px) { .tr { margin-left: 0; } .legend { max-height: 40%; } }

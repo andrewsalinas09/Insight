@@ -49,11 +49,14 @@ function setGraph(g) {
     for (const c of n.children) walk(c, n.path);
   })(root, []);
   // Lines as drawn. Reads are drawn the way the data moves: from the field to the reader.
-  E = g.edges.map(([f, t, k, c]) => {
+  // `src`/`tgt` keep the stored direction (the function doing it first); `sites` are
+  // where each occurrence is written: [line, col, end line, end col].
+  E = g.edges.map(([f, t, k, c, sites]) => {
     let a = byId.get(f), b = byId.get(t), kind = ["call", "possible", "handoff", "read", "write", "access"][k];
     if ((kind === "call" || kind === "possible") && LIBK.has(b.k)) kind = "lib";
+    const src = a, tgt = b;
     if (kind === "read") [a, b] = [b, a];
-    return { a, b, kind, c };
+    return { a, b, kind, c, src, tgt, sites: sites ?? [] };
   });
   totals = {}; for (const e of E) totals[e.kind] = (totals[e.kind] ?? 0) + e.c;
   callsOf = new Map();
@@ -67,7 +70,8 @@ function setGraph(g) {
   HOME = new Set([root, ...root.children]);
   open = new Set(HOME); zoomOpened.clear(); userOrder.clear();
   L = { boxes: new Map(), edges: [] };
-  selected = hovered = null; V = null; step = -1; lit = new Set(); notesOn = new Map();
+  selected = hovered = hoverEdge = mapStop = null; V = null; step = -1; lit = new Set(); notesOn = new Map();
+  traceReset();
 }
 const fnOf = (n) => { while (n && n.k !== "function" && n.k !== "ext") n = n.parent; return n; };
 const lines = (n) => (n.a ? n.b - n.a + 1 : 0);
@@ -105,12 +109,14 @@ const userOrder = new Map(); // parent -> children in the order the user set (R2
 function viewNodes(ids) { return (ids ?? []).map((id) => byId.get(id)).filter(Boolean); }
 function applyView(v) {
   V = v; step = -1; selected = null; stopPlay();
+  if (TR) exitTrace(false);
   lit = new Set(viewNodes(v.highlight));
   notesOn = new Map();
   for (const n of v.notes ?? []) { const x = n.on != null ? byId.get(n.on) : root; if (x) (notesOn.get(x) ?? notesOn.set(x, []).get(x)).push(n.text); }
   $("title").hidden = !v.title; $("title").textContent = v.title ?? ""; $("title").title = v.title ?? "";
   inspect(null);
   if ((v.steps ?? []).length) { goStep(0); if (v.play) startPlay(); return; }
+  if (v.trace) { traceFromView(v.trace); bar(); transport(); return; }
   const s = viewOpen();
   const focus = v.focus != null ? byId.get(v.focus) : null;
   const fitTo = focus ? [focus] : [...lit];
@@ -198,8 +204,8 @@ async function relayout(anchor) {
     const a = rep(e.a), b = rep(e.b);
     if (a === b || isUnder(a, b) || isUnder(b, a)) continue;
     const key = a.id + ">" + b.id + ">" + e.kind;
-    const x = agg.get(key) ?? agg.set(key, { a, b, kind: e.kind, c: 0 }).get(key);
-    x.c += e.c;
+    const x = agg.get(key) ?? agg.set(key, { a, b, kind: e.kind, c: 0, under: [] }).get(key);
+    x.c += e.c; x.under.push(e);
   }
   const meta = new Map();
   let i = 0;
@@ -275,7 +281,7 @@ function startMorph(old, anchor) {
     target = { k, x: a1.x + a1.w / 2 - (sx - W / 2) / k, y: a1.y + a1.h / 2 - (sy - Hh / 2) / k };
   }
   if (afterSettle) { afterSettle(target ?? cam); afterSettle = null; }
-  if (!dur() || !old.boxes.size) { morph = null; if (target) Object.assign(cam, target); kick(); return; }
+  if (!dur() || !old.boxes.size) { morph = null; if (target) { camAnim = null; Object.assign(cam, target); } kick(); return; }
   morph = { from, t0: performance.now() };
   if (target) camAnim = { a: { ...cam }, b: target, t0: morph.t0 };
   kick();
@@ -290,12 +296,14 @@ function boxNow(n, p) {
 
 // ---------- state ----------
 let step = -1, selected = null, hovered = null;
+let hoverEdge = null; // the line under the pointer: it and its two ends light up
+let mapStop = null;   // { fn, stop }: a call under the pointer in a function's code
 const steps = () => V?.steps ?? [];
 const stepFocus = (i) => { const s = steps()[i]; return s?.focus != null ? byId.get(s.focus) : null; };
 
 // ---------- theme ----------
 const T = {};
-const TOK = ["paper", "panel", "ink", "dim", "hair", "hair2", "hair3", "orange", "data", "handoff", "lib", "code", "k-package", "k-file", "k-type", "k-type-edge", "k-function", "k-block", "k-lib"];
+const TOK = ["paper", "panel", "ink", "dim", "hair", "hair2", "hair3", "orange", "call", "data", "handoff", "lib", "code","k-package", "k-file", "k-type", "k-type-edge", "k-function", "k-block", "k-lib"];
 function readTheme() { const cs = getComputedStyle(document.documentElement); for (const k of TOK) T[k] = cs.getPropertyValue("--" + k).trim(); hatch = null; kick(); }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTheme);
 new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -326,8 +334,8 @@ function look(n) {
 }
 function lineLook(kind) {
   switch (kind) {
-    case "call": return { color: T.ink, a: 0.4, lw: 1 };
-    case "possible": return { color: T.ink, a: 0.4, lw: 1, dash: [5, 4] };
+    case "call": return { color: T.call, a: 0.55, lw: 1 };
+    case "possible": return { color: T.call, a: 0.55, lw: 1, dash: [5, 4] };
     case "handoff": return { color: T.handoff, a: 0.7, lw: 1.2, dash: [8, 3, 2, 3] };
     case "lib": return { color: T.lib, a: 0.45, lw: 0.9 };
     case "write": return { color: T.data, a: 0.85, lw: 2 };
@@ -341,8 +349,11 @@ let drawnBoxes = [];
 function draw(p) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = T.paper; ctx.fillRect(0, 0, W, Hh);
+  if (TR) { drawTrace(); return; }
   if (!L.boxes.size) return;
   const mono = monoFont();
+  // The ends of the line under the pointer, or the targets of the call under it.
+  const ends = new Set(hoverEdge ? [hoverEdge.a, hoverEdge.b] : mapStop ? mapStop.stop.items.map((it) => rep(it.t)) : []);
   // Emphasis: the view's highlights, plus the steps so far and their highlights.
   const past = new Set(), current = step >= 0 ? stepFocus(step) : null;
   for (let i = 0; i <= step; i++) { const f = stepFocus(i); if (f) past.add(f); }
@@ -364,8 +375,8 @@ function draw(p) {
     if (s.rule) { ctx.fillStyle = s.stroke; ctx.fillRect(x, y, w, Math.max(1.5, 2.5 * Math.min(1, cam.k))); }
     const strong = n === current || strongSet.has(n);
     ctx.setLineDash(s.dash ?? []);
-    ctx.lineWidth = n === current ? 2.5 : strong ? 2 : n === selected ? 2 : n === hovered ? Math.max(1.5, s.lw) : s.lw;
-    ctx.strokeStyle = strong ? T.orange : n === selected ? T.ink : n === hovered ? T.ink : s.stroke;
+    ctx.lineWidth = n === current ? 2.5 : strong ? 2 : ends.has(n) ? 2.5 : n === selected ? 2 : n === hovered ? Math.max(1.5, s.lw) : s.lw;
+    ctx.strokeStyle = strong ? T.orange : ends.has(n) ? T.call : n === selected ? T.ink : n === hovered ? T.ink : s.stroke;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.setLineDash([]);
     if (notesOn.has(n)) noteTags.push([n, x, y, w]);
@@ -401,21 +412,29 @@ function draw(p) {
     ctx.fillStyle = T.ink; text(t, x + 9, ty + 10, tw - 14);
   }
 }
+let drawnLines = []; // [edge, screen points] for hovering lines
 function drawLines(current) {
-  const focus = hovered ?? selected;
-  const hot = (e) => focus && (isUnder(e.a, focus) || isUnder(e.b, focus));
+  // What lights up: the line under the pointer; else the call under the pointer in code;
+  // else every line of the box under the pointer (or selected). The rest dims.
+  const focus = hoverEdge || mapStop ? null : hovered ?? selected;
+  const stopHot = mapStop ? new Set(mapStop.stop.items.map((it) => rep(it.t))) : null;
+  const hot = (e) => (hoverEdge ? e === hoverEdge : stopHot ? e.a === rep(mapStop.fn) && stopHot.has(e.b) : focus && (isUnder(e.a, focus) || isUnder(e.b, focus)));
+  const dimming = !!(focus || hoverEdge || mapStop);
   const routePairs = new Set();
   for (let i = 1; i <= step; i++) { const a = stepFocus(i - 1), b = stepFocus(i); if (a && b) routePairs.add(rep(a).id + ">" + rep(b).id); }
   const layers = [[], [], []];
   for (const e of L.edges) layers[e.kind !== "read" && routePairs.has(e.a.id + ">" + e.b.id) ? 2 : hot(e) ? 1 : 0].push(e);
+  drawnLines = [];
   layers.forEach((list, li) => {
     for (const e of list) {
       const s = lineLook(e.kind);
-      ctx.strokeStyle = li === 2 ? T.orange : rgba(s.color, li === 1 ? Math.min(1, s.a + 0.45) : focus ? s.a * 0.25 : s.a);
-      ctx.lineWidth = (li === 2 ? 2.4 : s.lw) + 0.4 * Math.log2(e.c);
+      ctx.strokeStyle = li === 2 ? T.orange : rgba(s.color, li === 1 ? 1 : dimming ? s.a * 0.2 : s.a);
+      ctx.lineWidth = (li === 2 ? 2.4 : li === 1 && (hoverEdge || mapStop) ? s.lw + 1.6 : s.lw) + 0.4 * Math.log2(e.c);
       ctx.setLineDash(li === 2 ? [] : s.dash ?? []);
+      const pts = e.pts.map(([wx, wy]) => toScreen(wx, wy));
+      drawnLines.push([e, pts]);
       ctx.beginPath();
-      e.pts.forEach(([wx, wy], j) => { const [sx, sy] = toScreen(wx, wy); j ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+      pts.forEach(([sx, sy], j) => (j ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy)));
       ctx.stroke(); ctx.setLineDash([]);
       const [ax, ay] = toScreen(...e.pts[e.pts.length - 1]), [bx, by] = toScreen(...e.pts[e.pts.length - 2]);
       const ang = Math.atan2(ay - by, ax - bx), z = 6 + ctx.lineWidth;
@@ -450,6 +469,16 @@ function drawCode(n, x, y, w, h) {
   const src = codeOf(n), lh = LH * cam.k, top = y + 30 * cam.k, left = x + 12 * cam.k;
   ctx.save(); ctx.beginPath(); ctx.rect(x, y + 24 * cam.k, w, h - 24 * cam.k); ctx.clip();
   (function bands(c, lvl) { for (const k of c.children) { if (k.k !== "block") continue; ctx.fillStyle = rgba(T.ink, 0.07 + 0.05 * lvl); ctx.fillRect(x + (5 + lvl * 3) * cam.k, top + (k.a - n.a) * lh, 2.2 * cam.k, (k.b - k.a + 1) * lh); bands(k, lvl + 1); } })(n, 0);
+  // Every call and data use written here: a tick at the right edge (where its line
+  // leaves the code) and the call itself underlined, both in its line's colour.
+  for (const s of stopsOf(n)) {
+    if (!s.line) continue;
+    const sy = top + (s.line - n.a) * lh, col = lineLook(s.items[0].kind).color;
+    const on = TR ? traceStopLit(s) : mapStop && mapStop.stop === s;
+    if (on) { ctx.fillStyle = rgba(col, 0.2); ctx.fillRect(x, sy, w, lh); }
+    ctx.fillStyle = rgba(col, on ? 1 : 0.75); ctx.fillRect(x + w - 5 * cam.k, sy + lh * 0.2, 3 * cam.k, lh * 0.6);
+    if (lh >= 7 && s.endLine === s.line) { ctx.fillRect(left + (s.col - 1) * CW * cam.k, sy + lh * 0.92, Math.max(2, (s.endCol - s.col) * CW * cam.k), Math.max(1, cam.k * (on ? 2 : 1))); }
+  }
   const i0 = Math.max(0, Math.floor((0 - top) / lh)), i1 = Math.min(src.length, Math.ceil((Hh - top) / lh));
   if (lh >= 7) {
     ctx.font = `${Math.min(lh * 0.8, 15)}px ${monoFont()}`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = T.code;
@@ -474,7 +503,7 @@ function frame(now) {
   }
   draw(p);
   ticking = false;
-  if (moving) kick();
+  if (moving || traceFading()) kick();
 }
 function resize() { const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1; W = r.width; Hh = r.height; cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr); kick(); }
 new ResizeObserver(resize).observe(cv);
@@ -501,6 +530,10 @@ function select(n) {
 }
 function goStep(i) {
   step = i; selected = null;
+  // A step can open the trace view on a call stack; a step without one leaves it.
+  const tr = step >= 0 ? steps()[step].trace : null;
+  if (tr) { traceFromView(tr); bar(); transport(); report(); return; }
+  if (TR) exitTrace(false);
   if (step < 0) { inspect(null); setOpen(viewOpen(), null, (lay) => fitAll(lay, [...lit])); bar(); transport(); report(); return; }
   const s = viewOpen();
   for (let j = 0; j <= step; j++) {
@@ -538,7 +571,10 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&
 // Claude's text: escaped, with `code` spans.
 const prose = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 const loc = (n) => (n.f ? `${n.f}:${n.a}` : "");
-const HOW = { click: "Double-click a box to open it; the rest moves aside. Click selects.", zoom: "Zoom into a box and it opens; zoom back out and it closes (Settings sets when)." };
+const HOW = {
+  click: "Double-click a box to open it. Hover a line to see where it goes. Select a function and press Enter to trace it.",
+  zoom: "Zoom into a box and it opens; zoom out and it closes. Hover a line to see where it goes. Select a function and press Enter to trace it.",
+};
 function bar() {
   const b = $("bar");
   const note = (tag, html) => { b.classList.add("note"); $("bartag").textContent = tag; $("bartext").innerHTML = html; };
@@ -548,6 +584,20 @@ function bar() {
     return;
   }
   b.classList.remove("note");
+  if (TR) { traceBar(); return; }
+  if (hoverEdge) {
+    const e = hoverEdge, parts = [...new Map(e.under.map((u) => [u.src.n + "→" + u.tgt.n, u])).values()];
+    $("bartag").textContent = LINE[e.kind].label;
+    $("bartext").innerHTML = `<code>${esc(short(e.a))}</code> → <code>${esc(short(e.b))}</code> · ${e.c} time${e.c > 1 ? "s" : ""}` +
+      (parts.length > 1 || parts[0].src !== e.a || parts[0].tgt !== e.b ? " · " + parts.slice(0, 4).map((u) => `<code>${esc(u.src.n)}</code> → <code>${esc(u.tgt.n)}</code>${u.sites[0] ? " (line " + u.sites[0][0] + ")" : ""}`).join(", ") + (parts.length > 4 ? ` and ${parts.length - 4} more` : "") : "") +
+      " · click to see both ends";
+    return;
+  }
+  if (mapStop) {
+    $("bartag").textContent = "line " + mapStop.stop.line;
+    $("bartext").innerHTML = mapStop.stop.items.map((it) => `${esc(LINE[it.kind].label)} <code>${esc(it.t.n)}</code>`).join(", ") + " · click to trace from here";
+    return;
+  }
   const h = hovered ?? selected;
   if (h && h !== root) {
     if (notesOn.has(h)) { note("note · claude", prose(notesOn.get(h).join("\n"))); return; }
@@ -573,10 +623,11 @@ function inspect(n) {
   p.innerHTML = `<header><span class="chip">${KIND[n.k] ?? n.k}</span><span class="name">${esc(n.n)}</span><button class="box-btn" id="close">Close</button></header>
     ${notes ? `<div class="notes">${prose(notes.join("\n"))}</div>` : ""}
     <div class="cells">${cells.map(([l, v]) => `<div class="cell"><div class="lbl">${l}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>
-    <div class="acts">${canOpen(n) ? `<button class="box-btn" id="tog">${open.has(n) ? "Close box" : n.k === "function" ? "Show code" : "Open box"}</button>` : ""}<button class="box-btn" id="fitb">Zoom to it</button>
+    <div class="acts">${canTrace(n) ? `<button class="box-btn primary" id="trace" title="Its code with its callers and calls, stepped in the order written (Enter)">Trace ▸</button>` : ""}${canOpen(n) ? `<button class="box-btn" id="tog">${open.has(n) ? "Close box" : n.k === "function" ? "Show code" : "Open box"}</button>` : ""}<button class="box-btn" id="fitb">Zoom to it</button>
       <button class="box-btn" id="up" title="Earlier in its column">▲ Up</button><button class="box-btn" id="down" title="Later in its column">▼ Down</button></div>`;
   p.hidden = false; $("settings").hidden = true; $("settingsBtn").setAttribute("aria-pressed", "false");
   $("close").onclick = () => { selected = null; inspect(null); bar(); kick(); report(); };
+  if ($("trace")) $("trace").onclick = () => enterTrace(n);
   if ($("tog")) $("tog").onclick = () => { toggle(n); setTimeout(() => inspect(n), 0); };
   $("fitb").onclick = () => { const b = L.boxes.get(rep(n)); if (b) flyTo(fit(b, 0.85)); };
   $("up").onclick = () => move(n, -1);
@@ -599,7 +650,7 @@ function move(n, dir) {
 // What the user has selected and which step they're on, for Claude's `selection`.
 function report(extra) {
   const s = selected && selected !== root ? { id: selected.id, kind: KIND[selected.k] ?? selected.k, name: selected.n, path: pathText(selected), file: selected.f ?? null, line: selected.a ?? null } : null;
-  invoke("select", { selection: { selected: s, step: step >= 0 ? step + 1 : null, steps: steps().length, view: V?.title ?? null, ...(extra ?? {}) } }).catch(() => {});
+  invoke("select", { selection: { selected: s, step: step >= 0 ? step + 1 : null, steps: steps().length, view: V?.title ?? null, trace: traceReport(), ...(extra ?? {}) } }).catch(() => {});
 }
 
 // ---------- legend (also the line filter) ----------
@@ -614,7 +665,7 @@ function swatchBox(k) {
   return `<span class="sw box" style="${st}"></span>`;
 }
 function swatchLine(kind) {
-  const c = { call: "var(--ink)", possible: "var(--ink)", handoff: "var(--handoff)", lib: "var(--lib)", write: "var(--data)", read: "var(--data)", access: "var(--data)" }[kind];
+  const c = { call: "var(--call)", possible: "var(--call)", handoff: "var(--handoff)", lib: "var(--lib)", write: "var(--data)", read: "var(--data)", access: "var(--data)" }[kind];
   const d = { possible: "5 4", handoff: "8 3 2 3", access: "2 3" }[kind] ?? "";
   const w = { write: 2.4, handoff: 1.6 }[kind] ?? 1.4;
   return `<svg class="sw" viewBox="0 0 30 16" aria-hidden="true"><line x1="1" y1="8" x2="23" y2="8" stroke="${c}" stroke-width="${w}" stroke-dasharray="${d}"/><path d="M22 4 L29 8 L22 12 Z" fill="${c}"/></svg>`;
@@ -626,7 +677,7 @@ function legend() {
     <div class="sec"><div class="lbl">boxes</div>${boxes.map(([k, l]) => `<div class="row">${swatchBox(k)}<span>${l}</span></div>`).join("")}</div>
     <div class="sec"><div class="lbl">lines (tick to show)</div>${Object.entries(LINE).map(([k, v]) => `<div class="row"><label><input type="checkbox" id="ln-${k}" ${P.lines[k] ? "checked" : ""}>${swatchLine(k)}<span title="${v.note}">${v.label}</span></label><small>${(totals[k] ?? 0).toLocaleString()}</small></div>`).join("")}</div>
     <div class="sec"><div class="row"><span class="sw box" style="background:color-mix(in srgb, var(--orange) 14%, transparent);border:2px solid var(--orange)"></span><span>what Claude is showing you</span></div></div>`;
-  for (const k of Object.keys(LINE)) $("ln-" + k).onchange = (e) => { P.lines[k] = e.target.checked; save(); relayout(null); };
+  for (const k of Object.keys(LINE)) $("ln-" + k).onchange = (e) => { P.lines[k] = e.target.checked; save(); stopCache.clear(); if (TR) traceRefresh(); relayout(null); };
   $("legendClose").onclick = () => showLegend(false);
 }
 function showLegend(on) { $("legend").hidden = !on; $("legendBtn").setAttribute("aria-pressed", String(on)); }
@@ -652,13 +703,14 @@ document.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("clic
 function markOpenBy() { document.querySelectorAll("[data-open]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.open === P.openBy))); }
 $("next").onclick = () => { if (step < steps().length - 1) { goStep(step + 1); if (playTimer) schedule(); } };
 $("back").onclick = () => { if (step >= 0) { goStep(step - 1); if (playTimer) schedule(); } };
-$("reset").onclick = () => { hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
+$("reset").onclick = () => { if (TR) exitTrace(false); hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
 addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, select")) return;
   if (e.key === "ArrowRight") $("next").click();
   else if (e.key === "ArrowLeft") $("back").click();
   else if (e.key === " ") { e.preventDefault(); $("play").click(); }
   else if (e.key === "Escape") { selected = null; inspect(null); bar(); kick(); report(); }
+  else if (e.key === "Enter" && selected && canTrace(selected)) enterTrace(selected);
 });
 
 // ---------- pointer ----------
@@ -678,24 +730,55 @@ cv.addEventListener("pointermove", (e) => {
     if (drag.moved || Math.hypot(dx, dy) > 3) { drag.moved = true; cv.classList.add("dragging"); camAnim = null; cam.x -= dx / cam.k; cam.y -= dy / cam.k; drag.x = e.offsetX; drag.y = e.offsetY; kick(); }
     return;
   }
-  const h = hit(e.offsetX, e.offsetY);
-  if (h !== hovered) { hovered = h; bar(); kick(); }
+  if (TR) { traceMove(e.offsetX, e.offsetY); return; }
+  // A line within a few pixels wins over the box beneath it; inside a function's code,
+  // the call on the line under the pointer.
+  const le = lineHit(e.offsetX, e.offsetY);
+  const h = le ? null : hit(e.offsetX, e.offsetY);
+  const ms = h && isCode(h) && shows(h) ? codeStopAt(h, e.offsetX, e.offsetY) : null;
+  if (h !== hovered || le !== hoverEdge || ms?.stop !== mapStop?.stop) { hovered = h; hoverEdge = le; mapStop = ms; cv.style.cursor = le || ms ? "pointer" : ""; bar(); kick(); }
 });
+function segDist(px, py, [ax, ay], [bx, by]) {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+function lineHit(sx, sy) {
+  let best = null, bd = 5;
+  for (const [e, pts] of drawnLines) for (let i = 1; i < pts.length; i++) { const d = segDist(sx, sy, pts[i - 1], pts[i]); if (d < bd) { bd = d; best = e; } }
+  return best;
+}
+// The call written on the code line under the pointer (the nearest one by column).
+function codeStopAt(n, sx, sy) {
+  const b = drawnBoxes.find((d) => d[0] === n);
+  if (!b) return null;
+  const [, x, y] = b, lh = LH * cam.k, top = y + 30 * cam.k, left = x + 12 * cam.k;
+  const line = n.a + Math.floor((sy - top) / lh), col = (sx - left) / (CW * cam.k) + 1;
+  const here = stopsOf(n).filter((s) => s.line === line);
+  if (!here.length) return null;
+  here.sort((a, b) => Math.abs((a.col + a.endCol) / 2 - col) - Math.abs((b.col + b.endCol) / 2 - col));
+  return { fn: n, stop: here[0] };
+}
 function up(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
   cv.classList.remove("dragging");
-  if (drag && !drag.moved && e.type === "pointerup") { const n = hit(e.offsetX, e.offsetY); if (n !== selected) select(n); }
+  if (drag && !drag.moved && e.type === "pointerup") {
+    if (TR) traceClick(e.offsetX, e.offsetY);
+    else if (hoverEdge) { const bs = [hoverEdge.a, hoverEdge.b].map((n) => L.boxes.get(n)).filter(Boolean); if (bs.length) flyTo(fit(union(bs), 0.8)); }
+    else if (mapStop) enterTrace(mapStop.fn, mapStop.stop.line);
+    else { const n = hit(e.offsetX, e.offsetY); if (n !== selected) select(n); }
+  }
   drag = null;
 }
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-cv.addEventListener("pointerleave", () => { if (!drag) { hovered = null; bar(); kick(); } });
-cv.addEventListener("dblclick", (e) => { const n = hit(e.offsetX, e.offsetY); if (n) toggle(n); });
+cv.addEventListener("pointerleave", () => { if (!drag) { hovered = hoverEdge = mapStop = null; if (TR) traceHover = null; bar(); kick(); } });
+cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop) toggle(n); });
 function zoomAt(sx, sy, f) {
   camAnim = null;
   const [wx, wy] = toWorld(sx, sy);
   cam.k = Math.max(0.03, Math.min(cam.k * f, 12));
   cam.x = wx - (sx - W / 2) / cam.k; cam.y = wy - (sy - Hh / 2) / cam.k;
-  kick(); if (P.openBy === "zoom") zoomOpenSoon(sx, sy);
+  kick(); if (P.openBy === "zoom" && !TR) zoomOpenSoon(sx, sy);
 }
 // Zoom-to-open with hysteresis: a closed box under the cursor opens once it fills `openAt`
 // of the screen. A box opened this way closes once you zoom out `closePast` beyond the scale
@@ -723,7 +806,7 @@ async function fillPicker() {
   const { projects, loaded } = await invoke("projects");
   const pick = $("pick");
   pick.innerHTML = `<option value="">${projects.length ? "choose a snapshot…" : "no projects (insight init)"}</option>` +
-    projects.map((p) => `<optgroup label="${esc(p.name)}">${p.snapshots.map((s) => `<option value="${esc(JSON.stringify([p.name, s.file]))}">${esc(p.name)} · ${esc(s.repo)} @ ${esc(s.commit.slice(0, 10))}</option>`).join("")}</optgroup>`).join("");
+    projects.map((p) => `<optgroup label="${esc(p.name)}">${p.snapshots.map((s) => `<option value="${esc(JSON.stringify([p.name, s.file]))}">${esc(p.name)} · ${esc(s.repo)} @ ${esc(s.commit.slice(0, 10))}${s.built ? " · built " + esc(new Date(s.built * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })) : ""}${s.current === false ? " · older format, rebuild" : ""}</option>`).join("")}</optgroup>`).join("");
   if (loaded) pick.value = JSON.stringify([loaded.project, loaded.snapshot]);
   return loaded;
 }

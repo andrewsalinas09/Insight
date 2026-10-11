@@ -52,6 +52,16 @@ pub(crate) struct ViewIn {
     layout: LayoutIn,
     #[serde(default)]
     play: bool,
+    trace: Option<TraceIn>,
+}
+
+/// Walk a function's calls in the order written, like stepping in a debugger: the
+/// call stack (outermost first; the last is the function shown) and the line to start at.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TraceIn {
+    stack: Vec<Ref>,
+    line: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -70,6 +80,7 @@ struct StepIn {
     #[serde(default)]
     open: Vec<Ref>,
     note: Option<String>,
+    trace: Option<TraceIn>,
 }
 
 #[derive(Deserialize, Default)]
@@ -104,6 +115,7 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
                 "highlight": r.many(&s.highlight)?,
                 "open": r.many(&s.open)?,
                 "note": s.note,
+                "trace": s.trace.as_ref().map(|t| r.trace(t)).transpose()?,
             }))
         })()
         .with_context(|| format!("step {}", i + 1))?;
@@ -133,6 +145,7 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
         "notes": notes,
         "steps": steps,
         "play": v.play,
+        "trace": v.trace.as_ref().map(|t| r.trace(t)).transpose()?,
         "layout": {"chain": chain, "order": r.many(&v.layout.order)?, "options": options},
     }))
 }
@@ -187,6 +200,12 @@ impl Resolver<'_> {
         }
         out.dedup();
         Ok(out)
+    }
+
+    fn trace(&mut self, t: &TraceIn) -> Result<Value> {
+        let stack = self.route(&t.stack)?;
+        anyhow::ensure!(!stack.is_empty(), "a `trace` needs a `stack`: at least the function to show");
+        Ok(json!({"stack": stack, "line": t.line}))
     }
 
     fn search(&self, p: &PathSpec) -> Result<PathResult> {

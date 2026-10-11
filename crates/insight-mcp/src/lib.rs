@@ -151,7 +151,21 @@ impl Server {
         let list: Vec<Value> = names
             .into_iter()
             .map(|p| {
-                let snaps: Vec<Value> = snapshots(&p).into_iter().map(|(file, repo, commit)| json!({"file": file, "repo": repo, "commit": commit})).collect();
+                // One entry per repo and commit: its newest build in this Insight's format, or,
+                // when it has none, its newest older one (marked). Other builds of the same
+                // commit (working-copy rebuilds, format changes) are left out.
+                let all = snapshot_list(&p);
+                let mut seen = std::collections::HashSet::new();
+                let pick = all.iter().filter(|s| s.current).chain(all.iter().filter(|s| !s.current));
+                let mut snaps: Vec<&SnapshotFile> = pick.filter(|s| seen.insert((s.repo.clone(), s.commit.clone()))).collect();
+                snaps.sort_by_key(|s| std::cmp::Reverse(s.built));
+                let snaps: Vec<Value> = snaps
+                    .into_iter()
+                    .map(|s| {
+                        let built = s.built.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                        json!({"file": s.file, "repo": s.repo, "commit": s.commit, "built": built, "current": s.current})
+                    })
+                    .collect();
                 json!({"name": p, "snapshots": snaps})
             })
             .collect();
@@ -239,12 +253,13 @@ impl Server {
         let raw = a.get("view").context("`view` (object) or `step` (integer) is required")?;
         let v = view::resolve(self.loaded()?, raw)?;
         let counts = format!(
-            "{} open, {} highlighted, {} notes, {} steps, {} chains",
+            "{} open, {} highlighted, {} notes, {} steps, {} chains{}",
             v["open"].as_array().map_or(0, Vec::len),
             v["highlight"].as_array().map_or(0, Vec::len),
             v["notes"].as_array().map_or(0, Vec::len),
             v["steps"].as_array().map_or(0, Vec::len),
-            v["layout"]["chain"].as_array().map_or(0, Vec::len)
+            v["layout"]["chain"].as_array().map_or(0, Vec::len),
+            v["trace"]["stack"].as_array().map_or(String::new(), |s| format!(", a trace {} deep", s.len()))
         );
         let shown = self.push("view", v.clone());
         self.view = Some(v);
@@ -570,8 +585,22 @@ fn build(project: &str, commit: Option<&str>) -> Result<String> {
 
 /// (file name, repo, commit) of each complete snapshot of a project, newest first.
 fn snapshots(project: &str) -> Vec<(String, String, String)> {
+    snapshot_list(project).into_iter().map(|s| (s.file, s.repo, s.commit)).collect()
+}
+
+/// A project's snapshot files, newest first.
+struct SnapshotFile {
+    file: String,
+    repo: String,
+    commit: String,
+    built: std::time::SystemTime,
+    /// Written by this Insight's fact schema and DB layout (R3-19: others refuse queries).
+    current: bool,
+}
+
+fn snapshot_list(project: &str) -> Vec<SnapshotFile> {
     let Ok(dir) = paths::snapshots_dir(project) else { return Vec::new() };
-    let mut out: Vec<(std::time::SystemTime, String, String, String)> = Vec::new();
+    let mut out: Vec<SnapshotFile> = Vec::new();
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let p = e.path();
         if p.extension().is_none_or(|x| x != "sqlite") {
@@ -579,11 +608,12 @@ fn snapshots(project: &str) -> Vec<(String, String, String)> {
         }
         let Ok(conn) = insight_engine::open_snapshot(&p) else { continue };
         let meta = |k: &str| conn.query_row("SELECT value FROM meta WHERE key = ?1", [k], |r| r.get::<_, String>(0)).unwrap_or_default();
-        let t = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-        out.push((t, file_name(&p), meta("repo"), meta("commit")));
+        let current = meta("fact_schema") == insight_model::FACT_SCHEMA_VERSION.to_string() && meta("layout_version") == insight_engine::DB_LAYOUT_VERSION.to_string();
+        let built = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+        out.push(SnapshotFile { file: file_name(&p), repo: meta("repo"), commit: meta("commit"), built, current });
     }
-    out.sort_by_key(|x| std::cmp::Reverse(x.0));
-    out.into_iter().map(|(_, f, r, c)| (f, r, c)).collect()
+    out.sort_by_key(|x| std::cmp::Reverse(x.built));
+    out
 }
 
 fn file_name(p: &Path) -> String {
@@ -687,7 +717,7 @@ fn tools() -> Value {
         },
         {
             "name": "show",
-            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). Or pass only `step` to jump the window to step N of the current view.",
+            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). `trace` opens the trace view, which works like a debugger: one function's code with its callers on the left and what it calls on the right, in the order written. `stack` is the call stack, outermost first, with the shown function last (a `path` search here stands for one route). `line` is the call to start at. Steps can carry their own `trace`, so you can walk a call path with a note on each step. Or pass only `step` to jump the window to step N of the current view.",
             "inputSchema": {"type": "object", "properties": {
                 "view": {"type": "object", "properties": {
                     "title": {"type": "string"},
@@ -696,8 +726,12 @@ fn tools() -> Value {
                     "focus": {"description": "One ref: the camera fits it."},
                     "notes": {"type": "array", "items": {"type": "object", "properties": {"on": {}, "text": {"type": "string"}}, "required": ["text"]}},
                     "steps": {"type": "array", "items": {"type": "object", "properties": {
-                        "focus": {}, "highlight": {"type": "array"}, "open": {"type": "array"}, "note": {"type": "string"}
+                        "focus": {}, "highlight": {"type": "array"}, "open": {"type": "array"}, "note": {"type": "string"}, "trace": {"type": "object"}
                     }}},
+                    "trace": {"type": "object", "properties": {
+                        "stack": {"type": "array", "description": "Outermost caller first; the last is the function shown."},
+                        "line": {"type": "integer", "description": "The call to start at (a line of the shown function)."}
+                    }, "required": ["stack"]},
                     "play": {"type": "boolean", "description": "Auto-advance the steps (a walkthrough); the user can pause."},
                     "layout": {"type": "object", "properties": {
                         "chain": {"type": "array", "items": {"type": "array"}},

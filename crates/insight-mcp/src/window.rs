@@ -122,21 +122,41 @@ pub(crate) fn graph(l: &Loaded) -> Result<Value> {
         }
     }
 
-    // Typed lines between drawn nodes.
+    // Typed lines between drawn nodes: [from, to, kind, count, sites], where each site is
+    // where one occurrence is written ([line, col, end_line, end_col], 1-based), so the
+    // window can tie a line to the code and walk a function's calls in the order written.
     let mut edges: Vec<Value> = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT from_nid, to_nid, kind, coalesce(subkind, ''), resolution, count(*) FROM main.edges WHERE to_nid IS NOT NULL GROUP BY 1, 2, 3, 4, 5",
+            "WITH first AS (SELECT eid, min(rowid) AS rid FROM main.receipts WHERE role NOT IN ('value', 'decl') GROUP BY eid) \
+             SELECT e.from_nid, e.to_nid, e.kind, coalesce(e.subkind, ''), e.resolution, r.line, r.col, r.end_line, r.end_col \
+             FROM main.edges e LEFT JOIN first ON first.eid = e.eid LEFT JOIN main.receipts r ON r.rowid = first.rid \
+             WHERE e.to_nid IS NOT NULL",
         )?;
-        let found: Vec<(i64, i64, String, String, String, i64)> =
-            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?.collect::<Result<_, _>>()?;
-        for (f, t, kind, sub, res, c) in found {
+        type Found = (i64, i64, String, String, String, Option<i64>, Option<i64>, Option<i64>, Option<i64>);
+        let found: Vec<Found> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)))?
+            .collect::<Result<_, _>>()?;
+        // (from, to, kind) -> (count, sites)
+        type Lines = BTreeMap<(i64, i64, u8), (i64, Vec<[i64; 4]>)>;
+        let mut lines = Lines::new();
+        for (f, t, kind, sub, res, l0, c0, l1, c1) in found {
             // `pointee` refines a call's target; it is still a call.
             let sub = if sub == "pointee" { "" } else { sub.as_str() };
             let Some(k) = LINE_KINDS.iter().find(|(k, s, r, _)| *k == kind && *s == sub && *r == res).map(|x| x.3) else { continue };
-            if known.contains_key(&f) && known.contains_key(&t) {
-                edges.push(json!([f, t, k, c]));
+            if !(known.contains_key(&f) && known.contains_key(&t)) {
+                continue;
             }
+            let x = lines.entry((f, t, k)).or_default();
+            x.0 += 1;
+            if let (Some(l0), Some(c0), Some(l1), Some(c1)) = (l0, c0, l1, c1) {
+                x.1.push([l0, c0, l1, c1]);
+            }
+        }
+        for ((f, t, k), (c, mut sites)) in lines {
+            sites.sort();
+            sites.dedup();
+            edges.push(json!([f, t, k, c, sites]));
         }
     }
 

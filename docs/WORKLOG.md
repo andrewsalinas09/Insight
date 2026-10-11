@@ -12,6 +12,29 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — The trace view, hoverable lines, code tied to the graph
+**Done:**
+- **The user's first session on the app.** They liked the folder grouping and seeing `main` hand off to `run`. But inside a big function they couldn't see where lines went or in what order things happen, and asked for a way to connect the code to the graph. Claude proposed four things; the user: "I say yes build everything" (FQ-08 → ADR-0052).
+- **Window:**
+  - Calls are teal, so lines and boxes read apart.
+  - Hovering a line lights it and both ends and names them in the bar. Clicking it frames both ends.
+  - Calls and data uses are marked in a function's code (a tick at the right edge, the call underlined). Hovering one lights what it calls; clicking it opens the trace there.
+  - **The trace view** (`ui/trace.js`): one function's code in the middle, callers on the left, its calls, reads and writes on the right, level with their lines, in the order written. Next/prev call, step in and out with a trail you can jump back along, Tab between dynamic targets, Esc back to the map at that function.
+- **Backend:**
+  - The window graph carries each line's sites (from receipts).
+  - `show` takes `trace: {stack, line}`, also per step. `selection` reports the trace position.
+- **Picker:** one entry per repo and commit, with its build time (FQ-09). The user had seen the same commit listed over and over. My first fix hid every older-format snapshot, which emptied a project of theirs ("now there's no commit under it"). Now a commit with only older builds still shows its newest, marked "older format, rebuild".
+- Docs: ADR-0052, FRONTEND-QUESTIONS (FQ-06 note, FQ-08, FQ-09), MCP-INSTRUCTIONS point 9, ARCHITECTURE, ROADMAP.
+
+**Learned:**
+- Receipts already hold each call's line and column (1-based), so ordering calls as written needed no new extraction.
+- When a layout snaps the camera into place, a camera flight still running from before overrode it. The snap now cancels the flight.
+- Testing the window with simulated key presses and mouse moves fights the user when they are using it at the same time. Stop once they're on it.
+
+**Drift from the spec:** none new. The order shown is the order written, not run (stated in ADR-0052 and the MCP instructions).
+
+**Next:** the user's verdict on the trace view and line hover (FQ-08), then FQ-06 and FQ-01.
+
 ## 2026-10-10 (cont.) — The window app: frontend prototypes, then `insight-app`, `show`, layout steering
 **Done:**
 - **Frontend session:** started `docs/FRONTEND-QUESTIONS.md`.
