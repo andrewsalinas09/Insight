@@ -184,7 +184,7 @@ function traceFollow() {
 const HIST = [];
 function snapshot() {
   if (TR?.lay) return { k: "trace", S: TR.S, cur: TR.cur, pick: TR.pick, stack: TR.stack.map((f) => ({ ...f })), entry: TR.entry, ox: TR.lay.code.x, oy: TR.lay.code.y, cam: { ...cam } };
-  return { k: "map", open: new Set(open), cam: { ...cam }, selected, showAll, step };
+  return { k: "map", open: new Set(open), cam: { ...cam }, selected, showAll, step, revealed: new Set(revealed), folded: SUB ? new Set(SUB.collapsed) : null };
 }
 function remember() { if (!G) return; HIST.push(snapshot()); if (HIST.length > 200) HIST.shift(); histButton(); }
 function histButton() { const b = document.getElementById("hist"); if (b) b.disabled = !HIST.length; }
@@ -202,6 +202,8 @@ function goBack() {
     if (TR) { TR = null; traceHover = null; $("trail").hidden = true; }
     if (s.showAll !== undefined && s.showAll !== showAll) { showAll = s.showAll; computeSub(); }
     if (s.step !== undefined) step = s.step;
+    if (s.revealed) { revealed.clear(); for (const r of s.revealed) revealed.add(r); if (SUB) computeSub(); }
+    if (s.folded && SUB) SUB.collapsed = new Set(s.folded);
     selected = s.selected; inspect(selected);
     setOpen(new Set(s.open), null, () => s.cam);
     bar(); transport(); report(); resetButton();

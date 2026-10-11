@@ -733,20 +733,22 @@ function inspect(n) {
   if (!n || n === root) { p.hidden = true; return; }
   const tally = (pred) => E.filter(pred).reduce((s, e) => s + e.c, 0);
   const inside = (x) => isUnder(x, n);
-  const cells = [["file", n.f ?? (LIBK.has(n.k) ? "library" : n.n)], ["lines", n.a ? n.a + "–" + n.b : "—"]];
-  if (STATEK.has(n.k)) cells.push(["written by", tally((e) => e.kind === "write" && e.b === n)], ["read by", tally((e) => e.kind === "read" && e.a === n)]);
+  // A group is Claude's box over real code: what it holds, not a file.
+  const cells = n.k === "group" ? [["holds", n.children.length], ["what it is", "Claude's grouping"]] : [["file", n.f ?? (LIBK.has(n.k) ? "library" : n.n)], ["lines", n.a ? n.a + "–" + n.b : "—"]];
+  if (n.k === "group") { /* no calls of its own */ }
+  else if (STATEK.has(n.k)) cells.push(["written by", tally((e) => e.kind === "write" && e.b === n)], ["read by", tally((e) => e.kind === "read" && e.a === n)]);
   else if (LIBK.has(n.k)) cells.push(["called from your code", tally((e) => e.kind === "lib" && inside(e.b))]);
   else cells.push(["calls out", tally((e) => (e.kind === "call" || e.kind === "possible") && inside(e.a) && !inside(e.b))], ["called from outside", tally((e) => (e.kind === "call" || e.kind === "possible") && inside(e.b) && !inside(e.a))], ["library calls", tally((e) => e.kind === "lib" && inside(e.a))]);
   const notes = notesOn.get(n);
   p.innerHTML = `<header><span class="chip">${KIND[n.k] ?? n.k}</span><span class="name">${esc(n.n)}</span><button class="box-btn" id="close">Close</button></header>
     ${notes ? `<div class="notes">${prose(notes.join("\n"))}</div>` : ""}
     <div class="cells">${cells.map(([l, v]) => `<div class="cell"><div class="lbl">${l}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>
-    <div class="acts">${canTrace(n) ? `<button class="box-btn primary" id="trace" title="Its code with its callers and calls, stepped in the order written (Enter)">Trace ▸</button>` : ""}${canOpen(n) ? `<button class="box-btn" id="tog">${open.has(n) ? "Close box" : n.k === "function" ? "Show code" : "Open box"}</button>` : ""}<button class="box-btn" id="fitb">Zoom to it</button>
+    <div class="acts">${canTrace(n) ? `<button class="box-btn primary" id="trace" title="Its code with its callers and calls, stepped in the order written (Enter)">Trace ▸</button>` : ""}${canOpen(n) ? `<button class="box-btn" id="tog">${SUB && !(isCode(n) && !SUB.kids.has(n)) ? subToggleLabel(n) : open.has(n) ? "Close box" : n.k === "function" ? "Show code" : "Open box"}</button>` : ""}<button class="box-btn" id="fitb">Zoom to it</button>
       <button class="box-btn" id="up" title="Earlier in its column">▲ Up</button><button class="box-btn" id="down" title="Later in its column">▼ Down</button></div>`;
   p.hidden = false; $("settings").hidden = true; $("settingsBtn").setAttribute("aria-pressed", "false");
   $("close").onclick = () => { selected = null; inspect(null); bar(); kick(); report(); };
   if ($("trace")) $("trace").onclick = () => enterTrace(n);
-  if ($("tog")) $("tog").onclick = () => { toggle(n); setTimeout(() => inspect(n), 0); };
+  if ($("tog")) $("tog").onclick = () => { if (!(SUB && subToggle(n))) toggle(n); setTimeout(() => inspect(n), 0); };
   $("fitb").onclick = () => { const b = L.boxes.get(rep(n)); if (b) flyTo(fit(b, 0.85)); };
   $("up").onclick = () => move(n, -1);
   $("down").onclick = () => move(n, 1);
@@ -904,7 +906,7 @@ function up(e) {
 }
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 cv.addEventListener("pointerleave", () => { if (!drag) { hovered = hoverEdge = mapStop = null; if (TR) traceHover = null; bar(); kick(); } });
-cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop && !(SUB && subToggle(n))) toggle(n); });
+cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop && !(SUB && subToggle(n))) toggle(n); if (n && n === selected) setTimeout(() => inspect(n), 0); });
 function zoomAt(sx, sy, f) {
   camAnim = null;
   const [wx, wy] = toWorld(sx, sy);

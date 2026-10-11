@@ -79,17 +79,26 @@ function subRepEdge(n) {
   for (let d = n.path.length - 1; d >= 1; d--) if (SUB.chosen.has(n.path[d])) return liftCollapsed(n.path[d]);
   return null;
 }
-// Double-click in a condensed view: fold or unfold a group; open a box's hidden contents.
+// Recompute after the user opened something up, keeping what they folded.
+function subRecompute() { const keep = SUB.collapsed; computeSub(); SUB.collapsed = keep; }
+// Opening and closing in a condensed view. A box cycles through: as the view drew it
+// (some of it, "+N hidden") → everything in it → folded → as drawn. Groups fold and
+// unfold. Functions show and hide their code as on the map (false: the caller does it).
 function subToggle(n) {
-  if (SUB.collapsed.has(n)) { SUB.collapsed.delete(n); relayout(n); return true; }
-  if (n.k === "group") { SUB.collapsed.add(n); relayout(n); return true; }
-  if (SUB.hidden.get(n) || (SUB.chosen.has(n) && !isCode(n) && n.children.length && !SUB.kids.has(n))) {
-    revealed.add(n);
-    const keep = SUB.collapsed;
-    computeSub();
-    SUB.collapsed = keep;
-    relayout(n);
-    return true;
-  }
-  return false;
+  if (isCode(n) && !SUB.kids.has(n)) return false;
+  remember();
+  if (SUB.collapsed.has(n)) SUB.collapsed.delete(n);
+  else if (revealed.has(n)) { revealed.delete(n); SUB.collapsed.add(n); subRecompute(); }
+  else if (n.k !== "group" && (SUB.hidden.get(n) || (!SUB.kids.has(n) && n.children.length))) { revealed.add(n); subRecompute(); }
+  else if (SUB.kids.has(n)) SUB.collapsed.add(n);
+  else return false;
+  relayout(n);
+  return true;
+}
+// What the open/close button says for a box in a condensed view.
+function subToggleLabel(n) {
+  if (SUB.collapsed.has(n)) return "Unfold";
+  if (revealed.has(n)) return "Fold";
+  if (n.k !== "group" && (SUB.hidden.get(n) || (!SUB.kids.has(n) && n.children.length))) return "Show all";
+  return "Fold";
 }
