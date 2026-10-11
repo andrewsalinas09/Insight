@@ -9,6 +9,7 @@
 <body>
 <header class="top">
   <span class="mark">insight</span>
+  <button class="box-btn" id="hist" title="Back to the previous view (Alt+←, or the mouse's back button)" disabled>↶ Back</button>
   <label class="grp"><span class="lbl">project</span><select id="pick" aria-label="Project and snapshot"></select></label>
   <span class="chip" id="title" hidden></span>
   <div class="grp"><span class="lbl">open boxes by</span>
@@ -20,7 +21,7 @@
   <button class="box-btn" id="legendBtn" aria-pressed="true">Legend</button>
   <button class="box-btn" id="settingsBtn" aria-pressed="false">Settings</button>
   <div class="tr">
-    <button class="box-btn" id="back">◀ Back</button>
+    <button class="box-btn" id="back" title="Claude's previous step (←)">◀ Prev</button>
     <span class="count" id="count">no steps</span>
     <button class="box-btn" id="next">Next ▶</button>
     <button class="box-btn" id="play" aria-pressed="false">Play</button>
@@ -61,10 +62,16 @@
   </section>
   <section class="float insp" id="insp" hidden></section>
   <nav class="float trail" id="trail" hidden aria-label="Trace"></nav>
-  <div class="bar" id="bar"><span class="tag" id="bartag">how to use</span><span class="text" id="bartext"></span></div>
+  <section class="detail" id="detail" hidden aria-label="Details">
+    <header><span class="chip dkind"></span><span class="dname"></span><span class="dwhere"></span>
+      <button class="box-btn" id="dPop" title="Open the details in their own window">Pop out ⧉</button><button class="box-btn" id="dHide">Hide</button></header>
+    <div class="dbody"></div>
+  </section>
+  <div class="bar" id="bar"><span class="tag" id="bartag">how to use</span><span class="text" id="bartext"></span><button class="box-btn" id="detBtn" title="Details of what you're on (D)" aria-pressed="false">Details</button></div>
 </main>
 <script src="vendor/elk-0.9.3.bundled.js"></script>
 <script src="trace.js"></script>
+<script src="detail.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

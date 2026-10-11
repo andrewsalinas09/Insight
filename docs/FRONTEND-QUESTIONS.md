@@ -96,6 +96,9 @@ User: "in projects why are there so many things @ same_commit_here repeated over
 - Now: one entry per repo and commit, the newest build in the current format, labelled with when it was built. A commit with only older-format builds still shows its newest one, marked "older format, rebuild" (user: "now there's no commit under it in the project" when the first fix hid those).
 - `status` still lists every file for Claude.
 
+### FQ-10: Detail about each thing, data, and getting back — ANSWERED → ADR-0053
+User, on the trace view with their own project: data was a dead end ("it should show me the … type or something"), "navigation is unintivive slightly. Like I can close something and it jumps out somewhere random", and "the bottom thing should have a popout button … we can add a tonnn of useful ifnormation here." Claude proposed a details panel (docked or popped out), data traces and a Back history; the user: "Yeah do that." Built (ADR-0053). To be judged on the app.
+
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic?
 - R2-21: the user clicking while Claude updates the view.

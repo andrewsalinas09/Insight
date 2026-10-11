@@ -12,6 +12,23 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — Details panel, data traces, Back history; libraries start closed
+**Done:**
+- **The user tried the trace view on their own project** ("I absolutly love the step in and see on the left and right and arrow key control"). Three gaps: data was a dead end, navigation had no way back, and each thing showed only its name. They asked for a pop-out details panel. All three built (ADR-0053).
+- **Home view:** the libraries start as one closed box; while the project's code sits in a single box, home opens it one level further. On a larger project the open libraries column had filled the screen.
+- **Bottom bar** floats over the canvas, so hover text can't resize it (the user saw the whole view jump on hover).
+- **Claude's job, tested:** the user asked why one allocator function had so many callers. Claude used `sql` and `source` to find the 29 call sites and read the code, then sent a six-step `show` walkthrough mixing the map and traces, with a note per step. The user's verdict is pending. Two counts in the first draft were wrong and corrected before sending (check every number against the query).
+- Docs: ADR-0053, FRONTEND-QUESTIONS (FQ-10), MCP-INSTRUCTIONS point 9, ARCHITECTURE, ROADMAP.
+
+**Learned:**
+- An early map layout finishing after a trace opened moved the camera away. The map's layout now leaves the camera alone while a trace is open.
+- A CSS class the header already used (`.grp`) silently restyled the details lists. The new panel's classes are prefixed.
+- Inline `node -e` scripts with backticks get eaten by the shell, twice this session. Payload-as-data, every time.
+
+**Drift from the spec:** a field's type isn't linked to its type's box: that needs `has-type` edges (SCHEMA, Planned).
+
+**Next:** the user's verdict on the walkthrough, the details panel and data traces; then `has-type` in the extractors.
+
 ## 2026-10-10 (cont.) — The trace view, hoverable lines, code tied to the graph
 **Done:**
 - **The user's first session on the app.** They liked the folder grouping and seeing `main` hand off to `run`. But inside a big function they couldn't see where lines went or in what order things happen, and asked for a way to connect the code to the graph. Claude proposed four things; the user: "I say yes build everything" (FQ-08 → ADR-0052).

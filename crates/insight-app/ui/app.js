@@ -87,6 +87,11 @@ const pathText = (n) => n.path.slice(1).map((x) => x.n).join(" › ");
 
 // Source text, fetched per file when a function's code is first shown.
 const files = new Map();
+async function ensureFile(f) {
+  if (!f || files.has(f)) return;
+  try { files.set(f, (await invoke("file", { path: f })).split("\n")); }
+  catch (e) { files.set(f, [`(${e})`]); }
+}
 async function ensureFiles(nodes) {
   const want = [...new Set([...nodes].filter((n) => n.k === "function" && n.f && !files.has(n.f)).map((n) => n.f))];
   await Promise.all(want.map(async (f) => {
@@ -264,10 +269,12 @@ let morph = null, camAnim = null, camAfter = null, afterSettle = null;
 const toScreen = (x, y) => [(x - cam.x) * cam.k + W / 2, (y - cam.y) * cam.k + Hh / 2];
 const toWorld = (sx, sy) => [(sx - W / 2) / cam.k + cam.x, (sy - Hh / 2) / cam.k + cam.y];
 // Framing leaves room for the bar floating over the canvas's bottom edge.
-const BAR_H = 44;
+// (and for the details panel when it's docked).
+const bottomSpace = () => 44 + (detailOn ? $("detail").offsetHeight : 0);
 function fit(b, fill = 0.9) {
-  const k = Math.min((W * fill) / b.w, ((Hh - BAR_H) * fill) / b.h, 6);
-  return { x: b.x + b.w / 2, y: b.y + b.h / 2 + BAR_H / 2 / k, k };
+  const sp = bottomSpace();
+  const k = Math.min((W * fill) / b.w, ((Hh - sp) * fill) / b.h, 6);
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 + sp / 2 / k, k };
 }
 function union(bs) {
   const x0 = Math.min(...bs.map((b) => b.x)), y0 = Math.min(...bs.map((b) => b.y));
@@ -283,6 +290,9 @@ function startMorph(old, anchor) {
   }
   let target = camAfter ? camAfter(L) : null;
   camAfter = null;
+  // The map laid out behind an open trace (e.g. the first layout after loading) leaves
+  // the camera to the trace.
+  if (TR) { morph = null; afterSettle = null; kick(); return; }
   if (!target && anchor && old.boxes.get(anchor) && L.boxes.get(anchor)) {
     // Keep the box you acted on where it was on screen.
     const a0 = old.boxes.get(anchor), a1 = L.boxes.get(anchor);
@@ -524,6 +534,7 @@ function canOpen(n) { return isCode(n) || n.children.length > 0; }
 function closeBox(s, n) { for (const x of [...s]) if (x === n || isUnder(x, n)) s.delete(x); }
 function toggle(n, byZoom) {
   if (!canOpen(n)) return;
+  if (!byZoom) remember();
   const s = new Set(open);
   if (s.has(n)) closeBox(s, n); else { s.add(n); if (byZoom) afterSettle = (c) => zoomOpened.set(n, c.k); }
   setOpen(s, n);
@@ -531,6 +542,7 @@ function toggle(n, byZoom) {
 function select(n) {
   selected = n; inspect(n); report();
   if (n && P.reshape && n.k === "function") {
+    remember();
     const s = step >= 0 ? new Set(open) : viewOpen(), c = callsOf.get(n) ?? { out: new Set(), in: new Set() };
     openPathTo(s, n);
     for (const m of [...c.out, ...c.in]) openPathTo(s, m);
@@ -586,6 +598,7 @@ const HOW = {
   zoom: "Zoom into a box and it opens; zoom out and it closes. Hover a line to see where it goes. Select a function and press Enter to trace it.",
 };
 function bar() {
+  queueDetail();
   const b = $("bar");
   const note = (tag, html) => { b.classList.add("note"); $("bartag").textContent = tag; $("bartext").innerHTML = html; };
   if (step >= 0) {
@@ -713,7 +726,7 @@ document.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("clic
 function markOpenBy() { document.querySelectorAll("[data-open]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.open === P.openBy))); }
 $("next").onclick = () => { if (step < steps().length - 1) { goStep(step + 1); if (playTimer) schedule(); } };
 $("back").onclick = () => { if (step >= 0) { goStep(step - 1); if (playTimer) schedule(); } };
-$("reset").onclick = () => { if (TR) exitTrace(false); hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
+$("reset").onclick = () => { remember(); if (TR) exitTrace(false); hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
 addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, select")) return;
   if (e.key === "ArrowRight") $("next").click();
@@ -721,13 +734,18 @@ addEventListener("keydown", (e) => {
   else if (e.key === " ") { e.preventDefault(); $("play").click(); }
   else if (e.key === "Escape") { selected = null; inspect(null); bar(); kick(); report(); }
   else if (e.key === "Enter" && selected && canTrace(selected)) enterTrace(selected);
+  else if (e.key === "d" || e.key === "D") $("detBtn").click();
 });
 
 // ---------- pointer ----------
 function hit(sx, sy) { for (let i = drawnBoxes.length - 1; i >= 0; i--) { const [n, x, y, w, h] = drawnBoxes[i]; if (sx >= x && sy >= y && sx <= x + w && sy <= y + h) return n; } return null; }
 const ptrs = new Map();
 let drag = null, pinch = null;
+// The mouse's back button goes back, as in a browser.
+addEventListener("mouseup", (e) => { if (e.button === 3) { e.preventDefault(); goBack(); } });
+$("hist").onclick = goBack;
 cv.addEventListener("pointerdown", (e) => {
+  if (e.button === 3) return;
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
   if (ptrs.size === 1) drag = { x: e.offsetX, y: e.offsetY, moved: false };
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k: cam.k }; drag = null; }
@@ -843,7 +861,7 @@ listen("view", (e) => { if (G) applyView(e.payload); });
 listen("step", (e) => { if (G && e.payload < steps().length) { stopPlay(); goStep(e.payload); } });
 
 // ---------- start: the whole system (ADR-0021) ----------
-readTheme(); legend(); bindSettings(); markOpenBy(); transport();
+readTheme(); legend(); bindSettings(); bindDetail(); markOpenBy(); transport();
 if (innerWidth < 640) showLegend(false);
 document.fonts.ready.then(async () => {
   resize();
