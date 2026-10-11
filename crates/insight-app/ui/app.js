@@ -67,7 +67,12 @@ function setGraph(g) {
     (callsOf.get(a) ?? callsOf.set(a, { out: new Set(), in: new Set() }).get(a)).out.add(b);
     (callsOf.get(b) ?? callsOf.set(b, { out: new Set(), in: new Set() }).get(b)).in.add(a);
   }
-  HOME = new Set([root, ...root.children]);
+  // Home: your code's top boxes open, the libraries one closed box (they'd otherwise fill
+  // the screen). While your code sits in a single box, open that one too.
+  HOME = new Set([root]);
+  let level = root.children.filter((c) => !LIBK.has(c.k));
+  for (const c of level) HOME.add(c);
+  while (level.length === 1 && level[0].children.length && !isCode(level[0])) { level = level[0].children; for (const c of level) if (!isCode(c)) HOME.add(c); }
   open = new Set(HOME); zoomOpened.clear(); userOrder.clear();
   L = { boxes: new Map(), edges: [] };
   selected = hovered = hoverEdge = mapStop = null; V = null; step = -1; lit = new Set(); notesOn = new Map();
