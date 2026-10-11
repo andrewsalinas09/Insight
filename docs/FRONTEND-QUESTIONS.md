@@ -105,8 +105,11 @@ User, on a walkthrough step that listed pool names: "you could hover them an dit
 ### FQ-12: Pausing a walkthrough for a side question — ANSWERED → ADR-0055
 User, on step 4 of a walkthrough: "I think we need a way to pause what we have, you can show the race condition, and then we can go back to step 4 nothing changed." Built: `aside: true` views, with a one-click return to the view and step.
 
+### FQ-13: Condensed views — ANSWERED → ADR-0040 (built)
+User, after an overview on the full map of a large project showed nothing: "I think this is a good time for you to make condenced views … You should eb able to remove stuff temporarily right? I gave you that ability?" Built: `nodes`, `groups` and `collapse`.
+
 ### Deferred here from the backend rounds
-- R2-11: is "+N hidden" automatic?
+- R2-11: is "+N hidden" automatic? In condensed views, yes: every box that lost children says so (FQ-13). Still open for the full map.
 - R2-21: the user clicking while Claude updates the view.
 - R2-22: restoring the view and step the next day.
 - R2-23: two Claude sessions on one window.

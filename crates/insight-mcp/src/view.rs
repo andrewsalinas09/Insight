@@ -57,6 +57,26 @@ pub(crate) struct ViewIn {
     /// step) with one click.
     #[serde(default)]
     aside: bool,
+    /// A subset of the graph (ADR-0040): only these (and the members of `groups`) are drawn,
+    /// inside their real boxes; what's left out is counted as "+N hidden".
+    #[serde(default)]
+    nodes: Vec<Ref>,
+    /// Claude's own named boxes over real code, nestable (ADR-0040).
+    #[serde(default)]
+    groups: Vec<GroupIn>,
+    /// Boxes drawn folded ("+N hidden"): a group's name, or a code reference.
+    #[serde(default)]
+    collapse: Vec<Ref>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupIn {
+    name: String,
+    #[serde(default)]
+    members: Vec<Ref>,
+    #[serde(default)]
+    groups: Vec<GroupIn>,
 }
 
 /// Walk a function's calls in the order written, like stepping in a debugger: the
@@ -150,6 +170,23 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
             bail!("layout option `{k}` is not an ELK option (they start with `elk.`)");
         }
     }
+    let groups = v.groups.iter().map(|g| r.group(g)).collect::<Result<Vec<_>>>()?;
+    // A collapse names a group, else it's a code reference.
+    fn names<'g>(gs: &'g [GroupIn], out: &mut Vec<&'g str>) {
+        for g in gs {
+            out.push(&g.name);
+            names(&g.groups, out);
+        }
+    }
+    let mut group_names = Vec::new();
+    names(&v.groups, &mut group_names);
+    let mut collapse = Vec::new();
+    for c in &v.collapse {
+        collapse.push(match c {
+            Ref::Name(s) if group_names.contains(&s.as_str()) => json!({"group": s}),
+            _ => json!({"node": r.one(c).context("collapse")?}),
+        });
+    }
     let options: BTreeMap<&String, String> = v.layout.options.iter().map(|(k, x)| (k, x.as_str().map_or_else(|| x.to_string(), String::from))).collect();
     Ok(json!({
         "title": v.title,
@@ -160,6 +197,9 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
         "steps": steps,
         "play": v.play,
         "aside": v.aside,
+        "nodes": r.many(&v.nodes)?,
+        "groups": groups,
+        "collapse": collapse,
         "trace": trace,
         "layout": {"chain": chain, "order": r.many(&v.layout.order)?, "options": options},
         "cites": r.cites,
@@ -278,6 +318,13 @@ impl Resolver<'_> {
         }
         out.dedup();
         Ok(out)
+    }
+
+    fn group(&mut self, g: &GroupIn) -> Result<Value> {
+        let members = self.many(&g.members).with_context(|| format!("group `{}`", g.name))?;
+        let groups = g.groups.iter().map(|x| self.group(x)).collect::<Result<Vec<_>>>()?;
+        anyhow::ensure!(!members.is_empty() || !groups.is_empty(), "group `{}` is empty", g.name);
+        Ok(json!({"name": g.name, "members": members, "groups": groups}))
     }
 
     fn trace(&mut self, t: &TraceIn) -> Result<Value> {

@@ -12,6 +12,20 @@ Template:
 
 ---
 
+## 2026-10-11 (cont.) — Condensed views: subsets, groups, collapse (ADR-0040)
+**Done:**
+- The user asked for a flow on their desktop-app project, overview first. On the full map the overview step opened huge files and showed "nothing". The user: "I think this is a good time for you to make condenced views … You should eb able to remove stuff temporarily right? I gave you that ability?" They had: ADR-0040's subset, groups and collapse, unbuilt since the window began (reported as drift then).
+- `show` takes `nodes` (only these are drawn, in their real boxes), `groups` (Claude's named boxes over real code, nestable) and `collapse` (a group's name or a code reference, drawn folded). Every box that lost children says "+N hidden" (closing R2-11 for condensed views); double-click brings them back, and "Whole system" leaves the subset. Lines run only between chosen things.
+- Line citations outside any function (a constant) now go to the innermost thing holding the lines; data opens its data trace from the map too. The user had clicked one and nothing happened.
+- The legend starts hidden for a condensed view.
+- Docs: FRONTEND-QUESTIONS (FQ-13, R2-11), MCP-INSTRUCTIONS point 9, ARCHITECTURE, ROADMAP.
+
+**Learned:**
+- ELK gives a line's coordinates relative to the lowest box holding both its ends. A condensed view nests by groups rather than the real tree, so lines are placed by the view's own nesting.
+- A flow with no call between its halves (a click that only schedules, and workers that poll) is invisible to `path`. The overview has to say so, and a condensed view shows the gap.
+
+**Next:** the user's verdict on the condensed overview; abstraction nodes, code excerpts and example data (the rest of ADR-0040).
+
 ## 2026-10-11 — Aside views; Claude's first review for a race
 **Done:**
 - The user asked mid-walkthrough (on step 4 of "how data gets sent over BLE") why a task takes a mutex, and whether there's a race. They also asked for a way to pause the walkthrough, see the answer, and return "nothing changed" (ADR-0055).

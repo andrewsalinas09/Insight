@@ -76,7 +76,7 @@ function setGraph(g) {
   open = new Set(HOME); zoomOpened.clear(); userOrder.clear();
   L = { boxes: new Map(), edges: [] };
   selected = hovered = hoverEdge = mapStop = null; V = null; step = -1; lit = new Set(); notesOn = new Map();
-  traceReset();
+  traceReset(); SUB = null; showAll = false; revealed.clear();
 }
 const fnOf = (n) => { while (n && n.k !== "function" && n.k !== "ext") n = n.parent; return n; };
 const lines = (n) => (n.a ? n.b - n.a + 1 : 0);
@@ -106,8 +106,9 @@ let open = new Set();
 const zoomOpened = new Map(); // box -> camera scale when zooming opened it
 const isCode = (n) => n.k === "function";
 const shows = (n) => open.has(n) && (isCode(n) || n.children.length > 0);
-const expanded = (n) => open.has(n) && !isCode(n) && n.children.length > 0;
-function rep(n) { let cur = root; for (let d = 1; d < n.path.length; d++) { if (!expanded(cur)) break; cur = n.path[d]; } return cur; }
+const expanded = (n) => (SUB ? SUB.kids.has(n) && !SUB.collapsed.has(n) : open.has(n) && !isCode(n) && n.children.length > 0);
+function rep(n) {
+  if (SUB) return subRep(n); let cur = root; for (let d = 1; d < n.path.length; d++) { if (!expanded(cur)) break; cur = n.path[d]; } return cur; }
 function openPathTo(set, n) { for (const a of n.path) if (a !== n) set.add(a); }
 
 // ---------- Claude's view ----------
@@ -126,6 +127,8 @@ function applyView(v, o = {}) {
     if (v.aside) asides.push({ V, step }); else asides.length = 0;
   }
   V = v; step = -1; selected = null; stopPlay();
+  showAll = false; revealed.clear(); computeSub();
+  if (SUB) showLegend(false); // a condensed view is drawn to be read on its own
   asideChip();
   if (TR) exitTrace(false);
   lit = new Set(viewNodes(v.highlight));
@@ -202,11 +205,12 @@ async function relayout(anchor) {
   await ensureFiles(open);
   if (my !== laying) return;
   const nodes = new Map();
+  const objOf = new Map(); // layout id -> what it draws (a node, or a group of this view)
   function build(n) {
     const e = { id: String(n.id) };
-    nodes.set(n, e);
+    nodes.set(n, e); objOf.set(e.id, n);
     if (expanded(n)) {
-      const { list, forced } = orderedChildren(n);
+      const { list, forced } = SUB ? { list: SUB.kids.get(n), forced: false } : orderedChildren(n);
       e.children = list.map(build);
       e.layoutOptions = { "elk.padding": "[top=30,left=12,bottom=12,right=12]" };
       if (forced) Object.assign(e.layoutOptions, { "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES", "elk.layered.crossingMinimization.forceNodeModelOrder": "true" });
@@ -225,7 +229,7 @@ async function relayout(anchor) {
       ...(V?.layout?.options ?? {}),
     },
   };
-  const { list: top, forced: topForced } = orderedChildren(root);
+  const { list: top, forced: topForced } = SUB ? { list: SUB.kids.get(root) ?? [], forced: false } : orderedChildren(root);
   g.children = top.map(build);
   if (topForced) Object.assign(g.layoutOptions, { "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES", "elk.layered.crossingMinimization.forceNodeModelOrder": "true" });
   nodes.set(root, g);
@@ -234,8 +238,8 @@ async function relayout(anchor) {
   const agg = new Map();
   for (const e of E) {
     if (!P.lines[e.kind]) continue;
-    const a = rep(e.a), b = rep(e.b);
-    if (a === b || isUnder(a, b) || isUnder(b, a)) continue;
+    const a = SUB ? subRepEdge(e.a) : rep(e.a), b = SUB ? subRepEdge(e.b) : rep(e.b);
+    if (!a || !b || a === b || a === root || b === root || isUnder(a, b) || isUnder(b, a)) continue;
     const key = a.id + ">" + b.id + ">" + e.kind;
     const x = agg.get(key) ?? agg.set(key, { a, b, kind: e.kind, c: 0, under: [] }).get(key);
     x.c += e.c; x.under.push(e);
@@ -244,16 +248,16 @@ async function relayout(anchor) {
   let i = 0;
   for (const e of agg.values()) {
     const id = "e" + i++;
-    (nodes.get(lca(e.a, e.b)).edges ??= []).push({ id, sources: [String(e.a.id)], targets: [String(e.b.id)] });
+    (nodes.get(SUB ? subLca(e.a, e.b) : lca(e.a, e.b)).edges ??= []).push({ id, sources: [String(e.a.id)], targets: [String(e.b.id)] });
     meta.set(id, e);
   }
   // Chains: invisible edges that pull each sequence left to right into one row.
   for (const c of chains) {
     for (let j = 1; j < c.length; j++) {
       const a = rep(c[j - 1]), b = rep(c[j]);
-      if (a === b || isUnder(a, b) || isUnder(b, a)) continue;
+      if (a === b || a === root || b === root || isUnder(a, b) || isUnder(b, a)) continue;
       const id = "k" + i++;
-      (nodes.get(lca(a, b)).edges ??= []).push({ id, sources: [String(a.id)], targets: [String(b.id)], layoutOptions: { "elk.layered.priority.straightness": "20", "elk.layered.priority.direction": "20" } });
+      (nodes.get(SUB ? subLca(a, b) : lca(a, b)).edges ??= []).push({ id, sources: [String(a.id)], targets: [String(b.id)], layoutOptions: { "elk.layered.priority.straightness": "20", "elk.layered.priority.direction": "20" } });
     }
   }
   let r;
@@ -262,12 +266,12 @@ async function relayout(anchor) {
   if (my !== laying) return;
   const boxes = new Map();
   (function walk(n, ox, oy) {
-    for (const c of n.children ?? []) { const b = { x: ox + c.x, y: oy + c.y, w: c.width, h: c.height }; boxes.set(byId.get(+c.id), b); walk(c, b.x, b.y); }
+    for (const c of n.children ?? []) { const b = { x: ox + c.x, y: oy + c.y, w: c.width, h: c.height }; boxes.set(objOf.get(c.id), b); walk(c, b.x, b.y); }
   })(r, 0, 0);
   boxes.set(root, { x: 0, y: 0, w: r.width, h: r.height });
   const edges = [];
   (function walk(n) {
-    const off = n.id === "0" ? { x: 0, y: 0 } : boxes.get(byId.get(+n.id));
+    const off = n.id === "0" ? { x: 0, y: 0 } : boxes.get(objOf.get(n.id));
     for (const e of n.edges ?? []) {
       if (!meta.has(e.id)) continue; // chains are not drawn
       for (const s of e.sections ?? []) edges.push({ ...meta.get(e.id), pts: [s.startPoint, ...(s.bendPoints ?? []), s.endPoint].map((p) => [p.x + off.x, p.y + off.y]) });
@@ -366,6 +370,7 @@ function hatchPattern() {
 function look(n) {
   switch (n.k) {
     case "folder": return { fill: T["k-package"], stroke: T.ink, lw: 1, rule: true, text: T.ink, upper: true };
+    case "group": return { fill: rgba(T.orange, 0.05), stroke: T.orange, lw: 1.25, dash: [6, 4], text: T.orange, upper: true };
     case "file": case "module": return { fill: T["k-file"], stroke: T.hair3, lw: 1, text: T.ink, lang: n.l };
     case "type": return { fill: T["k-type"], stroke: T["k-type-edge"], lw: 1.25, text: T.ink };
     case "function": return { fill: T["k-function"], stroke: T.hair3, lw: 1, stripe: T.ink, text: T.ink };
@@ -436,6 +441,8 @@ function draw(p) {
       const used = text(name, x + 8, y + 8, w - 50);
       if (s.lang && w > 120) langTag(s.lang, x + 8 + used + 6, y + 7);
       if (isCode(n)) drawCode(n, x, y, w, h);
+      const hid = SUB?.hidden.get(n);
+      if (hid && w > 140) { ctx.save(); ctx.font = `${Math.min(11, Math.max(8, 10 * Math.sqrt(cam.k)))}px ${mono}`; ctx.textAlign = "right"; ctx.fillStyle = T.dim; ctx.fillText(`+${hid} hidden`, x + w - 8, y + 8); ctx.restore(); }
     } else if (w > 30 && h > 12) {
       const fs = Math.min(12, Math.max(7, 12 * Math.min(1, cam.k * 1.1)));
       ctx.font = `500 ${fs}px ${mono}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -491,6 +498,8 @@ function drawLines(current) {
   });
 }
 function sizeText(n) {
+  if (n.k === "group") { const c = n.children.length; return SUB?.collapsed.has(n) ? `+${c} hidden` : `${c} inside`; }
+  if (SUB?.collapsed.has(n)) return "+" + n.children.length + " hidden";
   if (n.k === "function") return lines(n) + " ln";
   if (STATEK.has(n.k)) return "";
   if (LIBK.has(n.k)) { const c = count(n, (x) => x.k === "ext"); return c ? c + " used" : ""; }
@@ -637,6 +646,12 @@ function fnAt(f, line) {
   return best;
 }
 // Cited lines inside a piece of code being drawn, clipped to it.
+// The innermost thing holding a line: a function, else a field, constant or type, else the file.
+function nodeAt(f, line) {
+  let best = null;
+  for (const n of byId.values()) if (n.f === f && n.a && n.a <= line && line <= n.b && !LIBK.has(n.k) && (!best || n.b - n.a < best.b - best.a)) best = n;
+  return best ?? [...byId.values()].find((n) => n.k === "file" && n.n === f) ?? null;
+}
 function citedLines(n) {
   if (!citeHover || !n?.f) return null;
   const c = citeNode(citeHover);
@@ -649,7 +664,7 @@ function citedLines(n) {
 const citeTarget = () => citeHover?.target ?? null;
 function citeAt(el) { const s = el.closest?.(".cite"); return s ? V?.cites?.[+s.dataset.c] ?? null : null; }
 function bindCites(el) {
-  el.addEventListener("mouseover", (e) => { const c = citeAt(e.target); if (!c) return; citeHover = { ...c, target: citeNode(c) ?? fnAt(c.file, c.a) }; kick(); });
+  el.addEventListener("mouseover", (e) => { const c = citeAt(e.target); if (!c) return; citeHover = { ...c, target: citeNode(c) ?? fnAt(c.file, c.a) ?? nodeAt(c.file, c.a) }; kick(); });
   el.addEventListener("mouseout", (e) => { if (citeAt(e.target)) { citeHover = null; kick(); } });
   el.addEventListener("click", (e) => {
     const c = citeAt(e.target);
@@ -659,7 +674,7 @@ function bindCites(el) {
     const n = citeNode(c);
     if (n) { jumpTo(n); return; }
     const f = fnAt(c.file, c.a);
-    if (!f) return;
+    if (!f) { const m = nodeAt(c.file, c.a); if (m) jumpTo(m); return; }
     if (TR?.lay && TR.S === f && TR.mode === "code") {
       const i = TR.lay.stops.findIndex((s) => s.line >= c.a);
       if (i >= 0) { TR.cur = i; TR.pick = TR.lay.stops[i].items[0].t; traceFollow(); trail(); bar(); report(); kick(); }
@@ -803,7 +818,7 @@ document.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("clic
 function markOpenBy() { document.querySelectorAll("[data-open]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.open === P.openBy))); }
 $("next").onclick = () => { if (step < steps().length - 1) { goStep(step + 1); if (playTimer) schedule(); } };
 $("back").onclick = () => { if (step >= 0) { goStep(step - 1); if (playTimer) schedule(); } };
-$("reset").onclick = () => { remember(); if (TR) exitTrace(false); hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
+$("reset").onclick = () => { remember(); if (TR) exitTrace(false); showAll = true; SUB = null; hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
 addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, select")) return;
   if (e.key === "ArrowRight") $("next").click();
@@ -879,7 +894,7 @@ function up(e) {
 }
 cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
 cv.addEventListener("pointerleave", () => { if (!drag) { hovered = hoverEdge = mapStop = null; if (TR) traceHover = null; bar(); kick(); } });
-cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop) toggle(n); });
+cv.addEventListener("dblclick", (e) => { if (TR) { traceDouble(e.offsetX, e.offsetY); return; } const n = hit(e.offsetX, e.offsetY); if (n && !mapStop && !(SUB && subToggle(n))) toggle(n); });
 function zoomAt(sx, sy, f) {
   camAnim = null;
   const [wx, wy] = toWorld(sx, sy);

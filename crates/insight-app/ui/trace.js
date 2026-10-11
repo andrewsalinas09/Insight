@@ -307,7 +307,7 @@ function toFrame(i) {
 function jumpTo(n, line = null) {
   if (!n) return;
   if (!TR) {
-    if (canTrace(n) && n.k === "function") { enterTrace(n, line); return; }
+    if (canTrace(n)) { enterTrace(n, line); return; }
     remember();
     const s = new Set(open); openPathTo(s, n);
     selected = n; inspect(n);
