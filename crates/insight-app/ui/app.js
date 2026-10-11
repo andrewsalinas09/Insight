@@ -258,7 +258,12 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 let morph = null, camAnim = null, camAfter = null, afterSettle = null;
 const toScreen = (x, y) => [(x - cam.x) * cam.k + W / 2, (y - cam.y) * cam.k + Hh / 2];
 const toWorld = (sx, sy) => [(sx - W / 2) / cam.k + cam.x, (sy - Hh / 2) / cam.k + cam.y];
-function fit(b, fill = 0.9) { return { x: b.x + b.w / 2, y: b.y + b.h / 2, k: Math.min((W * fill) / b.w, (Hh * fill) / b.h, 6) }; }
+// Framing leaves room for the bar floating over the canvas's bottom edge.
+const BAR_H = 44;
+function fit(b, fill = 0.9) {
+  const k = Math.min((W * fill) / b.w, ((Hh - BAR_H) * fill) / b.h, 6);
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 + BAR_H / 2 / k, k };
+}
 function union(bs) {
   const x0 = Math.min(...bs.map((b) => b.x)), y0 = Math.min(...bs.map((b) => b.y));
   const x1 = Math.max(...bs.map((b) => b.x + b.w)), y1 = Math.max(...bs.map((b) => b.y + b.h));
