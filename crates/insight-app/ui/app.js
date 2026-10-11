@@ -270,7 +270,9 @@ const toScreen = (x, y) => [(x - cam.x) * cam.k + W / 2, (y - cam.y) * cam.k + H
 const toWorld = (sx, sy) => [(sx - W / 2) / cam.k + cam.x, (sy - Hh / 2) / cam.k + cam.y];
 // Framing leaves room for the bar floating over the canvas's bottom edge.
 // (and for the details panel when it's docked).
-const bottomSpace = () => 44 + (detailOn ? $("detail").offsetHeight : 0);
+const bottomSpace = () => $("dock").offsetHeight + 4;
+// The legend sits above the dock (the bar, plus the details when they're shown).
+new ResizeObserver(() => document.documentElement.style.setProperty("--dock", $("dock").offsetHeight + "px")).observe($("dock"));
 function fit(b, fill = 0.9) {
   const sp = bottomSpace();
   const k = Math.min((W * fill) / b.w, ((Hh - sp) * fill) / b.h, 6);
@@ -374,6 +376,7 @@ function draw(p) {
   const mono = monoFont();
   // The ends of the line under the pointer, or the targets of the call under it.
   const ends = new Set(hoverEdge ? [hoverEdge.a, hoverEdge.b] : mapStop ? mapStop.stop.items.map((it) => rep(it.t)) : []);
+  const cited = citeTarget() ? rep(citeTarget()) : null;
   // Emphasis: the view's highlights, plus the steps so far and their highlights.
   const past = new Set(), current = step >= 0 ? stepFocus(step) : null;
   for (let i = 0; i <= step; i++) { const f = stepFocus(i); if (f) past.add(f); }
@@ -399,6 +402,7 @@ function draw(p) {
     ctx.strokeStyle = strong ? T.orange : ends.has(n) ? T.call : n === selected ? T.ink : n === hovered ? T.ink : s.stroke;
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     ctx.setLineDash([]);
+    if (n === cited) { ctx.fillStyle = rgba(T.orange, 0.16); ctx.fillRect(x, y, w, h); ctx.lineWidth = 3; ctx.strokeStyle = T.orange; ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3); }
     if (notesOn.has(n)) noteTags.push([n, x, y, w]);
     // Labels: open boxes at the top-left, closed boxes centered with their size.
     const name = prefix(n) + (s.upper ? short(n).toUpperCase() : short(n));
@@ -422,7 +426,7 @@ function draw(p) {
   // Claude's notes: authored tags pinned to the box's top edge (full text in the bar and inspector).
   for (const [n, x, y, w] of noteTags) {
     if (w < 40) continue;
-    const t = notesOn.get(n).join(" · ");
+    const t = plain(notesOn.get(n).join(" · "));
     ctx.font = `italic 12px ${getComputedStyle(document.body).getPropertyValue("--sans")}`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const tw = Math.min(ctx.measureText(t).width, Math.max(160, w * 1.2)) + 16;
     const ty = Math.max(2, y - 22);
@@ -489,6 +493,8 @@ function drawCode(n, x, y, w, h) {
   const src = codeOf(n), lh = LH * cam.k, top = y + 30 * cam.k, left = x + 12 * cam.k;
   ctx.save(); ctx.beginPath(); ctx.rect(x, y + 24 * cam.k, w, h - 24 * cam.k); ctx.clip();
   (function bands(c, lvl) { for (const k of c.children) { if (k.k !== "block") continue; ctx.fillStyle = rgba(T.ink, 0.07 + 0.05 * lvl); ctx.fillRect(x + (5 + lvl * 3) * cam.k, top + (k.a - n.a) * lh, 2.2 * cam.k, (k.b - k.a + 1) * lh); bands(k, lvl + 1); } })(n, 0);
+  const cl = citedLines(n);
+  if (cl) { ctx.fillStyle = rgba(T.orange, 0.3); ctx.fillRect(x, top + (cl[0] - n.a) * lh, w, (cl[1] - cl[0] + 1) * lh); ctx.fillStyle = T.orange; ctx.fillRect(x, top + (cl[0] - n.a) * lh, Math.max(2, 3 * cam.k), (cl[1] - cl[0] + 1) * lh); }
   // Every call and data use written here: a tick at the right edge (where its line
   // leaves the code) and the call itself underlined, both in its line's colour.
   for (const s of stopsOf(n)) {
@@ -591,7 +597,55 @@ $("play").onclick = () => { if (playTimer) stopPlay(); else { if (step < 0 || st
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
 // Claude's text: escaped, with `code` spans.
-const prose = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const prose = (s) => esc(s).replace(/\[([^\]]+)\]\(#c(\d+)\)/g, '<span class="cite" data-c="$2">$1</span>').replace(/`([^`]+)`/g, "<code>$1</code>");
+// Citation markers read as their label wherever there's no hovering (the canvas tags).
+const plain = (s) => s.replace(/\[([^\]]+)\]\(#c\d+\)/g, "$1");
+// ---------- Claude's citations ----------
+// Notes carry `[label](#cN)` pointing into the view's `cites` (each one resolved by the
+// server: a node, or lines of a file). Hovering one lights the thing up wherever it's
+// drawn: its box on the map, its box in a trace, its lines in any code shown. Clicking
+// goes there.
+let citeHover = null; // { node? , file?, a?, b?, target }
+const citeNode = (c) => (c?.node != null ? byId.get(c.node) : null);
+// The innermost function whose code holds a line.
+function fnAt(f, line) {
+  let best = null;
+  for (const n of byId.values()) if (n.k === "function" && n.f === f && n.a <= line && line <= n.b && (!best || n.b - n.a < best.b - best.a)) best = n;
+  return best;
+}
+// Cited lines inside a piece of code being drawn, clipped to it.
+function citedLines(n) {
+  if (!citeHover || !n?.f) return null;
+  const c = citeNode(citeHover);
+  if (c === n) return null; // the whole thing is cited: its outline shows that
+  const f = c ? c.f : citeHover.file, a = c ? c.a : citeHover.a, b = c ? c.b : citeHover.b;
+  if (!f || f !== n.f || !a) return null;
+  const lo = Math.max(a, n.a), hi = Math.min(b, n.b);
+  return lo <= hi ? [lo, hi] : null;
+}
+const citeTarget = () => citeHover?.target ?? null;
+function citeAt(el) { const s = el.closest?.(".cite"); return s ? V?.cites?.[+s.dataset.c] ?? null : null; }
+function bindCites(el) {
+  el.addEventListener("mouseover", (e) => { const c = citeAt(e.target); if (!c) return; citeHover = { ...c, target: citeNode(c) ?? fnAt(c.file, c.a) }; kick(); });
+  el.addEventListener("mouseout", (e) => { if (citeAt(e.target)) { citeHover = null; kick(); } });
+  el.addEventListener("click", (e) => {
+    const c = citeAt(e.target);
+    if (!c) return;
+    e.preventDefault();
+    citeHover = null;
+    const n = citeNode(c);
+    if (n) { jumpTo(n); return; }
+    const f = fnAt(c.file, c.a);
+    if (!f) return;
+    if (TR?.lay && TR.S === f && TR.mode === "code") {
+      const i = TR.lay.stops.findIndex((s) => s.line >= c.a);
+      if (i >= 0) { TR.cur = i; TR.pick = TR.lay.stops[i].items[0].t; traceFollow(); trail(); bar(); report(); kick(); }
+      return;
+    }
+    jumpTo(f, c.a);
+  });
+}
+
 const loc = (n) => (n.f ? `${n.f}:${n.a}` : "");
 const HOW = {
   click: "Double-click a box to open it. Hover a line to see where it goes. Select a function and press Enter to trace it.",
@@ -751,6 +805,7 @@ cv.addEventListener("pointerdown", (e) => {
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), k: cam.k }; drag = null; }
 });
 cv.addEventListener("pointermove", (e) => {
+  if (citeHover) { citeHover = null; kick(); } // the text it was in may have been redrawn under the pointer
   if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
   if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (pinch.k * Math.hypot(a[0] - b[0], a[1] - b[1])) / pinch.d / cam.k); return; }
   if (drag) {
@@ -861,7 +916,7 @@ listen("view", (e) => { if (G) applyView(e.payload); });
 listen("step", (e) => { if (G && e.payload < steps().length) { stopPlay(); goStep(e.payload); } });
 
 // ---------- start: the whole system (ADR-0021) ----------
-readTheme(); legend(); bindSettings(); bindDetail(); markOpenBy(); transport();
+readTheme(); legend(); bindSettings(); bindDetail(); bindCites($("bar")); bindCites($("insp")); markOpenBy(); transport();
 if (innerWidth < 640) showLegend(false);
 document.fonts.ready.then(async () => {
   resize();

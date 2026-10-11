@@ -99,6 +99,9 @@ User: "in projects why are there so many things @ same_commit_here repeated over
 ### FQ-10: Detail about each thing, data, and getting back — ANSWERED → ADR-0053
 User, on the trace view with their own project: data was a dead end ("it should show me the … type or something"), "navigation is unintivive slightly. Like I can close something and it jumps out somewhere random", and "the bottom thing should have a popout button … we can add a tonnn of useful ifnormation here." Claude proposed a details panel (docked or popped out), data traces and a Back history; the user: "Yeah do that." Built (ADR-0053). To be judged on the app.
 
+### FQ-11: Citing code in Claude's notes — ANSWERED → ADR-0054
+User, on a walkthrough step that listed pool names: "you could hover them an dit could light up the thing on screen. Would be top tier feature. We need to make it so claude can 'cite' stuff. Same for line numbers etc..." Built: `[label](ref)` in notes, checked by the server; hover lights it up, click goes there. Also from this message: with details shown, a long note was hidden under the panel. The details now stack above the bar, so a long note pushes them up.
+
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic?
 - R2-21: the user clicking while Claude updates the view.

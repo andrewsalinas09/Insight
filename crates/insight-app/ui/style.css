@@ -55,7 +55,9 @@ canvas.dragging { cursor: grabbing; }
 /* The bar floats over the canvas's bottom edge, so its height never resizes the canvas
    (which moved everything on screen as hover text changed). Hover text stays on one line;
    Claude's notes may wrap, up to a third of the window. */
-.bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; align-items: baseline; padding: 8px 16px; border-top: 1px solid var(--hair3); background: var(--panel); min-height: 40px; max-height: 33%; overflow: auto; }
+/* The dock: the details (when shown) stacked on the bar, so a long note pushes the details up. */
+.dock { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; z-index: 1; }
+.bar { position: relative; display: flex; gap: 12px; align-items: baseline; padding: 8px 16px; border-top: 1px solid var(--hair3); background: var(--panel); min-height: 40px; max-height: 33vh; overflow: auto; }
 .bar .tag { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
 .bar .text { flex: 1; font-size: 13px; line-height: 1.45; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar.note .text { white-space: pre-wrap; }
@@ -72,7 +74,7 @@ canvas.dragging { cursor: grabbing; }
 .cell { padding: 6px 12px; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); min-width: 0; }
 .cell .v { font: 13px var(--mono); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .acts { display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap; }
-.legend { left: 16px; bottom: 56px; width: min(270px, calc(100% - 32px)); max-height: calc(100% - 72px); overflow: auto; }
+.legend { left: 16px; bottom: calc(var(--dock, 41px) + 16px); width: min(270px, calc(100% - 32px)); max-height: calc(100% - var(--dock, 41px) - 32px); overflow: auto; }
 .legend .sec { padding: 6px 10px 8px; border-bottom: 1px solid var(--hair); }
 .legend .sec:last-child { border-bottom: 0; }
 .legend .row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 0; }
@@ -87,7 +89,7 @@ canvas.dragging { cursor: grabbing; }
 .settings input[type=range] { width: 100%; accent-color: var(--ink); }
 .settings p { margin: 0; color: var(--dim); font-size: 11.5px; line-height: 1.4; }
 /* Details: docked over the canvas above the bar, or filling the popped-out window. */
-.detail { position: absolute; left: 0; right: 0; bottom: 41px; height: 38%; display: flex; flex-direction: column; background: var(--panel); border-top: 2px solid var(--ink); z-index: 1; }
+.detail { height: 38vh; display: flex; flex-direction: column; background: var(--panel); border-top: 2px solid var(--ink); z-index: 1; }
 .detail > header { display: flex; align-items: baseline; gap: 10px; padding: 6px 16px; border-bottom: 1px solid var(--hair2); min-width: 0; }
 .detail .dname { font: 500 14px var(--mono); white-space: nowrap; }
 .detail .dwhere { font: 11px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
@@ -106,10 +108,11 @@ canvas.dragging { cursor: grabbing; }
 .detail a:hover { text-decoration: underline; }
 .detail code { font: 12px var(--mono); }
 .detail .dim { color: var(--dim); }
-body.docked .legend { bottom: calc(38% + 56px); max-height: calc(62% - 72px); }
 body.popout { overflow: hidden; }
 body.popout .detail { position: static; height: 100vh; border-top: 0; }
 .bar #detBtn { margin-left: auto; padding: 2px 8px; align-self: center; }
+.cite { color: var(--orange); border-bottom: 1px dotted var(--orange); cursor: pointer; }
+.cite:hover { background: color-mix(in srgb, var(--orange) 18%, transparent); }
 .box-btn.primary { background: var(--ink); color: var(--panel); }
 .bar .dim { color: var(--dim); }
 .trail { left: 50%; transform: translateX(-50%); top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; max-width: calc(100% - 32px); box-shadow: inset 3px 0 0 var(--call), 4px 4px 0 var(--shadow); }

@@ -446,7 +446,8 @@ function drawTrace() {
   const s = look(lay.node.k === "span" ? lay.S : lay.node);
   ctx.fillStyle = s.fill; ctx.fillRect(cx, cy, cw, ch);
   if (s.stripe) { ctx.fillStyle = s.stripe; ctx.fillRect(cx, cy, Math.max(2, 3 * k), ch); }
-  ctx.lineWidth = 1.5; ctx.strokeStyle = T.ink; ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
+  const codeCited = citeTarget() === lay.S || citeTarget() === lay.node;
+  ctx.lineWidth = codeCited ? 3 : 1.5; ctx.strokeStyle = codeCited ? T.orange : T.ink; ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
   // The data in question, banded.
   if (lay.hl) {
     const [a, b] = lay.hl, [, y0] = toScreen(0, lay.lineY(a) - LH / 2);
@@ -471,7 +472,8 @@ function drawTrace() {
     const on = t.n === hovT || (!isLeftCaller && curT.has(t.n));
     const sub = t.lines?.length ? `${ctxOf(t.n)} · line ${t.lines[0]}` : undefined;
     const steppable = !isLeftCaller && canTrace(t.n);
-    drawTag(t.n, t.box, { role: isLeftCaller ? "caller" : "target", lit: on, hov: t.n === hovT, color: lineLook(t.kind).color, sub, step: steppable ? (TR.pick === t.n && on ? "⏎" : "▸") : null });
+    const isCited = citeTarget() === t.n;
+    drawTag(t.n, t.box, { role: isLeftCaller ? "caller" : "target", lit: on || isCited, hov: t.n === hovT, color: isCited ? T.orange : lineLook(t.kind).color, sub, step: steppable ? (TR.pick === t.n && on ? "⏎" : "▸") : null });
   }
   ctx.restore();
 }

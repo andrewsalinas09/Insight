@@ -260,7 +260,7 @@ impl Server {
             v["steps"].as_array().map_or(0, Vec::len),
             v["layout"]["chain"].as_array().map_or(0, Vec::len),
             v["trace"]["stack"].as_array().map_or(String::new(), |s| format!(", a trace {} deep", s.len()))
-        );
+        ) + &v["cites"].as_array().filter(|c| !c.is_empty()).map_or(String::new(), |c| format!(", {} citations", c.len()));
         let shown = self.push("view", v.clone());
         self.view = Some(v);
         Ok(if shown {
@@ -717,7 +717,7 @@ fn tools() -> Value {
         },
         {
             "name": "show",
-            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). `trace` opens the trace view, which works like a debugger: one function's code with its callers on the left and what it calls on the right, in the order written. `stack` is the call stack, outermost first, with the shown function last (a `path` search here stands for one route). `line` is the call to start at. Steps can carry their own `trace`, so you can walk a call path with a note on each step. Or pass only `step` to jump the window to step N of the current view.",
+            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). `trace` opens the trace view, which works like a debugger: one function's code with its callers on the left and what it calls on the right, in the order written. `stack` is the call stack, outermost first, with the shown function last (a `path` search here stands for one route). `line` is the call to start at. Steps can carry their own `trace`, so you can walk a call path with a note on each step. Cite in note text with `[label](ref)`: ref is a code reference, `file:line` or `file:start-end`, or `:line` / `:start-end` for lines of what the note is about (its `on`, the step's trace or focus). Hovering a citation lights it up on screen, and clicking goes there. Every citation must resolve. Or pass only `step` to jump the window to step N of the current view.",
             "inputSchema": {"type": "object", "properties": {
                 "view": {"type": "object", "properties": {
                     "title": {"type": "string"},

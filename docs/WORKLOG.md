@@ -29,6 +29,8 @@ Template:
 
 **Next:** the user's verdict on the walkthrough, the details panel and data traces; then `has-type` in the extractors.
 
+**Later the same session:** citations (ADR-0054, FQ-11). The user asked to hover the pool names in a note and see them light up. Notes take `[label](ref)`, resolved and checked by the server; the window lights a hovered citation up and goes there on click. The walkthrough was rewritten with 43 citations. Validation caught one wrong reference: the pool arrays are defined in the .cpp, not as members of the class. The details panel now stacks above the bar, so long notes push it up instead of hiding under it.
+
 ## 2026-10-10 (cont.) — The trace view, hoverable lines, code tied to the graph
 **Done:**
 - **The user's first session on the app.** They liked the folder grouping and seeing `main` hand off to `run`. But inside a big function they couldn't see where lines went or in what order things happen, and asked for a way to connect the code to the graph. Claude proposed four things; the user: "I say yes build everything" (FQ-08 → ADR-0052).

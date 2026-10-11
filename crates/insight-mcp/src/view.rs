@@ -102,20 +102,30 @@ const FIXED_OPTIONS: &[&str] = &["elk.algorithm", "elk.hierarchyHandling"];
 
 pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
     let v: ViewIn = serde_json::from_value(raw.clone()).context("the view doesn't match the `show` schema")?;
-    let mut r = Resolver { l, cache: HashMap::new() };
+    let mut r = Resolver { l, cache: HashMap::new(), cites: Vec::new() };
+    let focus = v.focus.as_ref().map(|x| r.one(x)).transpose()?;
+    let trace = v.trace.as_ref().map(|t| r.trace(t)).transpose()?;
+    // What `:line` counts in, view-wide: the traced thing, else the focus.
+    let shown = trace.as_ref().and_then(|t| t["stack"].as_array()?.last()?.as_i64()).or(focus);
     let mut notes = Vec::new();
-    for n in &v.notes {
-        notes.push(json!({"on": n.on.as_ref().map(|x| r.one(x)).transpose()?, "text": n.text}));
+    for (i, n) in v.notes.iter().enumerate() {
+        let on = n.on.as_ref().map(|x| r.one(x)).transpose()?;
+        let text = r.cite(&n.text, on.or(shown)).with_context(|| format!("note {}", i + 1))?;
+        notes.push(json!({"on": on, "text": text}));
     }
     let mut steps = Vec::new();
     for (i, s) in v.steps.iter().enumerate() {
         let step = (|| -> Result<Value> {
+            let focus = s.focus.as_ref().map(|x| r.one(x)).transpose()?;
+            let trace = s.trace.as_ref().map(|t| r.trace(t)).transpose()?;
+            let here = trace.as_ref().and_then(|t| t["stack"].as_array()?.last()?.as_i64()).or(focus).or(shown);
+            let note = s.note.as_ref().map(|t| r.cite(t, here)).transpose()?;
             Ok(json!({
-                "focus": s.focus.as_ref().map(|x| r.one(x)).transpose()?,
+                "focus": focus,
                 "highlight": r.many(&s.highlight)?,
                 "open": r.many(&s.open)?,
-                "note": s.note,
-                "trace": s.trace.as_ref().map(|t| r.trace(t)).transpose()?,
+                "note": note,
+                "trace": trace,
             }))
         })()
         .with_context(|| format!("step {}", i + 1))?;
@@ -141,21 +151,84 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
         "title": v.title,
         "open": r.many(&v.open)?,
         "highlight": r.many(&v.highlight)?,
-        "focus": v.focus.as_ref().map(|x| r.one(x)).transpose()?,
+        "focus": focus,
         "notes": notes,
         "steps": steps,
         "play": v.play,
-        "trace": v.trace.as_ref().map(|t| r.trace(t)).transpose()?,
+        "trace": trace,
         "layout": {"chain": chain, "order": r.many(&v.layout.order)?, "options": options},
+        "cites": r.cites,
     }))
 }
 
 struct Resolver<'a> {
     l: &'a Loaded,
     cache: HashMap<String, i64>,
+    /// Every citation in the view's text, in order; notes point at them as `#cN`.
+    cites: Vec<Value>,
 }
 
 impl Resolver<'_> {
+    /// Citations in note text: `[label](ref)`, where ref is a code reference (as anywhere
+    /// in a view), `file:line` / `file:start-end`, or `:line` / `:start-end`, a line of
+    /// `here` (the thing the note is about). Each must resolve; the text comes back with
+    /// `[label](#cN)` pointing into the view's `cites`.
+    fn cite(&mut self, text: &str, here: Option<i64>) -> Result<String> {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(open) = rest.find('[') {
+            let after = &rest[open + 1..];
+            let Some(close) = after.find("](") else { break };
+            let label = &after[..close];
+            let tail = &after[close + 2..];
+            let Some(end) = tail.find(')') else { break };
+            if label.contains('[') || label.is_empty() {
+                out.push_str(&rest[..open + 1]);
+                rest = after;
+                continue;
+            }
+            let target = tail[..end].trim();
+            let cite = self.cite_target(target, here).with_context(|| format!("citation `[{label}]({target})`"))?;
+            out.push_str(&rest[..open]);
+            out.push_str(&format!("[{label}](#c{})", self.cites.len()));
+            self.cites.push(cite);
+            rest = &tail[end + 1..];
+        }
+        out.push_str(rest);
+        Ok(out)
+    }
+
+    fn cite_target(&mut self, target: &str, here: Option<i64>) -> Result<Value> {
+        let lines = |s: &str| -> Option<(i64, i64)> {
+            let (a, b) = s.split_once('-').unwrap_or((s, s));
+            Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+        };
+        // `:52` or `:52-60`: lines of the thing the note is about.
+        if let Some(rel) = target.strip_prefix(':') {
+            let (a, b) = lines(rel).context("`:` is followed by a line or a range, like `:52` or `:52-60`")?;
+            let id = here.context("`:line` needs something shown to count in: a `trace`, a `focus`, or the note's `on`")?;
+            let (file, s, e): (Option<String>, Option<i64>, Option<i64>) =
+                self.l.db.conn().query_row("SELECT file, line_start, line_end FROM main.nodes WHERE nid = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            let (Some(file), Some(s), Some(e)) = (file, s, e) else { bail!("what the note is about has no source lines") };
+            anyhow::ensure!(a <= b && a >= s && b <= e, "lines {a}–{b} are outside lines {s}–{e} of what the note is about ({file})");
+            return Ok(json!({"file": file, "a": a, "b": b}));
+        }
+        // `path/file.ext:52`: lines of a snapshot file.
+        if let Some((file, rng)) = target.rsplit_once(':')
+            && let Some((a, b)) = lines(rng)
+        {
+            let text = crate::window::file_text(self.l, file).with_context(|| format!("`{file}` is not a file of this snapshot (or the deny rules hide it)"))?;
+            let n = text.lines().count() as i64;
+            anyhow::ensure!(a >= 1 && a <= b && b <= n, "`{file}` has {n} lines");
+            return Ok(json!({"file": file, "a": a, "b": b}));
+        }
+        let r = match target.parse::<i64>() {
+            Ok(id) => Ref::Id(id),
+            Err(_) => Ref::Name(target.to_string()),
+        };
+        Ok(json!({"node": self.one(&r)?}))
+    }
+
     fn one(&mut self, r: &Ref) -> Result<i64> {
         match r {
             Ref::Id(id) => {
