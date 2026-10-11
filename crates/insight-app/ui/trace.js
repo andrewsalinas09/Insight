@@ -18,7 +18,14 @@ const TGAP = 170;
 
 function traceReset() { TR = null; traceHover = null; stopCache.clear(); HIST.length = 0; histButton(); const t = document.getElementById("trail"); if (t) t.hidden = true; }
 const isData = (n) => !!n && (STATEK.has(n.k) || n.k === "type");
-const canTrace = (n) => !!n && !!n.f && !!n.a && (n.k === "function" || isData(n));
+const canTrace = (n) => !!n && !!n.f && !!n.a && (n.k === "function" || n.k === "span" || isData(n));
+// An excerpt: lines of a file that belong to nothing smaller (a comment block, say).
+let excerptN = 0;
+function excerptOf(f, a, b) {
+  const s = { id: "x" + excerptN++, k: "span", n: `${f.split("/").pop()}:${a}${b > a ? "–" + b : ""}`, f, a, b, children: [], parent: null };
+  s.path = [root, s]; s.depth = 1;
+  return s;
+}
 const traceFading = () => !!TR && performance.now() - TR.t0 < 320;
 
 // The calls and data uses written inside a function (its closures included), grouped
@@ -326,9 +333,9 @@ function trail() {
   const el = $("trail");
   if (!TR?.lay) { el.hidden = true; return; }
   const n = TR.lay.stops.length, data = TR.mode === "data";
-  el.innerHTML = `<span class="lbl">${data ? "data" : "trace"}</span>
+  el.innerHTML = `<span class="lbl">${TR.S.k === "span" ? "excerpt" : data ? "data" : "trace"}</span>
     <span class="crumbs">${TR.stack.map((f, i) => `<button class="crumb" data-i="${i}" title="${esc(pathText(f.S))}">${esc(f.S.n)}</button><span class="sep">›</span>`).join("")}<span class="here" title="${esc(pathText(TR.S))}">${esc(TR.S.n)}</span></span>
-    <span class="count">${n ? `${data ? "use" : "call"} ${TR.cur + 1} / ${n}` : data ? "no uses" : "no calls"}</span>
+    <span class="count">${n ? `${data ? "use" : "call"} ${TR.cur + 1} / ${n}` : TR.S.k === "span" ? "" : data ? "no uses" : "no calls"}</span>
     <button class="box-btn" id="tPrev" title="Previous (↑)">▲</button><button class="box-btn" id="tNext" title="Next (↓)">▼</button>
     <button class="box-btn" id="tIn" title="Open it (Enter)">Step in ▸</button>
     <button class="box-btn" id="tOut" title="Back out (Backspace)">◂ Step out</button>
@@ -370,6 +377,7 @@ function traceBar() {
     $("bartext").innerHTML = `<code>${esc(hovTag.n.n)}</code> (${esc(ctxOf(hovTag.n))})${ls.length ? " · line " + ls.slice(0, 6).join(", ") + (ls.length > 6 ? "…" : "") : ""}${hovTag.role === "caller" ? " · click to step out to it" : canTrace(hovTag.n) ? " · double-click to step in" : ""}`;
     return;
   }
+  if (TR.S.k === "span") { $("bartag").textContent = "excerpt"; $("bartext").innerHTML = `<code>${esc(TR.S.f)}</code>, lines ${TR.S.a}${TR.S.b > TR.S.a ? "–" + TR.S.b : ""} · Esc or ↶ Back to return`; return; }
   const s = traceHover?.stop ?? lay.stops[TR.cur];
   if (!s) { $("bartag").textContent = "trace"; $("bartext").innerHTML = TR.mode === "data" ? `Nothing in the snapshot reads or writes <code>${esc(TR.S.n)}</code>.` : `<code>${esc(TR.S.n)}</code> makes no calls of the kinds ticked in the legend.`; return; }
   if (TR.mode === "data") {

@@ -677,7 +677,7 @@ function bindCites(el) {
     const n = citeNode(c);
     if (n) { jumpTo(n); return; }
     const f = fnAt(c.file, c.a);
-    if (!f) { const m = nodeAt(c.file, c.a); if (m) jumpTo(m); return; }
+    if (!f) { const m = nodeAt(c.file, c.a); jumpTo(m && m.k !== "file" ? m : excerptOf(c.file, c.a, c.b)); return; }
     if (TR?.lay && TR.S === f && TR.mode === "code") {
       const i = TR.lay.stops.findIndex((s) => s.line >= c.a);
       if (i >= 0) { TR.cur = i; TR.pick = TR.lay.stops[i].items[0].t; traceFollow(); trail(); bar(); report(); kick(); }
