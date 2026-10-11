@@ -1,6 +1,6 @@
 //! `insight install`: one step from a build to a working MCP server in Claude Code.
 //!
-//! 1. Copies `insight` and its extractor helpers into Insight's own `bin` folder, so the
+//! 1. Copies `insight`, the window app and the extractor helpers into Insight's own `bin` folder, so the
 //!    registered server keeps running while the build folder is rebuilt (on Windows a
 //!    running exe cannot be overwritten; the old copy is moved aside, which is allowed).
 //! 2. Registers that copy with Claude Code at user scope (works in every folder), replacing
@@ -12,7 +12,8 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 
-const HELPERS: &[&str] = &["insight-extract-rust", "insight-extract-cpp"];
+/// Installed next to `insight`: the window (`insight mcp` starts it from its own folder) and the extractor helpers.
+const HELPERS: &[&str] = &["insight-app", "insight-extract-rust", "insight-extract-cpp"];
 
 /// The MCP server name: development builds register separately from releases.
 fn server_name() -> &'static str {

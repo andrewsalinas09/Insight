@@ -12,6 +12,50 @@ Template:
 
 ---
 
+## 2026-10-10 (cont.) — The window app: frontend prototypes, then `insight-app`, `show`, layout steering
+**Done:**
+- **Frontend session:** started `docs/FRONTEND-QUESTIONS.md`.
+  - The user tried two clickable prototypes over Insight's own snapshot. The first used circle packing; the second used ELK layered on a canvas, left to right.
+  - Their feedback set the zoom-to-open thresholds (open at 15%, close 20% past, with hysteresis; in Settings) and asked for an at-a-glance visual encoding (FQ-06, being judged).
+  - Then they asked to build it into the app (ADR-0051, closing Q-08) and for Claude to steer the layout (ADR-0050).
+- **`crates/insight-app`** (Tauri 2, `insight-app.exe`):
+  - The app owns the backend `Server` and serves `insight mcp` over a named pipe.
+  - The window is plain HTML/JS: vendored elkjs 0.9.3 and IBM Plex. There's no frontend build step.
+  - It shows the whole system as folder › file › type › function › block boxes, plus fields, statics and libraries, with typed lines. Line kinds can be filtered from the legend.
+  - Interaction: zoom, double-click or zoom-to-open, and focus reshaping. The code view is the deepest level.
+  - It has a project/snapshot picker.
+- **`insight-mcp`:**
+  - The server is a public `Server` with a window sink.
+  - New tools:
+    - `show(view)` validates the view and resolves every code reference, including `{"path": …}` routes. It refuses unknown fields and the ELK options the window fixes. With no window, it keeps the view (BQ-42).
+    - `show(step=N)` jumps to a step.
+    - `selection` reports what the user picked and which step they're on.
+  - The window graph comes from `window.rs`. Folders come from file paths, and a chain of single-child folders is one box, so the grouping is generic for any language and layout.
+- **Layout steering (ADR-0050):** `layout.chain` (invisible high-priority ELK edges), `layout.order` (model order per box) and `layout.options` (ELK). The user has ▲/▼ in the inspector and spacing in Settings.
+  - These were tested first in elkjs. Chains work at any depth, even against the direction of calls. ELK partitioning works only at the top level, so it isn't used.
+- **The bridge (`insight mcp`):**
+  - It answers `initialize` and `tools/list` itself.
+  - On the first tool call it connects to the app, or starts it, then relays.
+  - The pipe accepts a client only after it sends a token from a user-only run file (`<cache>\run\app.json`). It rejects remote clients, and the app creates it as the first instance of a random name.
+  - With `INSIGHT_NO_APP=1`, or with no app to start, it serves in-process.
+  - `insight install` also copies `insight-app`.
+- **Verified end to end:** an MCP client loaded Insight's own snapshot through the app, showed a three-step view with notes and a route chain, and jumped to step 3. `selection` reported the window's step. The window was checked from screenshots, and the headless fallback and error messages were checked too.
+- **Docs:** MCP-INSTRUCTIONS point 9 (show, steps, layout, selection); ARCHITECTURE, ROADMAP, OPEN-QUESTIONS, README and CLAUDE/AGENTS status.
+
+**Learned:**
+- **On Windows every child process inherits the parent's inheritable handles:** a direct spawn, `cmd /C start` and null stdio all pass them on. An app launched from the MCP bridge then holds the agent's stdio pipes open, and the client never sees EOF. Launching through `explorer.exe` (like a double-click) avoids it without unsafe code.
+- **A screen copy of a WebView2 window comes out black:** `PrintWindow` with full-content rendering captures it.
+- A CSS `display` rule overrides the `hidden` attribute, so add `[hidden] { display: none !important }`.
+- Framing the previous and the current step together zooms out to empty space when they're far apart. Frame the current step only.
+
+**Drift from the spec (reported to the user):**
+- **R3-G #6:** the pipe is limited to the current user by a token in a user-only file, not by an ACL, and the processes are not verified. This avoids unsafe code.
+- **BQ-44:** the TS types are not generated; the window reads plain JSON.
+- **ADR-0040:** groups, collapse, code excerpts, abstraction nodes and example data are not built, and views cover only the `main` repo.
+- **R2-13:** CLI commands other than `mcp` still run standalone, and there's no Start-menu shortcut.
+
+**Next:** the user tries the app from Claude Code and judges FQ-06 (the encoding) and FQ-01 (what opens a box). Then the remaining view elements.
+
 ## 2026-10-10 (cont.) — Validation on private projects; call-site matching; `insight install`
 **Done:**
 - **Two-device firmware pair** (private validation set, C++):

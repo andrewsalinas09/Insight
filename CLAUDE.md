@@ -10,14 +10,14 @@ A personal desktop tool for seeing and checking code. Insight builds a complete,
 
 ## Current status
 
-**Build phase: M0, M1, M2, the C/C++ extractor, data flow with call-site matching (all languages), multi-repo projects and `insight install` built; validated on private projects.** The design and all four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`); frontend questions are deferred to their own session. The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
+**Build phase: M0, M1, M2, the C/C++ extractor, data flow with call-site matching (all languages), multi-repo projects and `insight install` built; validated on private projects. The window app (`crates/insight-app`) is started and iterated with the user** (ADR-0050, ADR-0051; open questions in `docs/FRONTEND-QUESTIONS.md`). The design and all four backend question rounds (BQ, R2, R3, R4) are complete (`docs/BUILD-QUESTIONS.md`). The solver speaks only generic programming concepts, with no framework knowledge (ADR-0048), and query tools take parameters Claude chooses, never defaults (ADR-0047). Stack:
 - a Rust Cargo workspace (BQ-03);
 - per-language extractors on each project's own native toolchain (ADR-0034, R2-15), run against a frozen source copy (R3-05);
 - one read-only SQLite file per codebase snapshot (ADR-0038);
 - `insight.exe` (CLI and MCP bridge) plus `insight-app.exe` (the window), connected over a local named pipe (ADR-0031, R2-13);
 - Tauri 2 as the window shell.
 
-The graph rendering library is still open (Q-08).
+The window draws nested boxes laid out by ELK layered on a canvas (ADR-0051).
 
 ## Doc map — where everything lives
 
@@ -34,6 +34,7 @@ The graph rendering library is still open (Q-08).
 | `docs/MCP-INSTRUCTIONS.md` | Draft of the up-front instructions agents receive | Designing or changing MCP tools |
 | `docs/SCHEMA.md` | The graph model (normative) | Touching extractors, the engine or SQL |
 | `docs/BUILD-QUESTIONS.md` | Backend decisions (BQ-, R2- and R3-IDs), asked one at a time | Before any backend design or code |
+| `docs/FRONTEND-QUESTIONS.md` | Window decisions (FQ-IDs), judged on the running app | Before any window design or code |
 | `docs/ROADMAP.md` | Phases and **current focus** | Starting any session |
 | `docs/WORKLOG.md` | Append-only session journal | Resuming after a gap |
 | `docs/archive/` | Original raw notes, verbatim | Almost never (history only) |

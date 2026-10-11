@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insight</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <span class="mark">insight</span>
+  <label class="grp"><span class="lbl">project</span><select id="pick" aria-label="Project and snapshot"></select></label>
+  <span class="chip" id="title" hidden></span>
+  <div class="grp"><span class="lbl">open boxes by</span>
+    <div class="seg" role="group" aria-label="How boxes open">
+      <button data-open="click">Double-click</button>
+      <button data-open="zoom">Zooming in</button>
+    </div>
+  </div>
+  <button class="box-btn" id="legendBtn" aria-pressed="true">Legend</button>
+  <button class="box-btn" id="settingsBtn" aria-pressed="false">Settings</button>
+  <div class="tr">
+    <button class="box-btn" id="back">◀ Back</button>
+    <span class="count" id="count">no steps</span>
+    <button class="box-btn" id="next">Next ▶</button>
+    <button class="box-btn" id="play" aria-pressed="false">Play</button>
+    <button class="box-btn" id="reset">Whole system</button>
+  </div>
+</header>
+<main>
+  <canvas id="cv"></canvas>
+  <div class="busy" id="busy" hidden>laying out…</div>
+  <div class="empty" id="empty" hidden></div>
+  <section class="float legend" id="legend" aria-label="Legend"></section>
+  <section class="float settings" id="settings" hidden aria-label="Settings">
+    <header><span class="lbl">settings</span><button class="box-btn" id="settingsClose">Close</button></header>
+    <div class="sec">
+      <label for="sOpen">Zooming in opens a box when it fills <output id="oOpen"></output> of the screen</label>
+      <input type="range" id="sOpen" min="5" max="60" step="1">
+    </div>
+    <div class="sec">
+      <label for="sClose">Zooming out closes it again <output id="oClose"></output> past where it opened</label>
+      <input type="range" id="sClose" min="5" max="70" step="1">
+      <p>The gap between the two keeps a box from flickering open and shut at one zoom level.</p>
+    </div>
+    <div class="sec">
+      <label for="sAnim">Animation <output id="oAnim"></output></label>
+      <input type="range" id="sAnim" min="0" max="1200" step="50">
+    </div>
+    <div class="sec">
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sReshape"> Selecting a function reshapes the graph around it</label>
+      <p>Opens the boxes holding what it calls and what calls it, and closes the rest.</p>
+    </div>
+    <div class="sec">
+      <label for="sGap">Space between boxes <output id="oGap"></output></label>
+      <input type="range" id="sGap" min="4" max="60" step="2">
+      <label for="sCol">Space between columns <output id="oCol"></output></label>
+      <input type="range" id="sCol" min="12" max="120" step="4">
+      <p>Claude can set these per view too, along with chains (a route laid out in one row) and the order of boxes.</p>
+    </div>
+  </section>
+  <section class="float insp" id="insp" hidden></section>
+</main>
+<div class="bar" id="bar"><span class="tag" id="bartag">how to use</span><span class="text" id="bartext"></span></div>
+<script src="vendor/elk-0.9.3.bundled.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

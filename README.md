@@ -14,7 +14,7 @@ What it's for:
 
 ## Status
 
-The backend is usable from Claude Code over MCP: snapshots of TypeScript, Rust and C/C++ projects (one or more repos), SQL over the graph, and routes with receipts. The window is not built yet (see [docs/ROADMAP.md](docs/ROADMAP.md)).
+The backend is usable from Claude Code over MCP: snapshots of TypeScript, Rust and C/C++ projects (one or more repos), SQL over the graph, and routes with receipts. The window (`insight-app`) opens on Claude's first Insight tool call: the whole system as nested boxes, left to right, and Claude's views with notes and steps. It is early and changing (see [docs/ROADMAP.md](docs/ROADMAP.md)).
 
 ## Quick start
 
@@ -23,7 +23,7 @@ cargo build --release
 target/release/insight install
 ```
 
-`install` copies Insight and its helpers to its own folder, checks what each language needs (Node.js for TypeScript, cargo for Rust, LLVM's libclang for C/C++), and registers the MCP server with Claude Code at user scope. If the `claude` command isn't found, it prints the one-line command to run instead. Run it again after rebuilding: it replaces the copy and the registration.
+`install` copies Insight, the window app and its helpers to its own folder, checks what each language needs (Node.js for TypeScript, cargo for Rust, LLVM's libclang for C/C++), and registers the MCP server with Claude Code at user scope. If the `claude` command isn't found, it prints the one-line command to run instead. Run it again after rebuilding: it replaces the copy and the registration.
 
 Then create a project (`insight init <name> <folder>…`, one folder per repo), start a new Claude Code session and ask about your code. Claude works out the build and check commands; you approve them with `insight approve <name>`, and Claude builds the snapshot.
 

@@ -17,7 +17,7 @@ The entries below keep their discussion history. **Where a "Status:" line inside
 | Q-05 | Partly resolved: mapping a prompt to entry points is the model's job via SQL (ADR-0035, ADR-0038). Open: pointing at an element in the running app (post-MVP) |
 | Q-06 | Closed by ADR-0025 |
 | Q-07 | Open, reduced by ADR-0025. Known so far: the build check runs build scripts and proc macros (ADR-0036, BQ-06); builds run only on Insight's frozen copy with approval fingerprints, declared install/check kinds and a tripwire (R3-01, R3-02); secrets: input-set-only `source`, mirrored deny rules, `insight purge` (R3-03); the MCP surface is a local named pipe (BQ-42/43); the signing key never leaves its store (ADR-0046) |
-| Q-08 | Partly resolved: analysis engines (ADR-0034); app shell = standalone app on Tauri 2 (ADR-0031, R2-13). Open: rendering and layout library (frontend session) |
+| Q-08 | Resolved: analysis engines (ADR-0034); app shell = standalone app on Tauri 2 (ADR-0031, R2-13); rendering and layout = nested boxes, ELK layered, drawn on a canvas (ADR-0051) |
 | Q-09 | Closed by ADR-0029 |
 | Q-10 | Resolved → ADR-0017 + ADR-0025: Insight never edits code (the agent does); it is the instrument beside the editor |
 | Q-11 | Resolved → ADR-0012 + ADR-0025 |
@@ -89,7 +89,7 @@ The user's code goes to a cloud LLM. Do we offer local-only mode, redaction, or 
 
 Status: open.
 
-## Q-08: App stack
+## Q-08: App stack — **Resolved → ADR-0031, ADR-0034, ADR-0051**
 Tauri 2 is proposed (Rust core, web UI). Also open: the graph rendering library (React Flow, Cytoscape, ELK for layout, Sigma/WebGL for scale, a custom renderer), and the analysis engine (tree-sitter, rust-analyzer, TS compiler API). Status: proposed, not ruled.
 
 ## Q-09: Freshness and incremental updates — **Closed by ADR-0029** (a graph is an immutable snapshot of one commit; nothing is kept in sync)

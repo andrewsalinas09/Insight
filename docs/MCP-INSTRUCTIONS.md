@@ -1,6 +1,6 @@
 # MCP instructions
 
-The text `insight mcp` gives an agent up front (MCP `instructions`). Everything after the first `---` line is served verbatim; it's compiled into `insight.exe` from this file (`crates/insight-mcp`). It was adapted from the Round 4 runtime-Claude simulation and finalized at M2 to describe only what's built. Add a line when a tool lands (`compare`, `show`, `selection`, `tag_coverage`, `reach()`/`nid()`, the `writers` and `race_candidates` views, pedantic switches). The ADRs, BUILD-QUESTIONS and SCHEMA.md win over this text.
+The text `insight mcp` gives an agent up front (MCP `instructions`). Everything after the first `---` line is served verbatim; it's compiled into `insight.exe` from this file (`crates/insight-mcp`). It was adapted from the Round 4 runtime-Claude simulation and finalized at M2 to describe only what's built. Add a line when a tool lands (`compare`, `tag_coverage`, `reach()`/`nid()`, the `writers` and `race_candidates` views, pedantic switches). The ADRs, BUILD-QUESTIONS and SCHEMA.md win over this text.
 
 ---
 
@@ -14,4 +14,10 @@ Insight is a read-only, deterministic graph of a project's code at a snapshot. I
 6. **Setup is your job too.** If a project doesn't build, `status` shows its settings file and the last build log per repo. Diagnose the problem, then propose the fix to the user: toolchain paths, install steps, or check commands in the project's INSIGHT.md. The user approves command changes with `insight approve`.
 7. **Unresolved is a fact, not an error.** `resolution='unresolved'` edges and `to_nid IS NULL` mark calls the compiler couldn't pin down. Say so; don't guess.
 8. **Read before explaining.** Use `source(refs=[…])` (node ids, `file`, `file:line`, `file:start-end`; batched; prefix `<schema>:` for an attached repo, as `path` prints them) or the frozen-source folders (one per loaded repo; `status` lists them). Read a function in full before you explain it.
-9. **Wishes:** if you wish Insight could do something it can't, tell the user why. If they agree, append it to the Wishes section of the global INSIGHT.md. Don't work around a missing tool by guessing.
+9. **Show while you explain.** `show(view)` puts a view on the user's Insight window (it opens on your first tool call). The user reads your answer in the terminal and looks at the window, so show the code you're talking about.
+   - Contents: `open` (boxes to open), `highlight`, `focus` (the camera fits it), `notes` (text, optionally `on` a node), `title`. Anything that refers to code must resolve: a node id, a path suffix (as `path` takes), or `{"path": {from, to, follow, …}}`, which stands for that route.
+   - Walkthroughs: `steps`, each with a `focus`, `highlight`, `open` and a `note`. The user steps with Next/Back. `play: true` auto-advances. `show(step=N)` jumps to a step.
+   - Layout is yours to steer. `layout.chain` lists sequences that are laid out left to right in one row, such as the route you're explaining. `layout.order` puts boxes first within their parent box. `layout.options` passes ELK layered options (e.g. `elk.spacing.nodeNode`, `elk.layered.nodePlacement.strategy`).
+   - `selection` says what the user has selected and which step they're on. Read it when they say "this" or "here".
+   - Not built yet: groups, collapse, code excerpts, abstraction nodes, example data, and views over attached repos.
+10. **Wishes:** if you wish Insight could do something it can't, tell the user why. If they agree, append it to the Wishes section of the global INSIGHT.md. Don't work around a missing tool by guessing.

@@ -81,7 +81,7 @@ fn main() -> ExitCode {
         };
     }
     if let Cmd::Mcp = cli.cmd {
-        return match insight_mcp::serve() {
+        return match insight_mcp::bridge::run_stdio() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("{e:#}");

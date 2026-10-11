@@ -1,15 +1,19 @@
-//! `insight mcp`: the MCP stdio server (ADR-0031, ADR-0039, R4-B).
+//! The MCP tools (ADR-0031, ADR-0039, R4-B), as one [`Server`] that both the
+//! window app and `insight mcp` run.
 //!
-//! Newline-delimited JSON-RPC 2.0 on stdin/stdout; stdout carries protocol
-//! messages only. Until the window app exists, the server runs the backend
-//! itself against the on-disk snapshot cache (R2-13: "when it's closed, they
-//! run the same backend standalone").
+//! Newline-delimited JSON-RPC 2.0. The running app owns the server and serves it
+//! to `insight mcp` over a local pipe ([`bridge`]); with no app, `insight mcp`
+//! runs a server itself against the on-disk snapshot cache (R2-13: "when it's
+//! closed, they run the same backend standalone").
 //!
 //! Over MCP, nothing can create or approve a project or change its commands
 //! (R3-01): `build` refuses unapproved projects the same way the CLI does.
 //! The snapshot a session queries is pinned until `load` switches it (R3-17).
 
+pub mod bridge;
 mod deny;
+mod view;
+mod window;
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -70,26 +74,28 @@ impl RepoView {
     }
 }
 
+/// Where the server tells the window what changed: an event name and its payload.
+pub type WindowSink = Box<dyn Fn(&str, Value) + Send>;
+
+/// The backend's state: what's loaded, the last view, what the user has selected.
 #[derive(Default)]
-struct Session {
+pub struct Server {
     loaded: Option<Loaded>,
+    window: Option<WindowSink>,
+    /// The last view `show` accepted (resolved), kept for a window that connects later (BQ-42).
+    view: Option<Value>,
+    /// What the user has selected in the window, for `selection`.
+    selection: Value,
 }
 
+/// Runs the server on stdin/stdout in this process (no window).
 pub fn serve() -> Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
-    let mut session = Session::default();
+    let mut server = Server::default();
     for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(msg) => session.handle(&msg),
-            Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": format!("parse error: {e}")}})),
-        };
-        if let Some(r) = reply {
-            serde_json::to_writer(&mut stdout, &r)?;
+        if let Some(r) = server.handle_line(&line?) {
+            stdout.write_all(r.as_bytes())?;
             stdout.write_all(b"\n")?;
             stdout.flush()?;
         }
@@ -97,7 +103,77 @@ pub fn serve() -> Result<()> {
     Ok(())
 }
 
-impl Session {
+impl Server {
+    /// Connects a window: `show` and `load` are pushed to it from now on.
+    pub fn attach_window(&mut self, sink: WindowSink) {
+        self.window = Some(sink);
+    }
+
+    /// One JSON-RPC message in, at most one reply out (notifications get none).
+    pub fn handle_line(&mut self, line: &str) -> Option<String> {
+        if line.trim().is_empty() {
+            return None;
+        }
+        let reply = match serde_json::from_str::<Value>(line) {
+            Ok(msg) => self.handle(&msg),
+            Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": format!("parse error: {e}")}})),
+        };
+        reply.map(|r| r.to_string())
+    }
+
+    /// The loaded snapshot as boxes and lines, for the window.
+    pub fn graph(&self) -> Result<Value> {
+        window::graph(self.loaded()?)
+    }
+
+    /// One file of the loaded snapshot, for the window's code view.
+    pub fn file(&self, path: &str) -> Result<String> {
+        window::file_text(self.loaded()?, path)
+    }
+
+    /// The last accepted view, if any.
+    pub fn view(&self) -> Option<&Value> {
+        self.view.as_ref()
+    }
+
+    /// The window reports what the user selected (and where the view stands).
+    pub fn set_selection(&mut self, s: Value) {
+        self.selection = s;
+    }
+
+    /// Projects and their snapshots, newest first, and what's loaded, for the window's picker.
+    pub fn projects(&self) -> Result<Value> {
+        let root = paths::data_root()?.join("projects");
+        let mut names: Vec<String> = std::fs::read_dir(&root)
+            .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().join("INSIGHT.md").exists()).map(|e| e.file_name().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        names.sort();
+        let list: Vec<Value> = names
+            .into_iter()
+            .map(|p| {
+                let snaps: Vec<Value> = snapshots(&p).into_iter().map(|(file, repo, commit)| json!({"file": file, "repo": repo, "commit": commit})).collect();
+                json!({"name": p, "snapshots": snaps})
+            })
+            .collect();
+        let loaded = self.loaded.as_ref().map(|l| json!({"project": l.project, "snapshot": file_name(&l.main)}));
+        Ok(json!({"projects": list, "loaded": loaded}))
+    }
+
+    /// Loads a snapshot as `main`, the same as the `load` tool.
+    pub fn load_main(&mut self, project: &str, snapshot: Option<&str>) -> Result<String> {
+        self.load(project, snapshot, None)
+    }
+
+    fn push(&self, event: &str, payload: Value) -> bool {
+        match &self.window {
+            Some(w) => {
+                w(event, payload);
+                true
+            }
+            None => false,
+        }
+    }
+
     fn handle(&mut self, msg: &Value) -> Option<Value> {
         let id = msg.get("id").cloned();
         let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
@@ -146,8 +222,37 @@ impl Session {
             }
             "path" => self.path(a),
             "source" => self.source(a),
+            "show" => self.show(a),
+            "selection" => Ok(if self.selection.is_null() { "nothing selected".to_string() } else { serde_json::to_string_pretty(&self.selection)? }),
             other => bail!("unknown tool `{other}`"),
         }
+    }
+
+    fn show(&mut self, a: &Value) -> Result<String> {
+        // Jumping to a step of the view already on screen (BQ-39).
+        if let Some(step) = a.get("step").and_then(Value::as_u64) {
+            let steps = self.view.as_ref().and_then(|v| v["steps"].as_array()).map_or(0, Vec::len);
+            anyhow::ensure!(step >= 1 && step as usize <= steps, "the current view has {steps} step(s); `step` counts from 1");
+            let shown = self.push("step", json!(step - 1));
+            return Ok(format!("step {step} of {steps}{}", if shown { "" } else { " (window: not connected)" }));
+        }
+        let raw = a.get("view").context("`view` (object) or `step` (integer) is required")?;
+        let v = view::resolve(self.loaded()?, raw)?;
+        let counts = format!(
+            "{} open, {} highlighted, {} notes, {} steps, {} chains",
+            v["open"].as_array().map_or(0, Vec::len),
+            v["highlight"].as_array().map_or(0, Vec::len),
+            v["notes"].as_array().map_or(0, Vec::len),
+            v["steps"].as_array().map_or(0, Vec::len),
+            v["layout"]["chain"].as_array().map_or(0, Vec::len)
+        );
+        let shown = self.push("view", v.clone());
+        self.view = Some(v);
+        Ok(if shown {
+            format!("shown: {counts}. The user steps with Next/Back; `selection` reports what they pick.")
+        } else {
+            format!("accepted ({counts}), window: not connected. It's kept as the latest view.")
+        })
     }
 
     fn loaded(&self) -> Result<&Loaded> {
@@ -307,7 +412,11 @@ impl Session {
             summary.push_str("\n`path` searches every loaded repo; nodes show as `<schema>:<path>`; `same` follows identical source across repos. `source` takes those `<schema>:` prefixes too.");
         }
         db.set_hide_content(repos.iter().any(|r| !r.denied.is_empty()));
+        let snap = file_name(&file);
         self.loaded = Some(Loaded { project: project.to_string(), main: file, attached, db, repos });
+        // A view refers to the snapshot it was made on.
+        self.view = None;
+        self.push("loaded", json!({"project": project, "snapshot": snap}));
         Ok(summary)
     }
 
@@ -528,7 +637,7 @@ None yet: nothing lean-by-default is withheld today (standard-library origin, im
 sql: max_rows <= {max_rows}, timeout_ms <= {timeout}; one read-only statement; no ATTACH/PRAGMA writes/extensions.
 
 ## Not built yet (see SCHEMA.md)
-reach()/nid() SQL table functions, the writers and race_candidates views, compare, show, selection, tag_coverage; implements, exits, timing; multi-repo link layer.
+reach()/nid() SQL table functions, the writers and race_candidates views, compare, tag_coverage; in `show`: groups, collapse, code excerpts, abstraction nodes, example data, and views over attached repos; implements, exits, timing; multi-repo link layer.
 ";
 
 fn tools() -> Value {
@@ -575,6 +684,34 @@ fn tools() -> Value {
                 "max_depth": {"type": "integer", "minimum": 1, "description": "Keep only routes of at most this many hops."},
                 "receipts": {"type": "string", "enum": ["expr", "none"], "description": "Source lines per hop (expr) or none."}
             }, "required": ["follow"]}
+        },
+        {
+            "name": "show",
+            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). Or pass only `step` to jump the window to step N of the current view.",
+            "inputSchema": {"type": "object", "properties": {
+                "view": {"type": "object", "properties": {
+                    "title": {"type": "string"},
+                    "open": {"type": "array", "description": "Boxes to open (their containers open too)."},
+                    "highlight": {"type": "array"},
+                    "focus": {"description": "One ref: the camera fits it."},
+                    "notes": {"type": "array", "items": {"type": "object", "properties": {"on": {}, "text": {"type": "string"}}, "required": ["text"]}},
+                    "steps": {"type": "array", "items": {"type": "object", "properties": {
+                        "focus": {}, "highlight": {"type": "array"}, "open": {"type": "array"}, "note": {"type": "string"}
+                    }}},
+                    "play": {"type": "boolean", "description": "Auto-advance the steps (a walkthrough); the user can pause."},
+                    "layout": {"type": "object", "properties": {
+                        "chain": {"type": "array", "items": {"type": "array"}},
+                        "order": {"type": "array"},
+                        "options": {"type": "object"}
+                    }}
+                }},
+                "step": {"type": "integer", "minimum": 1}
+            }}
+        },
+        {
+            "name": "selection",
+            "description": "What the user has selected in the window, and which step of the view they're on.",
+            "inputSchema": {"type": "object", "properties": {}}
         },
         {
             "name": "source",

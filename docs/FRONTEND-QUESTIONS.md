@@ -34,6 +34,8 @@ Two clarifications from the user, the same day:
 
 **Prototype (private artifact):** https://claude.ai/artifact/9Lc1Q2CpEcHrH9HbqJL88Q. It shows Insight's own snapshot (2,362 containers, calls, source) and a real six-function route from `main` to `SnapshotWriter::finish`. Layout is ELK layered, drawn on a canvas. An earlier circle-packing version (nested bubbles, no direction) was replaced when the user asked for left to right.
 
+**Built into the app (2026-10-10).** User: "I think you should build this into the app. There's some changes of course but I've found iterating with you works best." The prototype is now the window (`crates/insight-app`, ADR-0051), on the real backend, driven by Claude's `show`. The questions below are judged on the app from here on. Also from this message: "claude should be able to control the order a little bit. Maybe an algo it can tweak or do it manually." That became FQ-07 (ADR-0050).
+
 ## Questions
 
 ### FQ-01: What opens a box — OPEN
@@ -65,7 +67,7 @@ User: "we need to figure out how we should actually show things … Lots of colo
   - **Lines by kind:** calls are solid ink; possible calls are dashed; handoffs are violet dash-dot; library calls are grey; writes are thick blue; reads are thin blue and drawn from the field to the reader; references taken are dotted blue.
   - **A legend that is also the filter:** tick a line kind to show it, with its total count. Reads and references start hidden.
   - **Closed boxes show their size:** lines, functions (ƒ) and types (◆).
-- To be judged on the prototype.
+- To be judged on the app. One change since v2: "calls into libraries" starts unticked, because its 4,000 lines buried the home view; the hatched library boxes still show how much of each library is used.
 
 ### FQ-02: Edges between levels — OPEN
 How a call looks when one end is inside a closed box: merged into one line to the box (the prototype, thicker for more calls), ports on the box's sides, or hidden until opened.
@@ -76,8 +78,11 @@ Below a function: its code inside its box with blocks marked in the gutter (the 
 ### FQ-04: Where text lives — OPEN
 Notes, code excerpts, the inspector and step narration: on the canvas, in popups, in pop-out windows (R2-10), or in a docked bar (ADR-0027 anatomy, not validated).
 
-### FQ-05: Rendering and layout library (Q-08) — OPEN
-Decided after FQ-01 to FQ-03, because the zoom model sets the requirements (nested layout, thousands of nodes, animation).
+### FQ-05: Rendering and layout library (Q-08) — ANSWERED → ADR-0051
+Nested boxes, ELK layered, drawn on a canvas: the prototype the user asked to build into the app.
+
+### FQ-07: Claude steering the layout — ANSWERED → ADR-0050
+User: "claude should be able to control the order a little bit. Maybe an algo it can tweak or do it manually. Like the order of the hierarchy or something in order to show a certain path for example." A view's `layout` has `chain` (sequences laid out left to right in a row, such as a route), `order` (first within their box) and ELK `options`. The user has the same by hand: ▲ Up / ▼ Down in the inspector, and spacing in Settings.
 
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic?

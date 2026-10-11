@@ -3,3 +3,6 @@ Chats
 target/
 node_modules/
 dist/
+
+# Tauri writes these at build time.
+crates/insight-app/gen/
