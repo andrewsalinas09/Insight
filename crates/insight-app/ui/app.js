@@ -129,6 +129,7 @@ function applyView(v, o = {}) {
   V = v; step = -1; selected = null; stopPlay();
   showAll = false; revealed.clear(); computeSub();
   if (SUB) showLegend(false); // a condensed view is drawn to be read on its own
+  resetButton();
   asideChip();
   if (TR) exitTrace(false);
   lit = new Set(viewNodes(v.highlight));
@@ -590,6 +591,8 @@ function select(n) {
 }
 function goStep(i) {
   step = i; selected = null;
+  // Stepping through Claude's view brings its condensed form back.
+  if (showAll) { showAll = false; computeSub(); resetButton(); }
   // A step can open the trace view on a call stack; a step without one leaves it.
   const tr = step >= 0 ? steps()[step].trace : null;
   if (tr) { traceFromView(tr); bar(); transport(); report(); return; }
@@ -818,7 +821,14 @@ document.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("clic
 function markOpenBy() { document.querySelectorAll("[data-open]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.open === P.openBy))); }
 $("next").onclick = () => { if (step < steps().length - 1) { goStep(step + 1); if (playTimer) schedule(); } };
 $("back").onclick = () => { if (step >= 0) { goStep(step - 1); if (playTimer) schedule(); } };
-$("reset").onclick = () => { remember(); if (TR) exitTrace(false); showAll = true; SUB = null; hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
+// Whole system, and back: while Claude's view is set aside, the button returns to it
+// (condensed again, at the step you were on).
+let stepBeforeAll = -1;
+function resetButton() { const out = showAll && V && ((V.nodes ?? []).length || (V.groups ?? []).length || steps().length); $("reset").textContent = out ? "Back to Claude's view" : "Whole system"; $("reset").classList.toggle("aside", !!out); }
+$("reset").onclick = () => {
+  if ($("reset").textContent !== "Whole system") { remember(); showAll = false; computeSub(); resetButton(); if (stepBeforeAll >= 0 && stepBeforeAll < steps().length) goStep(stepBeforeAll); else setOpen(viewOpen(), null, (lay) => fitAll(lay, [...lit])); bar(); transport(); report(); return; }
+  stepBeforeAll = step;
+  remember(); if (TR) exitTrace(false); showAll = true; SUB = null; resetButton(); hovered = null; zoomOpened.clear(); stopPlay(); step = -1; selected = null; inspect(null); setOpen(new Set(HOME), null, (lay) => fit(lay.boxes.get(root), 0.96)); bar(); transport(); report(); };
 addEventListener("keydown", (e) => {
   if (e.target.closest?.("input, select")) return;
   if (e.key === "ArrowRight") $("next").click();

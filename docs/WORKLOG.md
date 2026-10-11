@@ -26,6 +26,8 @@ Template:
 
 **Next:** the user's verdict on the condensed overview; abstraction nodes, code excerpts and example data (the rest of ADR-0040).
 
+**Later:** the user pressed Whole system and had no way back. Back now restores the condensed view and step; the button reads "Back to Claude's view" while out. Tested by clicking in the window. The click script needed DPI awareness: screenshot pixels are physical pixels.
+
 ## 2026-10-11 — Aside views; Claude's first review for a race
 **Done:**
 - The user asked mid-walkthrough (on step 4 of "how data gets sent over BLE") why a task takes a mutex, and whether there's a race. They also asked for a way to pause the walkthrough, see the answer, and return "nothing changed" (ADR-0055).
