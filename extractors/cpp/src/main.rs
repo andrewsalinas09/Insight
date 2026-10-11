@@ -91,6 +91,7 @@ fn run() -> Result<()> {
             continue;
         }
         x.tu = n;
+        x.tu_dir = dir.clone();
         let args = match drivers.clang_args(&index, file, dir, argv) {
             Ok(a) => a,
             Err(e) => {
@@ -131,7 +132,7 @@ fn run() -> Result<()> {
             .iter()
             .filter_map(|r| {
                 let (s, e) = (r.get_start().get_file_location(), r.get_end().get_file_location());
-                Some((canon(&s.file?.get_path()), s.offset as usize, e.offset as usize))
+                Some((canon(&x.tu_dir.join(s.file?.get_path())), s.offset as usize, e.offset as usize))
             })
             .collect();
         x.inactive_regions(&skipped)?;
@@ -224,7 +225,11 @@ impl Drivers {
                 Mode::Gcc => {
                     // Only what selects source and configuration; the compiler's own target
                     // settings come from asking it (below).
-                    const VALUED: &[&str] = &["-I", "-isystem", "-iquote", "-idirafter", "-D", "-U", "-include", "-imacros", "-x"];
+                    // `-iprefix`/`-iwithprefix`/`-iwithprefixbefore` are GCC's (and clang's)
+                    // prefixed include paths; ESP-IDF adds most of its headers that way.
+                    const VALUED: &[&str] = &[
+                        "-I", "-isystem", "-iquote", "-idirafter", "-iprefix", "-iwithprefix", "-iwithprefixbefore", "-D", "-U", "-include", "-imacros", "-x",
+                    ];
                     if VALUED.contains(&a.as_str()) {
                         out.push(a.clone());
                         out.extend(it.next().cloned());
@@ -384,6 +389,9 @@ struct Extractor {
     out: Option<Out>,
     root_key: String,
     tu: usize,
+    /// The current command's directory: libclang reports a header found through a
+    /// relative `-I` relative to it.
+    tu_dir: PathBuf,
     /// key(abs path) → (owning TU, repo-relative path), for files inside the root.
     owner: HashMap<String, (usize, String)>,
     files: HashMap<String, FileInfo>,
@@ -451,7 +459,7 @@ impl Extractor {
         if let Some(r) = self.file_cache.get(&id) {
             return Ok(r.clone());
         }
-        let abs = canon(&f.get_path());
+        let abs = canon(&self.tu_dir.join(f.get_path()));
         let k = key(&abs);
         let r = match self.rel(&abs) {
             None => None,
@@ -861,7 +869,7 @@ impl Extractor {
     fn decl_inside(&self, d: Entity) -> Result<bool> {
         let Some(loc) = d.get_location() else { return Ok(false) };
         let Some(f) = loc.get_file_location().file else { return Ok(false) };
-        Ok(self.rel(&canon(&f.get_path())).is_some())
+        Ok(self.rel(&canon(&self.tu_dir.join(f.get_path()))).is_some())
     }
 
     fn literal(&mut self, e: Entity, ctx: &Ctx) -> Result<()> {

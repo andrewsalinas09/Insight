@@ -12,6 +12,11 @@ Template:
 
 ---
 
+## 2026-10-11 (cont.) — An ESP-IDF firmware project: two extractor fixes
+**Done:** the user asked about a private microcontroller firmware repo (Arduino on ESP-IDF, PlatformIO). Setting it up: PlatformIO Core installed and pinned to the version the platform expects. The check is a real build followed by `-t compiledb`: with HybridCompile, `compiledb` alone only describes a placeholder lib-builder project until the framework is built. Two generic C/C++ extractor bugs, fixed: GCC `-iprefix`/`-iwithprefix` include paths were dropped, and headers found through a relative `-I` were classed as external. Then a cited, condensed walkthrough on the window.
+**Learned:** a build system can write a compile database for a different project than the one you asked for (HybridCompile). Check that the database names the project's own sources before trusting a snapshot.
+**Next:** the user's verdict on the walkthrough.
+
 ## 2026-10-11 (cont.) — Condensed views: subsets, groups, collapse (ADR-0040)
 **Done:**
 - The user asked for a flow on their desktop-app project, overview first. On the full map the overview step opened huge files and showed "nothing". The user: "I think this is a good time for you to make condenced views … You should eb able to remove stuff temporarily right? I gave you that ability?" They had: ADR-0040's subset, groups and collapse, unbuilt since the window began (reported as drift then).
