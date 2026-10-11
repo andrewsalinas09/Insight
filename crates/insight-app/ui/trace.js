@@ -185,6 +185,12 @@ function goBack() {
   const s = HIST.pop();
   histButton();
   if (!s) return;
+  if (s.k === "view") {
+    const i = asides.findIndex((a) => a.V === s.V);
+    if (i >= 0) asides.length = i;
+    restoreView(s.V, s.step);
+    return;
+  }
   if (s.k === "map") {
     if (TR) { TR = null; traceHover = null; $("trail").hidden = true; }
     selected = s.selected; inspect(selected);

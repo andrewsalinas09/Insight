@@ -102,6 +102,9 @@ User, on the trace view with their own project: data was a dead end ("it should 
 ### FQ-11: Citing code in Claude's notes — ANSWERED → ADR-0054
 User, on a walkthrough step that listed pool names: "you could hover them an dit could light up the thing on screen. Would be top tier feature. We need to make it so claude can 'cite' stuff. Same for line numbers etc..." Built: `[label](ref)` in notes, checked by the server; hover lights it up, click goes there. Also from this message: with details shown, a long note was hidden under the panel. The details now stack above the bar, so a long note pushes them up.
 
+### FQ-12: Pausing a walkthrough for a side question — ANSWERED → ADR-0055
+User, on step 4 of a walkthrough: "I think we need a way to pause what we have, you can show the race condition, and then we can go back to step 4 nothing changed." Built: `aside: true` views, with a one-click return to the view and step.
+
 ### Deferred here from the backend rounds
 - R2-11: is "+N hidden" automatic?
 - R2-21: the user clicking while Claude updates the view.

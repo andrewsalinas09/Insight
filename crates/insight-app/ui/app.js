@@ -117,8 +117,16 @@ let notesOn = new Map();  // node -> [text]
 const userOrder = new Map(); // parent -> children in the order the user set (R2-09 parity with layout.order)
 
 function viewNodes(ids) { return (ids ?? []).map((id) => byId.get(id)).filter(Boolean); }
-function applyView(v) {
+// Views stack: an `aside` view sits on top of the one before, which the user gets back to
+// (view and step) with one click; any view change is also one ↶ Back away.
+const asides = []; // [{ V, step }] under the current aside
+function applyView(v, o = {}) {
+  if (!o.restoring && V) {
+    HIST.push({ k: "view", V, step }); histButton();
+    if (v.aside) asides.push({ V, step }); else asides.length = 0;
+  }
   V = v; step = -1; selected = null; stopPlay();
+  asideChip();
   if (TR) exitTrace(false);
   lit = new Set(viewNodes(v.highlight));
   notesOn = new Map();
@@ -133,6 +141,21 @@ function applyView(v) {
   setOpen(s, null, (lay) => fitAll(lay, fitTo));
   bar(); transport();
 }
+// What an aside returns to: the window's own record, else the server's link (`under`).
+const asideTop = () => asides[asides.length - 1] ?? (V?.under ? { V: V.under.view, step: V.under.step ?? -1 } : null);
+function asideChip() {
+  const top = asideTop(), b = $("asideBack");
+  b.hidden = !(V?.aside && top);
+  if (top) b.textContent = `◂ Back to ${top.V.title ?? "the previous view"}${top.step >= 0 ? ` · step ${top.step + 1}` : ""}`;
+}
+// Back to an earlier view exactly as it was, and tell the server it's current again.
+function restoreView(v, st) {
+  if (TR) exitTrace(false);
+  applyView(v, { restoring: true });
+  if (st >= 0 && st < steps().length) goStep(st);
+  invoke("restore_view", { view: v }).catch(() => {});
+}
+function leaveAside() { const top = asideTop(); asides.pop(); if (top) restoreView(top.V, top.step); }
 function viewOpen() {
   const s = new Set(HOME);
   if (!V) return s;
@@ -597,7 +620,7 @@ $("play").onclick = () => { if (playTimer) stopPlay(); else { if (step < 0 || st
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
 // Claude's text: escaped, with `code` spans.
-const prose = (s) => esc(s).replace(/\[([^\]]+)\]\(#c(\d+)\)/g, '<span class="cite" data-c="$2">$1</span>').replace(/`([^`]+)`/g, "<code>$1</code>");
+const prose = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>").replace(/\[([^\]]+)\]\(#c(\d+)\)/g, '<span class="cite" data-c="$2">$1</span>').replace(/`([^`]+)`/g, "<code>$1</code>");
 // Citation markers read as their label wherever there's no hovering (the canvas tags).
 const plain = (s) => s.replace(/\[([^\]]+)\]\(#c\d+\)/g, "$1");
 // ---------- Claude's citations ----------
@@ -798,6 +821,7 @@ let drag = null, pinch = null;
 // The mouse's back button goes back, as in a browser.
 addEventListener("mouseup", (e) => { if (e.button === 3) { e.preventDefault(); goBack(); } });
 $("hist").onclick = goBack;
+$("asideBack").onclick = leaveAside;
 cv.addEventListener("pointerdown", (e) => {
   if (e.button === 3) return;
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);

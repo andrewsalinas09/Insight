@@ -86,6 +86,8 @@ pub struct Server {
     view: Option<Value>,
     /// What the user has selected in the window, for `selection`.
     selection: Value,
+    /// The step of `view` the user is on (from 0), as last jumped to or reported.
+    step: Option<u64>,
 }
 
 /// Runs the server on stdin/stdout in this process (no window).
@@ -136,8 +138,16 @@ impl Server {
         self.view.as_ref()
     }
 
+    /// The user went back to an earlier view in the window (leaving an aside, or Back):
+    /// it is the current view again, so `show(step=N)` counts its steps.
+    pub fn set_view(&mut self, v: Value) {
+        self.view = Some(v);
+        self.step = None;
+    }
+
     /// The window reports what the user selected (and where the view stands).
     pub fn set_selection(&mut self, s: Value) {
+        self.step = s["step"].as_u64().and_then(|n| n.checked_sub(1));
         self.selection = s;
     }
 
@@ -247,11 +257,19 @@ impl Server {
         if let Some(step) = a.get("step").and_then(Value::as_u64) {
             let steps = self.view.as_ref().and_then(|v| v["steps"].as_array()).map_or(0, Vec::len);
             anyhow::ensure!(step >= 1 && step as usize <= steps, "the current view has {steps} step(s); `step` counts from 1");
+            self.step = Some(step - 1);
             let shown = self.push("step", json!(step - 1));
             return Ok(format!("step {step} of {steps}{}", if shown { "" } else { " (window: not connected)" }));
         }
         let raw = a.get("view").context("`view` (object) or `step` (integer) is required")?;
-        let v = view::resolve(self.loaded()?, raw)?;
+        let mut v = view::resolve(self.loaded()?, raw)?;
+        // An aside carries the view (and step) it sits on, so the user can always get back.
+        if v["aside"].as_bool() == Some(true)
+            && let Some(prev) = self.view.take()
+        {
+            v["under"] = json!({"view": prev, "step": self.step});
+        }
+        self.step = None;
         let counts = format!(
             "{} open, {} highlighted, {} notes, {} steps, {} chains{}",
             v["open"].as_array().map_or(0, Vec::len),
@@ -717,7 +735,7 @@ fn tools() -> Value {
         },
         {
             "name": "show",
-            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). `trace` opens the trace view, which works like a debugger: one function's code with its callers on the left and what it calls on the right, in the order written. `stack` is the call stack, outermost first, with the shown function last (a `path` search here stands for one route). `line` is the call to start at. Steps can carry their own `trace`, so you can walk a call path with a note on each step. Cite in note text with `[label](ref)`: ref is a code reference, `file:line` or `file:start-end`, or `:line` / `:start-end` for lines of what the note is about (its `on`, the step's trace or focus). Hovering a citation lights it up on screen, and clicking goes there. Every citation must resolve. Or pass only `step` to jump the window to step N of the current view.",
+            "description": "Put a view on the user's Insight window (ADR-0040): boxes to open, highlights, a focus, notes, steps (Next/Back) and layout. Every code reference must resolve (a node id, a path suffix as `path` takes, or {\"path\": {from, to, follow, ...}} standing for that route). `layout` steers placement: `chain` lists sequences laid out left to right on one row (e.g. the route you're explaining); `order` puts boxes first within their parent; `options` passes ELK layered options (e.g. {\"elk.spacing.nodeNode\": 30}). `trace` opens the trace view, which works like a debugger: one function's code with its callers on the left and what it calls on the right, in the order written. `stack` is the call stack, outermost first, with the shown function last (a `path` search here stands for one route). `line` is the call to start at. Steps can carry their own `trace`, so you can walk a call path with a note on each step. Cite in note text with `[label](ref)`: ref is a code reference, `file:line` or `file:start-end`, or `:line` / `:start-end` for lines of what the note is about (its `on`, the step's trace or focus). Hovering a citation lights it up on screen, and clicking goes there. Every citation must resolve. `aside: true` makes the view a detour on top of the current one (say, a question in the middle of a walkthrough): the user returns to exactly where they were, view and step, with one click. Or pass only `step` to jump the window to step N of the current view.",
             "inputSchema": {"type": "object", "properties": {
                 "view": {"type": "object", "properties": {
                     "title": {"type": "string"},
@@ -733,6 +751,7 @@ fn tools() -> Value {
                         "line": {"type": "integer", "description": "The call to start at (a line of the shown function)."}
                     }, "required": ["stack"]},
                     "play": {"type": "boolean", "description": "Auto-advance the steps (a walkthrough); the user can pause."},
+                    "aside": {"type": "boolean", "description": "A detour on top of the current view; the user returns to it (view and step) with one click."},
                     "layout": {"type": "object", "properties": {
                         "chain": {"type": "array", "items": {"type": "array"}},
                         "order": {"type": "array"},

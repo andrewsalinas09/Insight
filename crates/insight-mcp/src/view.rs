@@ -53,6 +53,10 @@ pub(crate) struct ViewIn {
     #[serde(default)]
     play: bool,
     trace: Option<TraceIn>,
+    /// A detour: shown on top of the current view, which the user returns to (view and
+    /// step) with one click.
+    #[serde(default)]
+    aside: bool,
 }
 
 /// Walk a function's calls in the order written, like stepping in a debugger: the
@@ -155,6 +159,7 @@ pub(crate) fn resolve(l: &Loaded, raw: &Value) -> Result<Value> {
         "notes": notes,
         "steps": steps,
         "play": v.play,
+        "aside": v.aside,
         "trace": trace,
         "layout": {"chain": chain, "order": r.many(&v.layout.order)?, "options": options},
         "cites": r.cites,

@@ -12,6 +12,18 @@ Template:
 
 ---
 
+## 2026-10-11 — Aside views; Claude's first review for a race
+**Done:**
+- The user asked mid-walkthrough (on step 4 of "how data gets sent over BLE") why a task takes a mutex, and whether there's a race. They also asked for a way to pause the walkthrough, see the answer, and return "nothing changed" (ADR-0055).
+- `show` takes `aside: true`. The server attaches the view underneath and the user's step (`under`); the window shows "◂ Back to … · step N", restores that view and step, and tells the server (`restore_view`). Every view change is also one ↶ Back away.
+- Notes render **bold** and *italics*. A long trace trail clips its outer frames instead of wrapping over the code.
+- Claude answered with a cited six-step aside. A completion notification doesn't say which transmission finished, so a late completion after a timeout, or an error from a failed connection, can leave a stale notification. The next send then frees its buffer while the BLE stack still points at it: a likely use-after-free. This came from reading the code. Confirming it on hardware and fixing it are the user's.
+- Docs: ADR-0055, FRONTEND-QUESTIONS (FQ-12), MCP-INSTRUCTIONS point 9, ARCHITECTURE.
+
+**Learned:** state that must survive the window restarting or missing an event belongs on the server. The first aside lost its link because the window started after the walkthrough was sent.
+
+**Next:** the user's verdict on the aside, then the review workflow it suggests: Claude proposing checks, with the window as evidence.
+
 ## 2026-10-10 (cont.) — Details panel, data traces, Back history; libraries start closed
 **Done:**
 - **The user tried the trace view on their own project** ("I absolutly love the step in and see on the left and right and arrow key control"). Three gaps: data was a dead end, navigation had no way back, and each thing showed only its name. They asked for a pop-out details panel. All three built (ADR-0053).

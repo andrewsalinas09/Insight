@@ -47,6 +47,12 @@ async fn current_view(s: State<'_, Shared>) -> Result<Option<Value>, String> {
 }
 
 #[tauri::command]
+async fn restore_view(s: State<'_, Shared>, view: Value) -> Result<(), String> {
+    lock(&s).set_view(view);
+    Ok(())
+}
+
+#[tauri::command]
 async fn select(s: State<'_, Shared>, selection: Value) -> Result<(), String> {
     lock(&s).set_selection(selection);
     Ok(())
@@ -95,7 +101,7 @@ fn main() {
     let server: Shared = Arc::new(Mutex::new(Server::default()));
     tauri::Builder::default()
         .manage(server.clone())
-        .invoke_handler(tauri::generate_handler![projects, load, graph, file, current_view, select])
+        .invoke_handler(tauri::generate_handler![projects, load, graph, file, current_view, restore_view, select])
         .setup(move |app| {
             let handle = app.handle().clone();
             lock(&server).attach_window(Box::new(move |event, payload| {

@@ -115,8 +115,12 @@ body.popout .detail { position: static; height: 100vh; border-top: 0; }
 .cite:hover { background: color-mix(in srgb, var(--orange) 18%, transparent); }
 .box-btn.primary { background: var(--ink); color: var(--panel); }
 .bar .dim { color: var(--dim); }
-.trail { left: 50%; transform: translateX(-50%); top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; max-width: calc(100% - 32px); box-shadow: inset 3px 0 0 var(--call), 4px 4px 0 var(--shadow); }
-.trail .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font: 12px var(--mono); min-width: 0; }
+.trail { left: 50%; transform: translateX(-50%); top: 12px; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px 8px; padding: 6px 10px; max-width: calc(100% - 32px); box-shadow: inset 3px 0 0 var(--call), 4px 4px 0 var(--shadow); }
+/* A long trail clips its outermost frames rather than wrapping over the code. */
+.trail .crumbs { display: flex; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; align-items: center; gap: 2px; font: 12px var(--mono); min-width: 0; white-space: nowrap; }
+.trail > * { flex: none; }
+.trail > .crumbs { flex: 0 1 auto; }
+.box-btn.aside { color: var(--orange); border-color: var(--orange); }
 .trail .crumb { padding: 2px 4px; color: var(--dim); text-decoration: underline; text-decoration-color: var(--hair3); }
 .trail .crumb:hover { color: var(--ink); }
 .trail .sep { color: var(--dim); }
