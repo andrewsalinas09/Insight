@@ -124,7 +124,9 @@ const asides = []; // [{ V, step }] under the current aside
 function applyView(v, o = {}) {
   if (!o.restoring && V) {
     HIST.push({ k: "view", V, step }); histButton();
-    if (v.aside) asides.push({ V, step }); else asides.length = 0;
+    // A same-titled aside revises the one on screen: it keeps what that one sat on.
+    const revision = v.aside && V.aside && v.title === V.title;
+    if (v.aside) { if (!revision) asides.push({ V, step }); } else asides.length = 0;
   }
   V = v; step = -1; selected = null; stopPlay();
   showAll = false; revealed.clear(); computeSub();

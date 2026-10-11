@@ -17,4 +17,5 @@ Each `show` replaced the view on screen. A question in the middle of a walkthrou
 - The link lives on the server, so it holds even when the window wasn't there for the first view: in the first test, the window started fresh and missed the walkthrough arriving.
 
 ## Consequences
+- An aside sent with the same title as the aside on screen is a revision: it replaces that aside and keeps what it sat on (found when a corrected aside stacked on the first, 2026-10-11).
 - `aside` is a view parameter, like `layout` (ADR-0050): it adds no element kind to ADR-0040.
