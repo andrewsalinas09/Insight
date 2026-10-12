@@ -12,6 +12,19 @@ Template:
 
 ---
 
+## 2026-10-12 — Fresh install on this machine; a native ESP-IDF firmware project
+**Done:**
+- First install here: `cargo build --release`, then `insight install`. That registered the `insight` MCP server (user scope) and installed LLVM 23.1.3 with winget, for libclang.
+- The user's private firmware repo (ESP-IDF 5.5.3 CMake, FreeRTOS, C++20, with a React/TS frontend submodule) became project `VibrationSensor`. The check copies the repo's public test licence secret and runs the repo's `scripts\build.ps1`. Snapshot at `29b92ab`: 5,285 functions in 549 files, 0 count mismatches.
+- The ESP-IDF clone carries the lwIP no-backoff edit in place, and the user wants it kept. The firmware now applies the same patch itself and refuses a pre-patched IDF. Insight's builds use their own copy of the clone instead: `%LOCALAPPDATA%\Insight\toolchains\esp-idf-5.5.3`, without git data, with a stock `tcp.c` and a `version.txt`. This is recorded in the project's INSIGHT.md.
+- Counter fix (TB-153): a function named by a statement keyword is never counted.
+
+**Learned:**
+- rustc crashed with STATUS_STACK_BUFFER_OVERRUN compiling `gix` in release. `RUST_MIN_STACK=67108864` fixed it.
+- A user's toolchain can be deliberately ahead of, or behind, what the repo's build expects. Give Insight its own copy rather than editing the user's.
+
+**Next:** the user's first question about the firmware, from a new Claude Code session.
+
 ## 2026-10-11 (cont.) — Glossary and hover cards; condensed-view and aside fixes; excerpts
 **Done:**
 - **Glossary (ADR-0056):** a per-project `insight-glossary` block in INSIGHT.md, kept by Claude with the new `glossary` tool (every name must resolve). The window shows a card when you hover any name in code (kind, place, glossary terms, declaration, the comment above it), notes cite terms as `[label](term:name)`, and the details panel lists a thing's terms. First use: 14 terms for a private firmware project and a 16-step crash course, one word per step.

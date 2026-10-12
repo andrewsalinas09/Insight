@@ -145,7 +145,7 @@ fn walk(node: Node, src: &str, lang: Lang, n: &mut Vec<(usize, usize)>, skip: &[
             return;
         }
     }
-    if is_function(node, lang) && !skip.iter().any(|(s, e)| (*s..*e).contains(&node.start_byte())) {
+    if is_function(node, src, lang) && !skip.iter().any(|(s, e)| (*s..*e).contains(&node.start_byte())) {
         n.push((node.start_byte(), node.end_byte()));
     }
     let mut cursor = node.walk();
@@ -214,7 +214,17 @@ fn has_function_declarator(d: Node) -> bool {
     d.named_children(&mut cursor).any(has_function_declarator)
 }
 
-fn is_function(node: Node, lang: Lang) -> bool {
+/// The name a function declarator declares, when it is a plain identifier.
+fn declared_name<'a>(d: Node, src: &'a str) -> Option<&'a str> {
+    if d.kind() == "function_declarator" {
+        let name = d.child_by_field_name("declarator")?;
+        return (name.kind() == "identifier").then(|| &src[name.start_byte()..name.end_byte()]);
+    }
+    let mut cursor = d.walk();
+    d.named_children(&mut cursor).find_map(|c| declared_name(c, src))
+}
+
+fn is_function(node: Node, src: &str, lang: Lang) -> bool {
     // Keyword tokens share names with node kinds (`function`), so only named nodes count.
     if !node.is_named() {
         return false;
@@ -236,10 +246,15 @@ fn is_function(node: Node, lang: Lang) -> bool {
         // A definition with a written body (`= default` / `= delete` have none), and lambdas.
         // A function definition always has a function declarator; without one, tree-sitter
         // has misread an unexpanded macro (`struct EXPORT Name { … }` as a "function" Name).
+        // A function is never named by a statement keyword: an `#if` body parsed on its own
+        // can read `else if (M(x)) { … }` as a function `if` of return type `else`.
         Lang::C | Lang::Cpp => {
             (node.kind() == "function_definition"
                 && node.child_by_field_name("body").is_some_and(|b| matches!(b.kind(), "compound_statement" | "try_statement"))
-                && node.child_by_field_name("declarator").is_some_and(has_function_declarator))
+                && node.child_by_field_name("declarator").is_some_and(|d| {
+                    has_function_declarator(d)
+                        && !declared_name(d, src).is_some_and(|n| matches!(n, "if" | "else" | "while" | "for" | "switch" | "do" | "return" | "case" | "sizeof"))
+                }))
                 || node.kind() == "lambda_expression"
         }
     }
@@ -318,5 +333,11 @@ mod tests {
         assert_eq!(count_functions(Lang::Cpp, src).unwrap(), 6);
         let skip = [(src.find("void S2").unwrap(), src.find("#define").unwrap())];
         assert_eq!(count_functions_outside(Lang::Cpp, src, &skip).unwrap(), 5);
+    }
+
+    #[test]
+    fn else_if_in_an_if_block_is_not_a_function() {
+        let src = "void f(int r) {\n    if (r < 0) {\n        return;\n    }\n#if SUPPORT\n    else if (REDIRECT(r)) {\n        r = 0;\n    }\n#endif\n}\n";
+        assert_eq!(count_functions(Lang::C, src).unwrap(), 1);
     }
 }

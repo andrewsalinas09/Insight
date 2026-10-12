@@ -780,3 +780,7 @@ The user loads their code and the docs of an HTTP API it calls. They expect to s
 - a code URL that matches no endpoint.
 
 **Answer:** see Q-38. **Status:** Open.
+
+### TB-153: An `#if` that opens mid-statement
+`if (r < 0) { … }` then `#if SUPPORT` / `else if (M(r)) { … }` / `#endif`, inside a function body, with the block compiled in (ESP-IDF's websocket client). tree-sitter parses the `#if` body on its own and reads `else if (M(r)) { … }` as a function `if` returning `else`, with no error node. The independent count was one too high, and the build refused.
+**Answer:** the counter never counts a function whose declared name is a statement keyword (`insight-count`, test `else_if_in_an_if_block_is_not_a_function`). **Status:** Solved (built, 2026-10-12).
